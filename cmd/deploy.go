@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"time"
 
@@ -18,26 +20,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultHealthTimeout = 30 * time.Second
+const (
+	defaultHealthTimeout = 30 * time.Second
+	defaultBuildTimeout  = 15 * time.Minute
+)
 
 func newDeployCmd() *cobra.Command {
 	var configPath string
 	var timeout time.Duration
+	var buildTimeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Build and deploy the current app to your server",
 		Long: `Deploy builds your app, runs it, and serves it at a URL.
 Reads config from skiff.toml.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDeploy(configPath, timeout)
+			return runDeploy(configPath, timeout, buildTimeout)
 		},
 	}
 	cmd.Flags().StringVarP(&configPath, "config", "c", config.DefaultFile, "path to skiff.toml")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultHealthTimeout, "how long to wait for the new version to become healthy")
+	cmd.Flags().DurationVar(&buildTimeout, "build-timeout", defaultBuildTimeout, "cancel the build if it runs longer than this")
 	return cmd
 }
 
-func runDeploy(configPath string, timeout time.Duration) error {
+func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		ui.Fail("Couldn't load config")
@@ -76,9 +83,27 @@ func runDeploy(configPath string, timeout time.Duration) error {
 		ui.Fail("Couldn't prepare the build")
 		return err
 	}
+
+	// Cancel the build on Ctrl-C or after buildTimeout, so a hung or runaway
+	// build never stalls forever.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if buildTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, buildTimeout)
+		defer cancel()
+	}
+
 	ui.Step("Building " + image)
-	if err := docker.BuildFromDockerfile(image, dockerfile, contextDir, os.Stdout); err != nil {
-		ui.Fail("Build failed")
+	if err := docker.BuildFromDockerfile(ctx, image, dockerfile, contextDir, os.Stdout); err != nil {
+		switch ctx.Err() {
+		case context.DeadlineExceeded:
+			ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))
+		case context.Canceled:
+			ui.Fail("Build canceled")
+		default:
+			ui.Fail("Build failed")
+		}
 		return err
 	}
 	ui.Done("Built " + image)

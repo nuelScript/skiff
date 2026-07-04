@@ -2,6 +2,7 @@
 package docker
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -24,10 +25,10 @@ func Available() error {
 
 // BuildFromDockerfile builds image tag using the given Dockerfile contents,
 // with contextDir as the build context, streaming output to out.
-func BuildFromDockerfile(tag, dockerfile, contextDir string, out io.Writer) error {
+func BuildFromDockerfile(ctx context.Context, tag, dockerfile, contextDir string, out io.Writer) error {
 	defer ensureDockerignore(contextDir)()
 
-	cmd := exec.Command("docker", "build", "-t", tag, "-f", "-", contextDir)
+	cmd := exec.CommandContext(ctx, "docker", "build", "-t", tag, "-f", "-", contextDir)
 	cmd.Stdin = strings.NewReader(dockerfile)
 	cmd.Stdout = out
 	cmd.Stderr = out
