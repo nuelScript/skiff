@@ -138,6 +138,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 	ui.Step("Starting new version")
 	hostPort, err := eng.Run(docker.RunSpec{
 		Name:          container,
+		App:           cfg.Name,
 		Image:         image,
 		ContainerPort: cfg.Build.Port,
 		Memory:        cfg.Resources.Memory,

@@ -83,12 +83,19 @@ func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, conte
 
 type RunSpec struct {
 	Name          string
+	App           string // app name, for the skiff.app route label
 	Image         string
 	ContainerPort int
 	Memory        string // optional, e.g. "512m"
 	CPU           string // optional, e.g. "0.5"
 	Env           map[string]string
 	Public        bool // publish on all interfaces instead of 127.0.0.1
+}
+
+// Route is a discovered app-to-hostport mapping (from container labels).
+type Route struct {
+	App      string
+	HostPort int
 }
 
 func (e *Engine) Run(s RunSpec) (int, error) {
@@ -104,6 +111,9 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 		"--label", "skiff=1",
 		"-e", fmt.Sprintf("PORT=%d", s.ContainerPort),
 		"-p", fmt.Sprintf("%s::%d", bind, s.ContainerPort),
+	}
+	if s.App != "" {
+		args = append(args, "--label", "skiff.app="+s.App, "--label", fmt.Sprintf("skiff.port=%d", s.ContainerPort))
 	}
 	if s.Memory != "" {
 		args = append(args, "--memory", s.Memory)
@@ -156,6 +166,31 @@ func (e *Engine) Containers() ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// Routes discovers app-to-hostport mappings from skiff.app-labeled containers.
+func (e *Engine) Routes() ([]Route, error) {
+	out, err := e.command("ps", "--filter", "label=skiff.app", "--format", `{{.Label "skiff.app"}} {{.Label "skiff.port"}} {{.Names}}`).Output()
+	if err != nil {
+		return nil, err
+	}
+	var routes []Route
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 {
+			continue
+		}
+		cport, err := strconv.Atoi(f[1])
+		if err != nil {
+			continue
+		}
+		hp, err := e.HostPort(f[2], cport)
+		if err != nil {
+			continue
+		}
+		routes = append(routes, Route{App: f[0], HostPort: hp})
+	}
+	return routes, nil
 }
 
 func (e *Engine) Stop(container string) error {
