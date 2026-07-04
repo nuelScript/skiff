@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// nodeBuilder builds a Node.js app, detected by its package.json. It reads the
-// dependencies to recognize a framework and pick the right Plan.
 type nodeBuilder struct {
 	dir      string
 	fw       *nodeFramework
@@ -53,7 +51,6 @@ func (n *nodeBuilder) Dockerfile(port int, env map[string]string) (string, error
 	return render(plan)
 }
 
-// install returns the install command and the lockfile it relies on (if any).
 func (n *nodeBuilder) install() (cmd, lockfile string) {
 	switch {
 	case fileExists(filepath.Join(n.dir, "pnpm-lock.yaml")):
@@ -66,7 +63,6 @@ func (n *nodeBuilder) install() (cmd, lockfile string) {
 	return "npm install", ""
 }
 
-// baseImage picks node:<major>-slim from .nvmrc or engines.node, defaulting to 20.
 func (n *nodeBuilder) baseImage() string {
 	major := nodeMajor(n.dir)
 	if major == "" {
@@ -75,7 +71,6 @@ func (n *nodeBuilder) baseImage() string {
 	return "node:" + major + "-slim"
 }
 
-// framework returns the detected Node framework, or nil for a plain Node app.
 func (n *nodeBuilder) framework() *nodeFramework {
 	if !n.resolved {
 		n.resolved = true
@@ -90,7 +85,6 @@ func (n *nodeBuilder) framework() *nodeFramework {
 	return n.fw
 }
 
-// nodeFramework maps a package.json dependency to how the app is built and served.
 type nodeFramework struct {
 	name      string
 	dep       string   // dependency that signals this framework
@@ -134,7 +128,6 @@ func readDeps(path string) map[string]struct{} {
 	return deps
 }
 
-// nodeMajor reads the requested Node major version from .nvmrc or engines.node.
 func nodeMajor(dir string) string {
 	if data, err := os.ReadFile(filepath.Join(dir, ".nvmrc")); err == nil {
 		if m := leadingMajor(string(data)); m != "" {
@@ -156,7 +149,6 @@ func nodeMajor(dir string) string {
 	return ""
 }
 
-// leadingMajor pulls the first run of digits, skipping any v / >= / ^ / ~ prefix.
 func leadingMajor(s string) string {
 	s = strings.TrimSpace(s)
 	start := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })

@@ -8,7 +8,6 @@ import (
 	"sort"
 )
 
-// App is one deployed app.
 type App struct {
 	Name      string `json:"name"`
 	Container string `json:"container"`
@@ -37,7 +36,6 @@ func file() (string, error) {
 	return filepath.Join(d, "apps.json"), nil
 }
 
-// Load returns all known apps keyed by name.
 func Load() (map[string]App, error) {
 	f, err := file()
 	if err != nil {
@@ -76,7 +74,6 @@ func save(apps map[string]App) error {
 	return os.Rename(tmp, f)
 }
 
-// Put inserts or updates an app.
 func Put(a App) error {
 	apps, err := Load()
 	if err != nil {
@@ -86,7 +83,6 @@ func Put(a App) error {
 	return save(apps)
 }
 
-// Delete removes an app, reporting whether it existed.
 func Delete(name string) (bool, error) {
 	apps, err := Load()
 	if err != nil {
@@ -99,7 +95,6 @@ func Delete(name string) (bool, error) {
 	return true, save(apps)
 }
 
-// List returns all apps sorted by name.
 func List() ([]App, error) {
 	apps, err := Load()
 	if err != nil {

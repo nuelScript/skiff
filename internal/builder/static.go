@@ -2,7 +2,6 @@ package builder
 
 import "path/filepath"
 
-// staticBuilder serves a plain static site, detected by an index.html.
 type staticBuilder struct{ dir string }
 
 func (s *staticBuilder) Name() string { return "Static" }

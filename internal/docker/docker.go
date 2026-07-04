@@ -1,5 +1,4 @@
-// Package docker deploys apps to a Docker engine — local, or remote over SSH —
-// via the docker CLI.
+// Package docker deploys apps to a Docker engine, local or remote over SSH.
 package docker
 
 import (
@@ -14,19 +13,14 @@ import (
 	"strings"
 )
 
-// Engine talks to a Docker daemon. An empty host means the local daemon; a set
-// host is a DOCKER_HOST value like "ssh://user@vps".
 type Engine struct {
 	host string
 }
 
-// Local returns an engine for the local Docker daemon.
 func Local() *Engine { return &Engine{} }
 
-// Remote returns an engine that runs Docker on sshTarget (e.g. "root@1.2.3.4") over SSH.
 func Remote(sshTarget string) *Engine { return &Engine{host: "ssh://" + sshTarget} }
 
-// For returns a remote engine when host is set, otherwise the local engine.
 func For(host string) *Engine {
 	if host == "" {
 		return Local()
@@ -34,10 +28,8 @@ func For(host string) *Engine {
 	return Remote(host)
 }
 
-// IsRemote reports whether the engine targets a remote host.
 func (e *Engine) IsRemote() bool { return e.host != "" }
 
-// SSHHostname returns the host part of an ssh target ("root@1.2.3.4" → "1.2.3.4").
 func SSHHostname(target string) string {
 	if i := strings.LastIndexByte(target, '@'); i >= 0 {
 		return target[i+1:]
@@ -57,7 +49,6 @@ func (e *Engine) contextCommand(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
-// Available checks that the docker CLI and daemon are reachable.
 func (e *Engine) Available() error {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return fmt.Errorf("docker CLI not found in PATH")
@@ -80,8 +71,6 @@ func (e *Engine) Available() error {
 	return nil
 }
 
-// BuildFromDockerfile builds image tag using the given Dockerfile contents, with
-// contextDir as the build context, streaming output to out.
 func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, contextDir string, out io.Writer) error {
 	defer ensureDockerignore(contextDir)()
 
@@ -92,7 +81,6 @@ func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, conte
 	return cmd.Run()
 }
 
-// RunSpec describes how to run an app container.
 type RunSpec struct {
 	Name          string
 	Image         string
@@ -103,8 +91,6 @@ type RunSpec struct {
 	Public        bool // publish on all interfaces instead of 127.0.0.1
 }
 
-// Run replaces any container named s.Name with a fresh one from s.Image,
-// publishing the container port to a random host port. Returns that host port.
 func (e *Engine) Run(s RunSpec) (int, error) {
 	_ = e.command("rm", "-f", s.Name).Run() // best-effort: drop the old one
 
@@ -137,7 +123,6 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 	return e.HostPort(s.Name, s.ContainerPort)
 }
 
-// HostPort returns the host port that containerPort is published on.
 func (e *Engine) HostPort(name string, containerPort int) (int, error) {
 	out, err := e.command("port", name, strconv.Itoa(containerPort)).Output()
 	if err != nil {
@@ -151,7 +136,6 @@ func (e *Engine) HostPort(name string, containerPort int) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(line[i+1:]))
 }
 
-// State returns the container's status ("running", "exited", …) or "missing".
 func (e *Engine) State(container string) string {
 	out, err := e.command("inspect", "-f", "{{.State.Status}}", container).Output()
 	if err != nil {
@@ -160,7 +144,6 @@ func (e *Engine) State(container string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// Containers returns the names of all Skiff-managed containers (running or not).
 func (e *Engine) Containers() ([]string, error) {
 	out, err := e.command("ps", "-a", "--filter", "label=skiff=1", "--format", "{{.Names}}").Output()
 	if err != nil {
@@ -175,7 +158,6 @@ func (e *Engine) Containers() ([]string, error) {
 	return names, nil
 }
 
-// Stop gracefully stops a container (SIGTERM, then SIGKILL after a grace period).
 func (e *Engine) Stop(container string) error {
 	out, err := e.command("stop", container).CombinedOutput()
 	if err != nil {
@@ -184,7 +166,6 @@ func (e *Engine) Stop(container string) error {
 	return nil
 }
 
-// Remove force-removes a container by name.
 func (e *Engine) Remove(name string) error {
 	out, err := e.command("rm", "-f", name).CombinedOutput()
 	if err != nil {
@@ -193,8 +174,6 @@ func (e *Engine) Remove(name string) error {
 	return nil
 }
 
-// Logs streams a container's logs to out. When follow is true it keeps
-// streaming; tail limits how many recent lines are shown first.
 func (e *Engine) Logs(container string, follow bool, tail string, out io.Writer) error {
 	args := []string{"logs"}
 	if follow {
@@ -210,7 +189,6 @@ func (e *Engine) Logs(container string, follow bool, tail string, out io.Writer)
 	return cmd.Run()
 }
 
-// StreamLogs follows a container's recent logs to out until ctx is canceled.
 func (e *Engine) StreamLogs(ctx context.Context, container string, out io.Writer) error {
 	cmd := e.contextCommand(ctx, "logs", "--tail", "100", "--follow", container)
 	cmd.Stdout = out

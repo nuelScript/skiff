@@ -70,7 +70,6 @@ func newStatusCmd() *cobra.Command {
 	}
 }
 
-// probe reports whether the app answers an HTTP request at host:hostPort.
 func probe(host string, hostPort int) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://%s:%d/", host, hostPort))

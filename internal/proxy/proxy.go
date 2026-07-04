@@ -11,10 +11,8 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// DefaultAddr is the address the router listens on.
 const DefaultAddr = ":8080"
 
-// URL is where a deployed app is reachable through the router.
 func URL(name string) string {
 	return fmt.Sprintf("http://%s.localhost%s", name, portSuffix(DefaultAddr))
 }
@@ -27,7 +25,6 @@ func portSuffix(addr string) string {
 	return ":" + p
 }
 
-// Serve runs the router until the process is stopped.
 func Serve(addr string) error {
 	return http.ListenAndServe(addr, http.HandlerFunc(route))
 }
@@ -61,7 +58,6 @@ func route(w http.ResponseWriter, r *http.Request) {
 	rp.ServeHTTP(w, r)
 }
 
-// appName pulls "hello" out of hosts like "hello.localhost:8080".
 func appName(host string) string {
 	if i := strings.IndexByte(host, ':'); i >= 0 {
 		host = host[:i]

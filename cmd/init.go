@@ -51,7 +51,6 @@ func newInitCmd() *cobra.Command {
 	}
 }
 
-// guessPort picks a sensible default port from the files in dir.
 func guessPort(dir string) int {
 	has := func(f string) bool {
 		_, err := os.Stat(filepath.Join(dir, f))

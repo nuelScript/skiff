@@ -10,10 +10,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// DefaultFile is the config filename looked up in the current directory.
 const DefaultFile = "skiff.toml"
 
-// Config is a parsed skiff.toml.
 type Config struct {
 	Name string `toml:"name"`
 
@@ -24,7 +22,6 @@ type Config struct {
 	Secrets   map[string]string `toml:"secrets"` // runtime only (never baked into the image)
 }
 
-// ResourcesConfig caps what a container may use.
 type ResourcesConfig struct {
 	Memory string `toml:"memory"` // e.g. "512m"
 	CPU    string `toml:"cpu"`    // e.g. "0.5"
@@ -35,13 +32,11 @@ type ServerConfig struct {
 	Host string `toml:"host"`
 }
 
-// BuildConfig describes how the app image is built and served.
 type BuildConfig struct {
 	Dockerfile string `toml:"dockerfile"`
 	Port       int    `toml:"port"`
 }
 
-// Load reads, defaults, and validates a skiff.toml from path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -76,12 +71,10 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// IsLocal reports whether the app deploys to the local Docker engine.
 func (c *Config) IsLocal() bool {
 	return c.Server.Host == "" || c.Server.Host == "local"
 }
 
-// TargetLabel is a short human label for the deploy target.
 func (c *Config) TargetLabel() string {
 	if c.IsLocal() {
 		return "local docker"
@@ -89,7 +82,6 @@ func (c *Config) TargetLabel() string {
 	return c.Server.Host
 }
 
-// RemoteHost is the deploy target's ssh host, or "" when local.
 func (c *Config) RemoteHost() string {
 	if c.IsLocal() {
 		return ""
@@ -97,8 +89,6 @@ func (c *Config) RemoteHost() string {
 	return c.Server.Host
 }
 
-// Environment returns the app's env: values from a .env file in dir, overridden
-// by the skiff.toml [env] table.
 func (c *Config) Environment(dir string) map[string]string {
 	env := loadDotenv(filepath.Join(dir, ".env"))
 	for k, v := range c.Env {

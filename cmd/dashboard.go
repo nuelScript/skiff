@@ -96,7 +96,6 @@ func handleAppsAPI(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// handleLogsStream streams a container's logs to the browser as Server-Sent Events.
 func handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("app")
 	apps, err := registry.Load()
@@ -133,7 +132,6 @@ func handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDown stops and removes an app (the dashboard's stop button).
 func handleDown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

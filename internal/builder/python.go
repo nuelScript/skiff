@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// pythonBuilder builds a Python app, detected by its project/entrypoint files.
 type pythonBuilder struct{ dir string }
 
 func (p *pythonBuilder) Name() string { return "Python" }
@@ -44,8 +43,6 @@ func (p *pythonBuilder) Dockerfile(port int, env map[string]string) (string, err
 	})
 }
 
-// start picks the argv to run: a Procfile "web:" line if present, otherwise a
-// conventional entrypoint file.
 func (p *pythonBuilder) start() ([]string, error) {
 	if web := procfileWeb(filepath.Join(p.dir, "Procfile")); web != "" {
 		return []string{"sh", "-c", web}, nil

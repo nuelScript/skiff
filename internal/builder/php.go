@@ -5,8 +5,6 @@ import (
 	"strconv"
 )
 
-// phpBuilder builds a plain PHP app (detected by an index.php) using PHP's
-// built-in web server.
 type phpBuilder struct{ dir string }
 
 func (p *phpBuilder) Name() string { return "PHP" }

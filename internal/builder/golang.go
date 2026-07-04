@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// goBuilder builds a Go app, detected by its go.mod, into a tiny runtime image
-// via a multi-stage build.
 type goBuilder struct{ dir string }
 
 func (g *goBuilder) Name() string { return "Go" }
@@ -41,7 +39,6 @@ func (g *goBuilder) baseImage() string {
 	return "golang:1.23"
 }
 
-// goVersion reads the "go X.Y" directive from go.mod and returns "X.Y".
 func goVersion(dir string) string {
 	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {

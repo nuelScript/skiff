@@ -1,6 +1,4 @@
-// Package builder turns app source into a Dockerfile. It detects the stack and
-// emits a Plan (base image, install, build, how to serve), which render() turns
-// into a Dockerfile. The app's own Dockerfile is the escape hatch.
+// Package builder turns app source into a Dockerfile by detecting the stack.
 package builder
 
 import (
@@ -9,14 +7,11 @@ import (
 	"path/filepath"
 )
 
-// Builder produces a Dockerfile for an app directory, serving on port.
 type Builder interface {
 	Name() string
 	Dockerfile(port int, env map[string]string) (string, error)
 }
 
-// Select picks a builder for the app in dir: its own Dockerfile if present,
-// otherwise the first stack whose files are detected.
 func Select(dir, dockerfile string) (Builder, error) {
 	if p := filepath.Join(dir, dockerfile); fileExists(p) {
 		return &dockerfileBuilder{path: p}, nil
@@ -46,7 +41,6 @@ type stackBuilder interface {
 	detect() bool
 }
 
-// dockerfileBuilder uses the app's own Dockerfile.
 type dockerfileBuilder struct{ path string }
 
 func (d *dockerfileBuilder) Name() string { return "Dockerfile" }
