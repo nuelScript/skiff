@@ -23,6 +23,7 @@ func newDashboardCmd() *cobra.Command {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/api/apps", handleAppsAPI)
 			mux.HandleFunc("/api/logs", handleLogsStream)
+			mux.HandleFunc("/api/down", handleDown)
 			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/" {
 					http.NotFound(w, r)
@@ -132,6 +133,28 @@ func handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleDown stops and removes an app (the dashboard's stop button).
+func handleDown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("app")
+	apps, err := registry.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	app, ok := apps[name]
+	if !ok {
+		http.Error(w, "unknown app", http.StatusNotFound)
+		return
+	}
+	_ = docker.For(app.Host).Remove(app.Container)
+	_, _ = registry.Delete(name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 const dashboardHTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -158,6 +181,8 @@ const dashboardHTML = `<!doctype html>
   a:hover { text-decoration:underline; }
   .logs-link { color:var(--muted); }
   .logs-link:hover { color:var(--accent); }
+  .stop-link { color:var(--muted); }
+  .stop-link:hover { color:var(--red); }
   .empty { color:var(--muted); padding:48px; text-align:center; grid-column:1/-1; }
   #panel { position:fixed; left:0; right:0; bottom:0; height:45vh; background:#0d0d13; border-top:1px solid var(--line); display:none; flex-direction:column; }
   #panel.open { display:flex; }
@@ -187,7 +212,7 @@ async function load(){
         + '<div class="row"><span>health</span><b>'+esc(a.health)+'</b></div>'
         + '<div class="row"><span>target</span><b>'+esc(a.target)+'</b></div>'
         + '<div class="row"><span>url</span><a href="'+esc(a.url)+'" target="_blank">'+host+'</a></div>'
-        + '<div class="row"><span>logs</span><a href="#" class="logs-link" data-app="'+esc(a.name)+'">view</a></div>'
+        + '<div class="row"><span>logs</span><span><a href="#" class="logs-link" data-app="'+esc(a.name)+'">view</a> &middot; <a href="#" class="stop-link" data-app="'+esc(a.name)+'">stop</a></span></div>'
         + '</div>';
     }).join('');
   } catch(e){}
@@ -207,7 +232,9 @@ function closeLogs(){
 }
 document.addEventListener('click', function(e){
   var t = e.target;
-  if(t && t.classList && t.classList.contains('logs-link')){ e.preventDefault(); openLogs(t.getAttribute('data-app')); }
+  if(!t || !t.classList) return;
+  if(t.classList.contains('logs-link')){ e.preventDefault(); openLogs(t.getAttribute('data-app')); }
+  if(t.classList.contains('stop-link')){ e.preventDefault(); var n = t.getAttribute('data-app'); if(confirm('Stop '+n+'?')){ fetch('/api/down?app='+encodeURIComponent(n), {method:'POST'}).then(load); } }
 });
 load(); setInterval(load, 3000);
 </script>
