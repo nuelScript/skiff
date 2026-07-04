@@ -1,12 +1,9 @@
 # Copy this to `skiff.toml` in your app's repo, then edit.
-# It describes one app for `skiff deploy`.
 
-name   = "myapp"          # app name (used for the subdomain)
-domain = "myapp.you.dev"  # where it's served — HTTPS is automatic
-
-[server]
-host = "root@203.0.113.10"  # the server Skiff deploys to
+name = "myapp"
 
 [build]
 dockerfile = "Dockerfile"  # path to your Dockerfile
 port       = 8080          # the port your app listens on
+
+# Omit [server] to deploy to local Docker.

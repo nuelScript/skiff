@@ -29,6 +29,10 @@ func Field(name, value string) {
 	fmt.Println("  " + label.Render(name) + " " + value)
 }
 
+func Step(msg string) {
+	fmt.Println("  " + muted.Render("→ "+msg))
+}
+
 func Done(msg string) {
 	fmt.Println("  " + green.Render("✓") + " " + msg)
 }

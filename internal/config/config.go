@@ -13,22 +13,21 @@ const DefaultFile = "skiff.toml"
 
 // Config is a parsed skiff.toml.
 type Config struct {
-	Name   string `toml:"name"`   // app name; used for the container + subdomain
-	Domain string `toml:"domain"` // where the app is served (HTTPS is automatic)
+	Name string `toml:"name"`
 
 	Server ServerConfig `toml:"server"`
 	Build  BuildConfig  `toml:"build"`
 }
 
-// ServerConfig describes the machine Skiff deploys to.
+// ServerConfig describes where the app runs. An empty host means local Docker.
 type ServerConfig struct {
-	Host string `toml:"host"` // ssh target, e.g. "root@203.0.113.10"
+	Host string `toml:"host"`
 }
 
 // BuildConfig describes how the app image is built and served.
 type BuildConfig struct {
-	Dockerfile string `toml:"dockerfile"` // path to the Dockerfile (default "Dockerfile")
-	Port       int    `toml:"port"`       // port the app listens on inside the container
+	Dockerfile string `toml:"dockerfile"`
+	Port       int    `toml:"port"`
 }
 
 // Load reads, defaults, and validates a skiff.toml from path.
@@ -60,18 +59,21 @@ func (c *Config) applyDefaults() {
 }
 
 func (c *Config) validate() error {
-	var missing []string
 	if c.Name == "" {
-		missing = append(missing, "name")
-	}
-	if c.Domain == "" {
-		missing = append(missing, "domain")
-	}
-	if c.Server.Host == "" {
-		missing = append(missing, "server.host")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("skiff.toml is missing required field(s): %v", missing)
+		return fmt.Errorf("skiff.toml is missing required field: name")
 	}
 	return nil
+}
+
+// IsLocal reports whether the app deploys to the local Docker engine.
+func (c *Config) IsLocal() bool {
+	return c.Server.Host == "" || c.Server.Host == "local"
+}
+
+// TargetLabel is a short human label for the deploy target.
+func (c *Config) TargetLabel() string {
+	if c.IsLocal() {
+		return "local docker"
+	}
+	return c.Server.Host
 }

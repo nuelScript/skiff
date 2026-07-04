@@ -33,8 +33,8 @@ git clone https://github.com/nuelScript/skiff
 cd skiff
 go run . --help
 
-# try the deploy flow against the sample config
-go run . deploy -c skiff.example.toml
+# build + run the example app locally, then open http://localhost:8080
+go run . deploy -c examples/hello/skiff.toml
 ```
 
 ## Config
