@@ -86,6 +86,21 @@ func Run(s RunSpec) (int, error) {
 	return HostPort(s.Name, s.ContainerPort)
 }
 
+// Containers returns the names of all Skiff-managed containers (running or not).
+func Containers() ([]string, error) {
+	out, err := exec.Command("docker", "ps", "-a", "--filter", "label=skiff=1", "--format", "{{.Names}}").Output()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}
+
 // Stop gracefully stops a container (SIGTERM, then SIGKILL after a grace period).
 func Stop(container string) error {
 	out, err := exec.Command("docker", "stop", container).CombinedOutput()
