@@ -71,7 +71,7 @@ func runDeploy(configPath string, timeout time.Duration) error {
 	start := time.Now()
 	image := fmt.Sprintf("skiff-%s:latest", cfg.Name)
 
-	dockerfile, err := b.Dockerfile()
+	dockerfile, err := b.Dockerfile(cfg.Build.Port)
 	if err != nil {
 		ui.Fail("Couldn't prepare the build")
 		return err

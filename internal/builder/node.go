@@ -1,9 +1,6 @@
 package builder
 
-import (
-	"fmt"
-	"path/filepath"
-)
+import "path/filepath"
 
 // nodeBuilder builds a Node.js app, detected by its package.json.
 type nodeBuilder struct{ dir string }
@@ -14,7 +11,7 @@ func (n *nodeBuilder) detect() bool {
 	return fileExists(filepath.Join(n.dir, "package.json"))
 }
 
-func (n *nodeBuilder) Dockerfile() (string, error) {
+func (n *nodeBuilder) Dockerfile(port int) (string, error) {
 	// Choose the install command from whichever lockfile is present.
 	install := "npm install"
 	switch {
@@ -25,10 +22,10 @@ func (n *nodeBuilder) Dockerfile() (string, error) {
 	case fileExists(filepath.Join(n.dir, "package-lock.json")):
 		install = "npm ci"
 	}
-	return fmt.Sprintf(`FROM node:20-alpine
-WORKDIR /app
-COPY . .
-RUN %s
-CMD ["npm", "start"]
-`, install), nil
+	return render(Plan{
+		Base:    "node:20-alpine",
+		Install: []string{install},
+		Start:   []string{"npm", "start"},
+		Port:    port,
+	})
 }

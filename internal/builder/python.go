@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -22,39 +21,40 @@ func (p *pythonBuilder) detect() bool {
 	return false
 }
 
-func (p *pythonBuilder) Dockerfile() (string, error) {
-	install := ""
+func (p *pythonBuilder) Dockerfile(port int) (string, error) {
+	var install []string
 	switch {
 	case fileExists(filepath.Join(p.dir, "requirements.txt")):
-		install = "RUN pip install --no-cache-dir -r requirements.txt\n"
+		install = []string{"pip install --no-cache-dir -r requirements.txt"}
 	case fileExists(filepath.Join(p.dir, "pyproject.toml")):
-		install = "RUN pip install --no-cache-dir .\n"
+		install = []string{"pip install --no-cache-dir ."}
 	}
 
-	cmd, err := p.cmd()
+	start, err := p.start()
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf(`FROM python:3-alpine
-WORKDIR /app
-COPY . .
-%s%s
-`, install, cmd), nil
+	return render(Plan{
+		Base:    "python:3-alpine",
+		Install: install,
+		Start:   start,
+		Port:    port,
+	})
 }
 
-// cmd returns the Dockerfile CMD in exec (JSON) form so the app gets OS signals
-// directly. A Procfile "web:" line wins; otherwise a conventional entrypoint.
-func (p *pythonBuilder) cmd() (string, error) {
+// start picks the argv to run: a Procfile "web:" line if present, otherwise a
+// conventional entrypoint file.
+func (p *pythonBuilder) start() ([]string, error) {
 	if web := procfileWeb(filepath.Join(p.dir, "Procfile")); web != "" {
-		return `CMD ["sh", "-c", ` + strconv.Quote(web) + `]`, nil
+		return []string{"sh", "-c", web}, nil
 	}
 	for _, f := range []string{"main.py", "app.py", "server.py"} {
 		if fileExists(filepath.Join(p.dir, f)) {
-			return `CMD ["python", ` + strconv.Quote(f) + `]`, nil
+			return []string{"python", f}, nil
 		}
 	}
-	return "", fmt.Errorf("couldn't find a Python entrypoint (main.py/app.py/server.py) or a Procfile web: command")
+	return nil, fmt.Errorf("couldn't find a Python entrypoint (main.py/app.py/server.py) or a Procfile web: command")
 }
 
 func procfileWeb(path string) string {

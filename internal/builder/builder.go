@@ -1,5 +1,6 @@
-// Package builder turns app source into a Dockerfile, choosing a strategy from
-// what's in the app directory: the app's own Dockerfile, or a detected stack.
+// Package builder turns app source into a Dockerfile. It detects the stack and
+// emits a Plan (base image, install, build, how to serve), which render() turns
+// into a Dockerfile. The app's own Dockerfile is the escape hatch.
 package builder
 
 import (
@@ -8,12 +9,10 @@ import (
 	"path/filepath"
 )
 
-// Builder produces a Dockerfile for an app directory.
+// Builder produces a Dockerfile for an app directory, serving on port.
 type Builder interface {
-	// Name is a short label for the strategy, e.g. "Node.js".
 	Name() string
-	// Dockerfile returns the Dockerfile contents to build the app with.
-	Dockerfile() (string, error)
+	Dockerfile(port int) (string, error)
 }
 
 // Select picks a builder for the app in dir: its own Dockerfile if present,
@@ -30,12 +29,13 @@ func Select(dir, dockerfile string) (Builder, error) {
 	return nil, fmt.Errorf("couldn't detect how to build this app — add a Dockerfile")
 }
 
-// stacks lists the stack builders in priority order. Supporting a new
-// language/framework is one more entry here.
+// stacks lists the stack builders in priority order. Static is last so a runtime
+// (which may also ship an index.html) wins over a plain static site.
 func stacks(dir string) []stackBuilder {
 	return []stackBuilder{
 		&nodeBuilder{dir: dir},
 		&pythonBuilder{dir: dir},
+		&staticBuilder{dir: dir},
 	}
 }
 
@@ -49,7 +49,7 @@ type dockerfileBuilder struct{ path string }
 
 func (d *dockerfileBuilder) Name() string { return "Dockerfile" }
 
-func (d *dockerfileBuilder) Dockerfile() (string, error) {
+func (d *dockerfileBuilder) Dockerfile(int) (string, error) {
 	data, err := os.ReadFile(d.path)
 	if err != nil {
 		return "", err
