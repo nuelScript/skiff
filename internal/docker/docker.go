@@ -49,23 +49,50 @@ func ensureDockerignore(dir string) func() {
 	return func() { os.Remove(p) }
 }
 
-// Run replaces any container named name with a fresh one from image, publishing
-// containerPort to a random host port on 127.0.0.1. Returns that host port.
-func Run(name, image string, containerPort int) (int, error) {
-	_ = exec.Command("docker", "rm", "-f", name).Run() // best-effort: drop the old one
+// RunSpec describes how to run an app container.
+type RunSpec struct {
+	Name          string
+	Image         string
+	ContainerPort int
+	Memory        string // optional, e.g. "512m"
+	CPU           string // optional, e.g. "0.5"
+}
 
-	out, err := exec.Command("docker", "run", "-d",
-		"--name", name,
+// Run replaces any container named s.Name with a fresh one from s.Image,
+// publishing the container port to a random host port on 127.0.0.1. Returns
+// that host port.
+func Run(s RunSpec) (int, error) {
+	_ = exec.Command("docker", "rm", "-f", s.Name).Run() // best-effort: drop the old one
+
+	args := []string{"run", "-d",
+		"--name", s.Name,
 		"--restart", "unless-stopped",
 		"--label", "skiff=1",
-		"-e", fmt.Sprintf("PORT=%d", containerPort),
-		"-p", fmt.Sprintf("127.0.0.1::%d", containerPort),
-		image,
-	).CombinedOutput()
+		"-e", fmt.Sprintf("PORT=%d", s.ContainerPort),
+		"-p", fmt.Sprintf("127.0.0.1::%d", s.ContainerPort),
+	}
+	if s.Memory != "" {
+		args = append(args, "--memory", s.Memory)
+	}
+	if s.CPU != "" {
+		args = append(args, "--cpus", s.CPU)
+	}
+	args = append(args, s.Image)
+
+	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("docker run failed: %s", firstLine(out))
 	}
-	return HostPort(name, containerPort)
+	return HostPort(s.Name, s.ContainerPort)
+}
+
+// Stop gracefully stops a container (SIGTERM, then SIGKILL after a grace period).
+func Stop(container string) error {
+	out, err := exec.Command("docker", "stop", container).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", firstLine(out))
+	}
+	return nil
 }
 
 // HostPort returns the host port that containerPort is published on.

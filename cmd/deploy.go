@@ -118,7 +118,13 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	// Start the new version alongside the current one, under its own name.
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	ui.Step("Starting new version")
-	hostPort, err := docker.Run(container, image, cfg.Build.Port)
+	hostPort, err := docker.Run(docker.RunSpec{
+		Name:          container,
+		Image:         image,
+		ContainerPort: cfg.Build.Port,
+		Memory:        cfg.Resources.Memory,
+		CPU:           cfg.Resources.CPU,
+	})
 	if err != nil {
 		ui.Fail("Couldn't start container")
 		return err
@@ -144,6 +150,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	}
 
 	if hadPrevious && previous.Container != "" && previous.Container != container {
+		_ = docker.Stop(previous.Container) // graceful drain (SIGTERM) before removal
 		_ = docker.Remove(previous.Container)
 		ui.Done("Retired the previous version")
 	}

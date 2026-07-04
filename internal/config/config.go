@@ -15,8 +15,15 @@ const DefaultFile = "skiff.toml"
 type Config struct {
 	Name string `toml:"name"`
 
-	Server ServerConfig `toml:"server"`
-	Build  BuildConfig  `toml:"build"`
+	Server    ServerConfig    `toml:"server"`
+	Build     BuildConfig     `toml:"build"`
+	Resources ResourcesConfig `toml:"resources"`
+}
+
+// ResourcesConfig caps what a container may use.
+type ResourcesConfig struct {
+	Memory string `toml:"memory"` // e.g. "512m"
+	CPU    string `toml:"cpu"`    // e.g. "0.5"
 }
 
 // ServerConfig describes where the app runs. An empty host means local Docker.
