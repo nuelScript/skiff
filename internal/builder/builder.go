@@ -35,6 +35,7 @@ func Select(dir, dockerfile string) (Builder, error) {
 func stacks(dir string) []stackBuilder {
 	return []stackBuilder{
 		&nodeBuilder{dir: dir},
+		&pythonBuilder{dir: dir},
 	}
 }
 

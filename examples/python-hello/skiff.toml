@@ -1,0 +1,4 @@
+name = "python-hello"
+
+[build]
+port = 8000
