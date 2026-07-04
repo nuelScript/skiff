@@ -1,0 +1,40 @@
+package cmd
+
+import (
+	"fmt"
+
+	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/registry"
+	"github.com/nuelScript/skiff/internal/ui"
+	"github.com/spf13/cobra"
+)
+
+func newDownCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "down <app>",
+		Short: "Stop and remove a deployed app",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			ui.Banner(version)
+			if err := docker.Remove(name); err != nil {
+				ui.Note("container not removed: " + err.Error())
+			} else {
+				ui.Done("Stopped container " + name)
+			}
+
+			existed, err := registry.Delete(name)
+			if err != nil {
+				return err
+			}
+			if existed {
+				ui.Done("Removed " + name + " from the registry")
+			} else {
+				ui.Note("no app named " + name + " in the registry")
+			}
+			fmt.Println()
+			return nil
+		},
+	}
+}

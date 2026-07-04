@@ -41,6 +41,10 @@ func Fail(msg string) {
 	fmt.Println("  " + red.Render("✗") + " " + msg)
 }
 
+func Note(s string) {
+	fmt.Println("  " + muted.Render(s))
+}
+
 func Live(url string, d time.Duration) {
 	fmt.Println("  " + green.Render("✓ Live at") + " " + link.Render(url) +
 		"  " + muted.Render(fmt.Sprintf("(%.1fs)", d.Seconds())))

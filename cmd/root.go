@@ -16,6 +16,9 @@ build it, run it, and get an HTTPS URL. No cloud bill.`,
 		SilenceErrors: true,
 	}
 	root.AddCommand(newDeployCmd())
+	root.AddCommand(newProxyCmd())
+	root.AddCommand(newLsCmd())
+	root.AddCommand(newDownCmd())
 	root.AddCommand(newVersionCmd())
 	return root
 }

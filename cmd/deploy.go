@@ -8,6 +8,8 @@ import (
 
 	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/proxy"
+	"github.com/nuelScript/skiff/internal/registry"
 	"github.com/nuelScript/skiff/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -44,7 +46,6 @@ func runDeploy(configPath string) error {
 	fmt.Println()
 	ui.Field("target", cfg.TargetLabel())
 	ui.Field("build", cfg.Build.Dockerfile)
-	ui.Field("port", fmt.Sprintf("%d", cfg.Build.Port))
 	fmt.Println()
 
 	if err := docker.Available(); err != nil {
@@ -53,7 +54,6 @@ func runDeploy(configPath string) error {
 	}
 
 	start := time.Now()
-
 	contextDir := filepath.Dir(configPath)
 	dockerfile := filepath.Join(contextDir, cfg.Build.Dockerfile)
 	image := fmt.Sprintf("skiff-%s:latest", cfg.Name)
@@ -66,14 +66,25 @@ func runDeploy(configPath string) error {
 	ui.Done("Built " + image)
 
 	ui.Step("Starting container")
-	if err := docker.Run(cfg.Name, image, cfg.Build.Port, cfg.Build.Port); err != nil {
+	hostPort, err := docker.Run(cfg.Name, image, cfg.Build.Port)
+	if err != nil {
 		ui.Fail("Couldn't start container")
 		return err
 	}
 	ui.Done("Started " + cfg.Name)
 
-	url := fmt.Sprintf("http://localhost:%d", cfg.Build.Port)
+	if err := registry.Put(registry.App{
+		Name:      cfg.Name,
+		Container: cfg.Name,
+		Port:      cfg.Build.Port,
+		HostPort:  hostPort,
+	}); err != nil {
+		ui.Fail("Couldn't record app")
+		return err
+	}
+
 	fmt.Println()
-	ui.Live(url, time.Since(start))
+	ui.Live(proxy.URL(cfg.Name), time.Since(start))
+	ui.Field("direct", fmt.Sprintf("http://localhost:%d", hostPort))
 	return nil
 }
