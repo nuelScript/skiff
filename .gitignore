@@ -1,0 +1,14 @@
+# Compiled binary
+/skiff
+/dist/
+*.exe
+
+# A real app config (the repo ships skiff.example.toml instead)
+/skiff.toml
+
+# Env / secrets
+.env
+*.local
+
+# OS
+.DS_Store

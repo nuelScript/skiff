@@ -1,0 +1,25 @@
+package cmd
+
+import (
+	"github.com/spf13/cobra"
+)
+
+const version = "0.1.0"
+
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "skiff",
+		Short: "Effortless deploys on your own server",
+		Long: `Skiff deploys your apps to your own server with a single command:
+build it, run it, and get an HTTPS URL. No cloud bill.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.AddCommand(newDeployCmd())
+	root.AddCommand(newVersionCmd())
+	return root
+}
+
+func Execute() error {
+	return newRootCmd().Execute()
+}
