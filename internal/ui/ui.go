@@ -13,7 +13,7 @@ var (
 	green = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#16A34A"))
 	red   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#DC2626"))
 	muted = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
-	label = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Width(9)
+	label = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Width(9).Inline(true)
 	link  = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("#7C3AED"))
 )
 
