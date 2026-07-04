@@ -23,11 +23,13 @@ func newDownCmd() *cobra.Command {
 				return err
 			}
 			container := name
+			host := ""
 			if app, ok := apps[name]; ok && app.Container != "" {
 				container = app.Container
+				host = app.Host
 			}
 
-			if err := docker.Remove(container); err != nil {
+			if err := docker.For(host).Remove(container); err != nil {
 				ui.Note("container not removed: " + err.Error())
 			} else {
 				ui.Done("Stopped " + name)

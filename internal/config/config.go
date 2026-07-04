@@ -88,6 +88,14 @@ func (c *Config) TargetLabel() string {
 	return c.Server.Host
 }
 
+// RemoteHost is the deploy target's ssh host, or "" when local.
+func (c *Config) RemoteHost() string {
+	if c.IsLocal() {
+		return ""
+	}
+	return c.Server.Host
+}
+
 // Environment returns the app's env: values from a .env file in dir, overridden
 // by the skiff.toml [env] table.
 func (c *Config) Environment(dir string) map[string]string {

@@ -26,24 +26,25 @@ func newSyncCmd() *cobra.Command {
 				expected[a.Container] = true
 			}
 
-			// 1) Remove Skiff containers the registry doesn't track (orphans).
-			containers, err := docker.Containers()
+			// 1) Remove local Skiff containers the registry doesn't track (orphans).
+			local := docker.Local()
+			containers, err := local.Containers()
 			if err != nil {
 				return err
 			}
 			changed := 0
 			for _, c := range containers {
 				if !expected[c] {
-					if err := docker.Remove(c); err == nil {
+					if err := local.Remove(c); err == nil {
 						ui.Done("Pruned orphan container " + c)
 						changed++
 					}
 				}
 			}
 
-			// 2) Drop registry entries whose container is gone.
+			// 2) Drop registry entries whose container is gone (on its own engine).
 			for _, a := range apps {
-				if docker.State(a.Container) == "missing" {
+				if docker.For(a.Host).State(a.Container) == "missing" {
 					if ok, _ := registry.Delete(a.Name); ok {
 						ui.Done("Dropped dead app " + a.Name)
 						changed++

@@ -28,7 +28,7 @@ func newLogsCmd() *cobra.Command {
 				ui.Fail("No app named " + name + " — run `skiff ls`")
 				return fmt.Errorf("unknown app %q", name)
 			}
-			return docker.Logs(app.Container, follow, tail, os.Stdout)
+			return docker.For(app.Host).Logs(app.Container, follow, tail, os.Stdout)
 		},
 	}
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream new logs as they arrive")

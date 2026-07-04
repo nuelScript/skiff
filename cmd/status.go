@@ -37,16 +37,24 @@ func newStatusCmd() *cobra.Command {
 				}
 				shown++
 
-				state := docker.State(a.Container)
+				state := docker.For(a.Host).State(a.Container)
+
+				probeHost := "127.0.0.1"
+				url := proxy.URL(a.Name)
+				if a.Host != "" {
+					probeHost = docker.SSHHostname(a.Host)
+					url = fmt.Sprintf("http://%s:%d", probeHost, a.HostPort)
+				}
+
 				health := "—"
 				if state == "running" {
-					if probe(a.HostPort) {
+					if probe(probeHost, a.HostPort) {
 						health = "healthy"
 					} else {
 						health = "unreachable"
 					}
 				}
-				ui.Field(a.Name, fmt.Sprintf("%-8s %-12s %s", state, health, proxy.URL(a.Name)))
+				ui.Field(a.Name, fmt.Sprintf("%-8s %-12s %s", state, health, url))
 			}
 
 			if shown == 0 {
@@ -62,10 +70,10 @@ func newStatusCmd() *cobra.Command {
 	}
 }
 
-// probe reports whether the app answers an HTTP request on its host port.
-func probe(hostPort int) bool {
+// probe reports whether the app answers an HTTP request at host:hostPort.
+func probe(host string, hostPort int) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/", hostPort))
+	resp, err := client.Get(fmt.Sprintf("http://%s:%d/", host, hostPort))
 	if err != nil {
 		return false
 	}

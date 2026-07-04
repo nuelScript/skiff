@@ -12,8 +12,9 @@ import (
 type App struct {
 	Name      string `json:"name"`
 	Container string `json:"container"`
-	Port      int    `json:"port"`     // port the app listens on inside the container
-	HostPort  int    `json:"hostPort"` // host port the container is published on
+	Port      int    `json:"port"`           // port the app listens on inside the container
+	HostPort  int    `json:"hostPort"`       // host port the container is published on
+	Host      string `json:"host,omitempty"` // remote ssh target ("" = local docker)
 }
 
 func dir() (string, error) {

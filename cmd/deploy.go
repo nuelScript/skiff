@@ -50,10 +50,9 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 		ui.Fail("Couldn't load config")
 		return err
 	}
-	if !cfg.IsLocal() {
-		ui.Fail("Remote targets aren't wired up yet — omit [server] to use local Docker")
-		return fmt.Errorf("remote target %q not supported yet", cfg.Server.Host)
-	}
+
+	// Local Docker, or a remote engine over SSH when [server] host is set.
+	eng := docker.For(cfg.RemoteHost())
 
 	ui.Banner(version)
 	fmt.Println("  " + ui.Accent("Deploying "+cfg.Name))
@@ -70,7 +69,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	ui.Field("build", b.Name())
 	fmt.Println()
 
-	if err := docker.Available(); err != nil {
+	if err := eng.Available(); err != nil {
 		ui.Fail(err.Error())
 		return err
 	}
@@ -85,8 +84,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 		return err
 	}
 
-	// Cancel the build on Ctrl-C or after buildTimeout, so a hung or runaway
-	// build never stalls forever.
+	// Cancel the build on Ctrl-C or after buildTimeout.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if buildTimeout > 0 {
@@ -96,7 +94,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	}
 
 	ui.Step("Building " + image)
-	if err := docker.BuildFromDockerfile(ctx, image, dockerfile, contextDir, os.Stdout); err != nil {
+	if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, os.Stdout); err != nil {
 		switch ctx.Err() {
 		case context.DeadlineExceeded:
 			ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))
@@ -119,22 +117,27 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	// Start the new version alongside the current one, under its own name.
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	ui.Step("Starting new version")
-	hostPort, err := docker.Run(docker.RunSpec{
+	hostPort, err := eng.Run(docker.RunSpec{
 		Name:          container,
 		Image:         image,
 		ContainerPort: cfg.Build.Port,
 		Memory:        cfg.Resources.Memory,
 		CPU:           cfg.Resources.CPU,
 		Env:           env,
+		Public:        eng.IsRemote(),
 	})
 	if err != nil {
 		ui.Fail("Couldn't start container")
 		return err
 	}
 
+	healthHost := "127.0.0.1"
+	if eng.IsRemote() {
+		healthHost = docker.SSHHostname(cfg.Server.Host)
+	}
 	ui.Step("Waiting for it to be healthy")
-	if err := waitHealthy(hostPort, timeout); err != nil {
-		_ = docker.Remove(container) // roll back; the old version keeps serving
+	if err := waitHealthy(healthHost, hostPort, timeout); err != nil {
+		_ = eng.Remove(container) // roll back; the old version keeps serving
 		ui.Fail("New version never became healthy — rolled back")
 		return err
 	}
@@ -146,20 +149,25 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 		Container: container,
 		Port:      cfg.Build.Port,
 		HostPort:  hostPort,
+		Host:      cfg.RemoteHost(),
 	}); err != nil {
 		ui.Fail("Couldn't update the registry")
 		return err
 	}
 
 	if hadPrevious && previous.Container != "" && previous.Container != container {
-		_ = docker.Stop(previous.Container) // graceful drain (SIGTERM) before removal
-		_ = docker.Remove(previous.Container)
+		_ = eng.Stop(previous.Container) // graceful drain (SIGTERM) before removal
+		_ = eng.Remove(previous.Container)
 		ui.Done("Retired the previous version")
 	}
 
 	fmt.Println()
-	ui.Live(proxy.URL(cfg.Name), time.Since(start))
-	ui.Field("direct", fmt.Sprintf("http://localhost:%d", hostPort))
+	if eng.IsRemote() {
+		ui.Live(fmt.Sprintf("http://%s:%d", healthHost, hostPort), time.Since(start))
+	} else {
+		ui.Live(proxy.URL(cfg.Name), time.Since(start))
+		ui.Field("direct", fmt.Sprintf("http://localhost:%d", hostPort))
+	}
 	return nil
 }
 
@@ -171,8 +179,8 @@ func shortID() string {
 	return hex.EncodeToString(b)
 }
 
-func waitHealthy(hostPort int, timeout time.Duration) error {
-	url := fmt.Sprintf("http://127.0.0.1:%d/", hostPort)
+func waitHealthy(host string, hostPort int, timeout time.Duration) error {
+	url := fmt.Sprintf("http://%s:%d/", host, hostPort)
 	client := &http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(timeout)
 	var lastErr error
