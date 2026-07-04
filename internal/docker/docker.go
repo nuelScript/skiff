@@ -70,6 +70,23 @@ func Remove(name string) error {
 	return nil
 }
 
+// Logs streams a container's logs to out. When follow is true it keeps
+// streaming; tail limits how many recent lines are shown first.
+func Logs(container string, follow bool, tail string, out io.Writer) error {
+	args := []string{"logs"}
+	if follow {
+		args = append(args, "--follow")
+	}
+	if tail != "" {
+		args = append(args, "--tail", tail)
+	}
+	args = append(args, container)
+	cmd := exec.Command("docker", args...)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	return cmd.Run()
+}
+
 func firstLine(b []byte) string {
 	if i := strings.IndexByte(string(b), '\n'); i >= 0 {
 		return string(b[:i])
