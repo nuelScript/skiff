@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/nuelScript/skiff/internal/docker"
@@ -20,6 +22,7 @@ func newDashboardCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/api/apps", handleAppsAPI)
+			mux.HandleFunc("/api/logs", handleLogsStream)
 			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/" {
 					http.NotFound(w, r)
@@ -92,6 +95,43 @@ func handleAppsAPI(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
+// handleLogsStream streams a container's logs to the browser as Server-Sent Events.
+func handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("app")
+	apps, err := registry.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	app, ok := apps[name]
+	if !ok {
+		http.Error(w, "unknown app", http.StatusNotFound)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	pr, pw := io.Pipe()
+	go func() {
+		_ = docker.For(app.Host).StreamLogs(r.Context(), app.Container, pw)
+		pw.Close()
+	}()
+
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		fmt.Fprintf(w, "data: %s\n\n", sc.Text())
+		flusher.Flush()
+	}
+}
+
 const dashboardHTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -105,7 +145,7 @@ const dashboardHTML = `<!doctype html>
   header { display:flex; align-items:baseline; gap:12px; padding:24px 28px; border-bottom:1px solid var(--line); }
   header h1 { margin:0; font-size:18px; color:var(--accent); letter-spacing:.5px; }
   header .count { color:var(--muted); font-size:13px; }
-  main { padding:20px 28px; display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+  main { padding:20px 28px 50vh; display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
   .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
   .name { font-size:15px; font-weight:600; }
@@ -116,12 +156,22 @@ const dashboardHTML = `<!doctype html>
   .row b { color:var(--text); font-weight:500; }
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; }
+  .logs-link { color:var(--muted); }
+  .logs-link:hover { color:var(--accent); }
   .empty { color:var(--muted); padding:48px; text-align:center; grid-column:1/-1; }
+  #panel { position:fixed; left:0; right:0; bottom:0; height:45vh; background:#0d0d13; border-top:1px solid var(--line); display:none; flex-direction:column; }
+  #panel.open { display:flex; }
+  .phead { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); }
+  .ptitle { color:var(--accent); font-size:13px; }
+  .pclose { cursor:pointer; color:var(--muted); background:none; border:none; font:inherit; }
+  .pclose:hover { color:var(--text); }
+  #plog { margin:0; padding:12px 16px; overflow:auto; flex:1; font-size:12px; color:#c9c9d4; white-space:pre-wrap; }
 </style>
 </head>
 <body>
 <header><h1>Skiff</h1><span class="count" id="count"></span></header>
 <main id="apps"></main>
+<div id="panel"><div class="phead"><span class="ptitle" id="ptitle"></span><button class="pclose" onclick="closeLogs()">close</button></div><pre id="plog"></pre></div>
 <script>
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 async function load(){
@@ -137,10 +187,28 @@ async function load(){
         + '<div class="row"><span>health</span><b>'+esc(a.health)+'</b></div>'
         + '<div class="row"><span>target</span><b>'+esc(a.target)+'</b></div>'
         + '<div class="row"><span>url</span><a href="'+esc(a.url)+'" target="_blank">'+host+'</a></div>'
+        + '<div class="row"><span>logs</span><a href="#" class="logs-link" data-app="'+esc(a.name)+'">view</a></div>'
         + '</div>';
     }).join('');
   } catch(e){}
 }
+var es = null;
+function openLogs(name){
+  closeLogs();
+  document.getElementById('ptitle').textContent = name + ' — logs';
+  var log = document.getElementById('plog'); log.textContent = '';
+  document.getElementById('panel').classList.add('open');
+  es = new EventSource('/api/logs?app=' + encodeURIComponent(name));
+  es.onmessage = function(ev){ log.textContent += ev.data + '\n'; log.scrollTop = log.scrollHeight; };
+}
+function closeLogs(){
+  if(es){ es.close(); es = null; }
+  document.getElementById('panel').classList.remove('open');
+}
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t && t.classList && t.classList.contains('logs-link')){ e.preventDefault(); openLogs(t.getAttribute('data-app')); }
+});
 load(); setInterval(load, 3000);
 </script>
 </body>

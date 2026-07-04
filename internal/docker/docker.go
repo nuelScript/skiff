@@ -210,6 +210,14 @@ func (e *Engine) Logs(container string, follow bool, tail string, out io.Writer)
 	return cmd.Run()
 }
 
+// StreamLogs follows a container's recent logs to out until ctx is canceled.
+func (e *Engine) StreamLogs(ctx context.Context, container string, out io.Writer) error {
+	cmd := e.contextCommand(ctx, "logs", "--tail", "100", "--follow", container)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	return cmd.Run()
+}
+
 // ensureDockerignore writes a sensible default .dockerignore when the app has
 // none, so host junk (node_modules, .git) doesn't bloat or corrupt the image.
 // The returned cleanup removes only a file we created.
