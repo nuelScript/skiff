@@ -218,7 +218,7 @@ func ensureDockerignore(dir string) func() {
 	if _, err := os.Stat(p); err == nil {
 		return func() {} // the app ships its own — leave it alone
 	}
-	if err := os.WriteFile(p, []byte("node_modules\n.git\n.skiff\n*.log\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("node_modules\n.git\n.skiff\n.env\n*.log\n"), 0o644); err != nil {
 		return func() {}
 	}
 	return func() { os.Remove(p) }

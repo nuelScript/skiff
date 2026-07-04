@@ -77,8 +77,8 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	start := time.Now()
 	image := fmt.Sprintf("skiff-%s:latest", cfg.Name)
 
-	env := cfg.Environment(contextDir)
-	dockerfile, err := b.Dockerfile(cfg.Build.Port, env)
+	buildEnv := cfg.Environment(contextDir)
+	dockerfile, err := b.Dockerfile(cfg.Build.Port, buildEnv)
 	if err != nil {
 		ui.Fail("Couldn't prepare the build")
 		return err
@@ -115,6 +115,15 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	previous, hadPrevious := apps[cfg.Name]
 
 	// Start the new version alongside the current one, under its own name.
+	// Runtime env = build env + secrets. Secrets never bake into the image.
+	runtimeEnv := make(map[string]string, len(buildEnv)+len(cfg.Secrets))
+	for k, v := range buildEnv {
+		runtimeEnv[k] = v
+	}
+	for k, v := range cfg.Secrets {
+		runtimeEnv[k] = v
+	}
+
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	ui.Step("Starting new version")
 	hostPort, err := eng.Run(docker.RunSpec{
@@ -123,7 +132,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 		ContainerPort: cfg.Build.Port,
 		Memory:        cfg.Resources.Memory,
 		CPU:           cfg.Resources.CPU,
-		Env:           env,
+		Env:           runtimeEnv,
 		Public:        eng.IsRemote(),
 	})
 	if err != nil {

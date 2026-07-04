@@ -20,7 +20,8 @@ type Config struct {
 	Server    ServerConfig      `toml:"server"`
 	Build     BuildConfig       `toml:"build"`
 	Resources ResourcesConfig   `toml:"resources"`
-	Env       map[string]string `toml:"env"`
+	Env       map[string]string `toml:"env"`     // available at build + runtime
+	Secrets   map[string]string `toml:"secrets"` // runtime only (never baked into the image)
 }
 
 // ResourcesConfig caps what a container may use.
