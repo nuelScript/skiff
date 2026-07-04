@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // nodeBuilder builds a Node.js app, detected by its package.json. It reads the
@@ -26,10 +27,17 @@ func (n *nodeBuilder) detect() bool {
 }
 
 func (n *nodeBuilder) Dockerfile(port int) (string, error) {
+	install, lock := n.install()
+	cache := []string{"package.json"}
+	if lock != "" {
+		cache = append(cache, lock)
+	}
+
 	plan := Plan{
-		Base:    "node:20-slim",
-		Install: []string{n.installCmd()},
-		Port:    port,
+		Base:       n.baseImage(),
+		CacheFiles: cache,
+		Install:    []string{install},
+		Port:       port,
 	}
 	switch fw := n.framework(); {
 	case fw == nil:
@@ -44,16 +52,26 @@ func (n *nodeBuilder) Dockerfile(port int) (string, error) {
 	return render(plan)
 }
 
-func (n *nodeBuilder) installCmd() string {
+// install returns the install command and the lockfile it relies on (if any).
+func (n *nodeBuilder) install() (cmd, lockfile string) {
 	switch {
 	case fileExists(filepath.Join(n.dir, "pnpm-lock.yaml")):
-		return "corepack enable && pnpm install --frozen-lockfile"
+		return "corepack enable && pnpm install --frozen-lockfile", "pnpm-lock.yaml"
 	case fileExists(filepath.Join(n.dir, "yarn.lock")):
-		return "yarn install --frozen-lockfile"
+		return "yarn install --frozen-lockfile", "yarn.lock"
 	case fileExists(filepath.Join(n.dir, "package-lock.json")):
-		return "npm ci"
+		return "npm ci", "package-lock.json"
 	}
-	return "npm install"
+	return "npm install", ""
+}
+
+// baseImage picks node:<major>-slim from .nvmrc or engines.node, defaulting to 20.
+func (n *nodeBuilder) baseImage() string {
+	major := nodeMajor(n.dir)
+	if major == "" {
+		major = "20"
+	}
+	return "node:" + major + "-slim"
 }
 
 // framework returns the detected Node framework, or nil for a plain Node app.
@@ -113,4 +131,40 @@ func readDeps(path string) map[string]struct{} {
 		deps[d] = struct{}{}
 	}
 	return deps
+}
+
+// nodeMajor reads the requested Node major version from .nvmrc or engines.node.
+func nodeMajor(dir string) string {
+	if data, err := os.ReadFile(filepath.Join(dir, ".nvmrc")); err == nil {
+		if m := leadingMajor(string(data)); m != "" {
+			return m
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return ""
+	}
+	var pkg struct {
+		Engines struct {
+			Node string `json:"node"`
+		} `json:"engines"`
+	}
+	if json.Unmarshal(data, &pkg) == nil {
+		return leadingMajor(pkg.Engines.Node)
+	}
+	return ""
+}
+
+// leadingMajor pulls the first run of digits, skipping any v / >= / ^ / ~ prefix.
+func leadingMajor(s string) string {
+	s = strings.TrimSpace(s)
+	start := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
+	if start < 0 {
+		return ""
+	}
+	end := start
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	return s[start:end]
 }
