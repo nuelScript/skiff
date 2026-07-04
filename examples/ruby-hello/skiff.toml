@@ -1,0 +1,4 @@
+name = "ruby-hello"
+
+[build]
+port = 8080
