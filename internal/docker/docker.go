@@ -39,6 +39,7 @@ func Run(name, image string, containerPort int) (int, error) {
 		"--name", name,
 		"--restart", "unless-stopped",
 		"--label", "skiff=1",
+		"-e", fmt.Sprintf("PORT=%d", containerPort),
 		"-p", fmt.Sprintf("127.0.0.1::%d", containerPort),
 		image,
 	).CombinedOutput()
