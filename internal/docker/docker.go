@@ -81,6 +81,15 @@ func HostPort(name string, containerPort int) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(line[i+1:]))
 }
 
+// State returns the container's status ("running", "exited", …) or "missing".
+func State(container string) string {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.State.Status}}", container).Output()
+	if err != nil {
+		return "missing"
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // Remove force-removes a container by name.
 func Remove(name string) error {
 	out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput()
