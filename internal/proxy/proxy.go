@@ -51,7 +51,14 @@ func route(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", app.HostPort))
-	httputil.NewSingleHostReverseProxy(target).ServeHTTP(w, r)
+	rp := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.SetXForwarded()       // X-Forwarded-For / -Host / -Proto
+			pr.Out.Host = pr.In.Host // let the app see its real public hostname
+		},
+	}
+	rp.ServeHTTP(w, r)
 }
 
 // appName pulls "hello" out of hosts like "hello.localhost:8080".
