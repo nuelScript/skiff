@@ -1,0 +1,4 @@
+name = "rust-hello"
+
+[build]
+port = 8080

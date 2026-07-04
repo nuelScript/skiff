@@ -31,6 +31,7 @@ func stacks(dir string) []stackBuilder {
 		&nodeBuilder{dir: dir},
 		&pythonBuilder{dir: dir},
 		&goBuilder{dir: dir},
+		&rustBuilder{dir: dir},
 		&phpBuilder{dir: dir},
 		&staticBuilder{dir: dir},
 	}
