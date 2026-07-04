@@ -20,10 +20,11 @@ func Available() error {
 	return nil
 }
 
-// Build builds image tag from dockerfile using contextDir as the build context,
-// streaming build output to out.
-func Build(tag, dockerfile, contextDir string, out io.Writer) error {
-	cmd := exec.Command("docker", "build", "-t", tag, "-f", dockerfile, contextDir)
+// BuildFromDockerfile builds image tag using the given Dockerfile contents,
+// with contextDir as the build context, streaming output to out.
+func BuildFromDockerfile(tag, dockerfile, contextDir string, out io.Writer) error {
+	cmd := exec.Command("docker", "build", "-t", tag, "-f", "-", contextDir)
+	cmd.Stdin = strings.NewReader(dockerfile)
 	cmd.Stdout = out
 	cmd.Stderr = out
 	return cmd.Run()

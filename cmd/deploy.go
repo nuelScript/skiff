@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/builder"
 	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/proxy"
@@ -50,8 +51,16 @@ func runDeploy(configPath string, timeout time.Duration) error {
 	ui.Banner(version)
 	fmt.Println("  " + ui.Accent("Deploying "+cfg.Name))
 	fmt.Println()
+
+	contextDir := filepath.Dir(configPath)
+	b, err := builder.Select(contextDir, cfg.Build.Dockerfile)
+	if err != nil {
+		ui.Fail(err.Error())
+		return err
+	}
+
 	ui.Field("target", cfg.TargetLabel())
-	ui.Field("build", cfg.Build.Dockerfile)
+	ui.Field("build", b.Name())
 	fmt.Println()
 
 	if err := docker.Available(); err != nil {
@@ -60,12 +69,15 @@ func runDeploy(configPath string, timeout time.Duration) error {
 	}
 
 	start := time.Now()
-	contextDir := filepath.Dir(configPath)
-	dockerfile := filepath.Join(contextDir, cfg.Build.Dockerfile)
 	image := fmt.Sprintf("skiff-%s:latest", cfg.Name)
 
+	dockerfile, err := b.Dockerfile()
+	if err != nil {
+		ui.Fail("Couldn't prepare the build")
+		return err
+	}
 	ui.Step("Building " + image)
-	if err := docker.Build(image, dockerfile, contextDir, os.Stdout); err != nil {
+	if err := docker.BuildFromDockerfile(image, dockerfile, contextDir, os.Stdout); err != nil {
 		ui.Fail("Build failed")
 		return err
 	}
