@@ -1,0 +1,4 @@
+name = "java-hello"
+
+[build]
+port = 8080
