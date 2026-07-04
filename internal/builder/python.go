@@ -21,7 +21,7 @@ func (p *pythonBuilder) detect() bool {
 	return false
 }
 
-func (p *pythonBuilder) Dockerfile(port int) (string, error) {
+func (p *pythonBuilder) Dockerfile(port int, env map[string]string) (string, error) {
 	var install []string
 	switch {
 	case fileExists(filepath.Join(p.dir, "requirements.txt")):
@@ -38,6 +38,7 @@ func (p *pythonBuilder) Dockerfile(port int) (string, error) {
 	return render(Plan{
 		Base:    "python:3-alpine",
 		Install: install,
+		Env:     env,
 		Start:   start,
 		Port:    port,
 	})

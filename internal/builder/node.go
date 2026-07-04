@@ -26,7 +26,7 @@ func (n *nodeBuilder) detect() bool {
 	return fileExists(filepath.Join(n.dir, "package.json"))
 }
 
-func (n *nodeBuilder) Dockerfile(port int) (string, error) {
+func (n *nodeBuilder) Dockerfile(port int, env map[string]string) (string, error) {
 	install, lock := n.install()
 	cache := []string{"package.json"}
 	if lock != "" {
@@ -37,6 +37,7 @@ func (n *nodeBuilder) Dockerfile(port int) (string, error) {
 		Base:       n.baseImage(),
 		CacheFiles: cache,
 		Install:    []string{install},
+		Env:        env,
 		Port:       port,
 	}
 	switch fw := n.framework(); {

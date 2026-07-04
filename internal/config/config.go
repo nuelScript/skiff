@@ -4,6 +4,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -15,9 +17,10 @@ const DefaultFile = "skiff.toml"
 type Config struct {
 	Name string `toml:"name"`
 
-	Server    ServerConfig    `toml:"server"`
-	Build     BuildConfig     `toml:"build"`
-	Resources ResourcesConfig `toml:"resources"`
+	Server    ServerConfig      `toml:"server"`
+	Build     BuildConfig       `toml:"build"`
+	Resources ResourcesConfig   `toml:"resources"`
+	Env       map[string]string `toml:"env"`
 }
 
 // ResourcesConfig caps what a container may use.
@@ -83,4 +86,39 @@ func (c *Config) TargetLabel() string {
 		return "local docker"
 	}
 	return c.Server.Host
+}
+
+// Environment returns the app's env: values from a .env file in dir, overridden
+// by the skiff.toml [env] table.
+func (c *Config) Environment(dir string) map[string]string {
+	env := loadDotenv(filepath.Join(dir, ".env"))
+	for k, v := range c.Env {
+		env[k] = v
+	}
+	return env
+}
+
+func loadDotenv(path string) map[string]string {
+	env := map[string]string{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return env
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.Trim(strings.TrimSpace(v), `"'`)
+		if k != "" {
+			env[k] = v
+		}
+	}
+	return env
 }

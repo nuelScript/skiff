@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -10,10 +11,11 @@ import (
 // A stack builder produces one; render turns it into a Dockerfile. This is the
 // seam every language and framework flows through.
 type Plan struct {
-	Base       string   // build/runtime base image
-	CacheFiles []string // manifest files to copy before Install (layer caching)
-	Install    []string // install commands
-	Build      []string // build commands (empty if none)
+	Base       string            // build/runtime base image
+	CacheFiles []string          // manifest files to copy before Install (layer caching)
+	Install    []string          // install commands
+	Build      []string          // build commands (empty if none)
+	Env        map[string]string // env available at build time (ENV in the build stage)
 
 	// Multi-stage server: when RuntimeBase is set, the final image is RuntimeBase
 	// with artifacts copied from the build stage (e.g. a compiled Go binary).
@@ -72,12 +74,13 @@ func needsBuildStage(p Plan) bool {
 	return len(p.Install) > 0 || len(p.Build) > 0
 }
 
-// writeAppBuild writes the WORKDIR/COPY/install/build lines shared by the server
-// stage and the static build stage. When CacheFiles are given, manifests are
-// copied and installed before the source so the install layer caches across
+// writeAppBuild writes the WORKDIR/ENV/COPY/install/build lines shared by the
+// server stage and the static build stage. When CacheFiles are given, manifests
+// are copied and installed before the source so the install layer caches across
 // source-only changes.
 func writeAppBuild(b *strings.Builder, p Plan) {
 	b.WriteString("WORKDIR /app\n")
+	writeEnv(b, p.Env)
 	if len(p.CacheFiles) > 0 && len(p.Install) > 0 {
 		fmt.Fprintf(b, "COPY %s ./\n", strings.Join(p.CacheFiles, " "))
 		for _, c := range p.Install {
@@ -92,6 +95,18 @@ func writeAppBuild(b *strings.Builder, p Plan) {
 	}
 	for _, c := range p.Build {
 		fmt.Fprintf(b, "RUN %s\n", c)
+	}
+}
+
+// writeEnv emits sorted ENV lines so the Dockerfile is deterministic (stable cache).
+func writeEnv(b *strings.Builder, env map[string]string) {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(b, "ENV %s=%s\n", k, strconv.Quote(env[k]))
 	}
 }
 

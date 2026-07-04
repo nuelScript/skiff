@@ -11,6 +11,6 @@ func (s *staticBuilder) detect() bool {
 	return fileExists(filepath.Join(s.dir, "index.html"))
 }
 
-func (s *staticBuilder) Dockerfile(port int) (string, error) {
+func (s *staticBuilder) Dockerfile(port int, _ map[string]string) (string, error) {
 	return render(Plan{StaticDir: ".", Port: port})
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -56,6 +57,7 @@ type RunSpec struct {
 	ContainerPort int
 	Memory        string // optional, e.g. "512m"
 	CPU           string // optional, e.g. "0.5"
+	Env           map[string]string
 }
 
 // Run replaces any container named s.Name with a fresh one from s.Image,
@@ -76,6 +78,9 @@ func Run(s RunSpec) (int, error) {
 	}
 	if s.CPU != "" {
 		args = append(args, "--cpus", s.CPU)
+	}
+	for _, k := range sortedKeys(s.Env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
 	}
 	args = append(args, s.Image)
 
@@ -157,6 +162,15 @@ func Logs(container string, follow bool, tail string, out io.Writer) error {
 	cmd.Stdout = out
 	cmd.Stderr = out
 	return cmd.Run()
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func firstLine(b []byte) string {

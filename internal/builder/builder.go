@@ -12,7 +12,7 @@ import (
 // Builder produces a Dockerfile for an app directory, serving on port.
 type Builder interface {
 	Name() string
-	Dockerfile(port int) (string, error)
+	Dockerfile(port int, env map[string]string) (string, error)
 }
 
 // Select picks a builder for the app in dir: its own Dockerfile if present,
@@ -50,7 +50,7 @@ type dockerfileBuilder struct{ path string }
 
 func (d *dockerfileBuilder) Name() string { return "Dockerfile" }
 
-func (d *dockerfileBuilder) Dockerfile(int) (string, error) {
+func (d *dockerfileBuilder) Dockerfile(int, map[string]string) (string, error) {
 	data, err := os.ReadFile(d.path)
 	if err != nil {
 		return "", err

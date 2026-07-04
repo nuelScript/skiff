@@ -16,7 +16,7 @@ func (g *goBuilder) detect() bool {
 	return fileExists(filepath.Join(g.dir, "go.mod"))
 }
 
-func (g *goBuilder) Dockerfile(port int) (string, error) {
+func (g *goBuilder) Dockerfile(port int, env map[string]string) (string, error) {
 	cache := []string{"go.mod"}
 	if fileExists(filepath.Join(g.dir, "go.sum")) {
 		cache = append(cache, "go.sum")
@@ -26,6 +26,7 @@ func (g *goBuilder) Dockerfile(port int) (string, error) {
 		CacheFiles:  cache,
 		Install:     []string{"go mod download"},
 		Build:       []string{"CGO_ENABLED=0 go build -o /server ."},
+		Env:         env,
 		RuntimeBase: "alpine:3.20",
 		Copy:        []Artifact{{From: "/server", To: "/server"}},
 		Start:       []string{"/server"},
