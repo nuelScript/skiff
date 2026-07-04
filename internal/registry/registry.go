@@ -67,7 +67,12 @@ func save(apps map[string]App) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(f, data, 0o644)
+	// Write atomically so a concurrent reader never sees a half-written file.
+	tmp := f + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, f)
 }
 
 // Put inserts or updates an app.

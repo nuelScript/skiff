@@ -16,12 +16,21 @@ func newDownCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-
 			ui.Banner(version)
-			if err := docker.Remove(name); err != nil {
+
+			apps, err := registry.Load()
+			if err != nil {
+				return err
+			}
+			container := name
+			if app, ok := apps[name]; ok && app.Container != "" {
+				container = app.Container
+			}
+
+			if err := docker.Remove(container); err != nil {
 				ui.Note("container not removed: " + err.Error())
 			} else {
-				ui.Done("Stopped container " + name)
+				ui.Done("Stopped " + name)
 			}
 
 			existed, err := registry.Delete(name)
