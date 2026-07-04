@@ -1,6 +1,6 @@
 # Skiff
 
-**Effortless deploys on your own server.** One command, one small Go binary — build your app, run it, and get a live HTTPS URL. No cloud bill.
+**Effortless deploys on your own server.** One small Go binary: point it at an app, it detects the stack, builds it, and runs it — on local Docker or a remote box over SSH. No cloud bill.
 
 ```
 $ skiff deploy
@@ -8,54 +8,84 @@ $ skiff deploy
   Skiff v0.1.0
 
   Deploying myapp
-  target   root@203.0.113.10
-  domain   myapp.you.dev
-  build    Dockerfile
+  target   local docker
+  build    Node.js
 
-  ✓ Connected to root@203.0.113.10
-  ✓ Built image from Dockerfile
-  ✓ Started container
-  ✓ Configured routes + TLS
-
-  ✓ Live at https://myapp.you.dev  (2.4s)
+  ✓ Built skiff-myapp:latest
+  ✓ Healthy
+  ✓ Live at http://myapp.localhost:8080  (2.4s)
 ```
 
-## Why
+## Quickstart
 
-Running your own apps shouldn't mean wrestling with servers. Skiff's bet is **developer experience**: deploys that feel effortless — one command, streaming logs, zero config — on a small box you own for a few dollars a month.
-
-Built **in public**.
-
-## Quickstart (dev)
+You need Docker running.
 
 ```bash
 git clone https://github.com/nuelScript/skiff
 cd skiff
-go run . --help
+go build -o skiff .
 
-# build + run the example app locally, then open http://localhost:8080
-go run . deploy -c examples/hello/skiff.toml
+# one terminal — the local router for *.localhost
+./skiff proxy
+
+# another — deploy the example, then open http://node-hello.localhost:8080
+./skiff deploy -c examples/node-hello/skiff.toml
 ```
 
-## Config
+To deploy your own app: `cd` into it, run `skiff init`, then `skiff deploy`.
 
-Drop a `skiff.toml` in your app's repo (see [`skiff.example.toml`](skiff.example.toml)):
+## What it builds
+
+No Dockerfile required — Skiff detects the stack:
+
+| Stack | Detected by | Served |
+|---|---|---|
+| **Node.js** | `package.json` | `npm start`; framework-aware (Next, Vite, Astro, SvelteKit, Remix, Nuxt, …) → build + run |
+| **Python** | `requirements.txt` / `*.py` | entrypoint or a `Procfile` |
+| **Go** | `go.mod` | multi-stage → tiny image |
+| **PHP** | `index.php` | built-in server |
+| **Static** | `index.html` | tiny static server |
+
+Have a `Dockerfile`? Skiff uses it instead — the escape hatch.
+
+## Commands
+
+| | |
+|---|---|
+| `skiff init` | scaffold a `skiff.toml` |
+| `skiff deploy` | build + zero-downtime deploy |
+| `skiff proxy` | local `*.localhost` router |
+| `skiff status` | container state + health |
+| `skiff ls` | list apps |
+| `skiff logs [-f]` | app logs |
+| `skiff down <app>` | stop + remove |
+| `skiff sync` | prune orphans / dead entries |
+
+## skiff.toml
 
 ```toml
-name   = "myapp"
-domain = "myapp.you.dev"
-
-[server]
-host = "root@203.0.113.10"
+name = "myapp"
 
 [build]
-dockerfile = "Dockerfile"
-port       = 8080
+port = 3000              # the port your app listens on
+# dockerfile = "Dockerfile"
+
+[env]                    # available at build + runtime
+API_URL = "https://api.example.com"
+
+[secrets]                # runtime only — never baked into the image
+API_KEY = "..."
+
+[resources]
+memory = "512m"
+cpu    = "0.5"
+
+# [server]               # omit for local Docker
+# host = "root@1.2.3.4"  # deploy to a remote box over SSH
 ```
 
-## Roadmap
+A `.env` file next to `skiff.toml` is loaded too.
 
-- One-command deploys to your own server
-- Push-to-deploy
-- Live logs
-- Metrics + a dashboard
+## Zero-downtime
+
+Every deploy builds the new version, health-checks it, atomically cuts traffic over, then drains and retires the old one. If the new version never becomes healthy, it rolls back and the old one keeps serving.
