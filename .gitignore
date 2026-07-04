@@ -6,6 +6,10 @@
 # A real app config (the repo ships skiff.example.toml instead)
 /skiff.toml
 
+# Real deploy configs with server addresses — never commit
+skiff-*.toml
+*.private.toml
+
 # Env / secrets
 .env
 *.local
