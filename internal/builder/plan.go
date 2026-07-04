@@ -15,12 +15,20 @@ type Plan struct {
 	Install    []string // install commands
 	Build      []string // build commands (empty if none)
 
+	// Multi-stage server: when RuntimeBase is set, the final image is RuntimeBase
+	// with artifacts copied from the build stage (e.g. a compiled Go binary).
+	RuntimeBase string
+	Copy        []Artifact
+
 	// Exactly one of these says how to serve:
 	StaticDir string   // serve this directory of static files, or
 	Start     []string // run this command (rendered as an exec-form CMD)
 
 	Port int
 }
+
+// Artifact is a file copied from the build stage into the runtime image.
+type Artifact struct{ From, To string }
 
 func render(p Plan) (string, error) {
 	var b strings.Builder
@@ -39,8 +47,19 @@ func render(p Plan) (string, error) {
 		fmt.Fprintf(&b, "EXPOSE %d\n", p.Port)
 		fmt.Fprintf(&b, "CMD [\"httpd\", \"-f\", \"-p\", \"%d\", \"-h\", \"/site\"]\n", p.Port)
 	case len(p.Start) > 0:
-		fmt.Fprintf(&b, "FROM %s\n", p.Base)
-		writeAppBuild(&b, p)
+		if p.RuntimeBase != "" {
+			// Multi-stage server: compile in Base, run from a small RuntimeBase.
+			fmt.Fprintf(&b, "FROM %s AS build\n", p.Base)
+			writeAppBuild(&b, p)
+			fmt.Fprintf(&b, "FROM %s\n", p.RuntimeBase)
+			b.WriteString("WORKDIR /app\n")
+			for _, a := range p.Copy {
+				fmt.Fprintf(&b, "COPY --from=build %s %s\n", a.From, a.To)
+			}
+		} else {
+			fmt.Fprintf(&b, "FROM %s\n", p.Base)
+			writeAppBuild(&b, p)
+		}
 		fmt.Fprintf(&b, "EXPOSE %d\n", p.Port)
 		fmt.Fprintf(&b, "CMD %s\n", execForm(p.Start))
 	default:

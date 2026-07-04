@@ -1,0 +1,4 @@
+name = "go-hello"
+
+[build]
+port = 8080
