@@ -35,6 +35,14 @@ type ServerConfig struct {
 type BuildConfig struct {
 	Dockerfile string `toml:"dockerfile"`
 	Port       int    `toml:"port"`
+
+	// Optional recipe overrides — set start or static to skip auto-detection
+	// and build from these instead of a Dockerfile.
+	Base    string `toml:"base"`
+	Install string `toml:"install"`
+	Build   string `toml:"build"`
+	Start   string `toml:"start"`
+	Static  string `toml:"static"`
 }
 
 func Load(path string) (*Config, error) {

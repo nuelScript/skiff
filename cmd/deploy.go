@@ -59,10 +59,15 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	fmt.Println()
 
 	contextDir := filepath.Dir(configPath)
-	b, err := builder.Select(contextDir, cfg.Build.Dockerfile)
-	if err != nil {
-		ui.Fail(err.Error())
-		return err
+	var b builder.Builder
+	if bc := cfg.Build; bc.Start != "" || bc.Static != "" {
+		b = builder.Custom(bc.Base, bc.Install, bc.Build, bc.Start, bc.Static)
+	} else {
+		b, err = builder.Select(contextDir, cfg.Build.Dockerfile)
+		if err != nil {
+			ui.Fail(err.Error())
+			return err
+		}
 	}
 
 	ui.Field("target", cfg.TargetLabel())
