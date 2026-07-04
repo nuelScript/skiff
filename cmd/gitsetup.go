@@ -46,17 +46,26 @@ func newGitSetupCmd() *cobra.Command {
 			}
 
 			// post-receive: check the pushed branch out to a work dir and deploy it.
+			// The default branch deploys the app; other branches get a
+			// <branch>-<app> preview environment.
 			hook := "#!/bin/sh\nset -e\n" +
 				"WORK=\"" + work + "\"\n" +
 				"SKIFF=\"" + skiffPath + "\"\n" +
+				"APP=\"" + cfg.Name + "\"\n" +
 				"while read oldrev newrev ref; do\n" +
 				"  branch=${ref#refs/heads/}\n" +
+				"  slug=$(printf '%s' \"$branch\" | tr '/' '-')\n" +
 				"  rm -rf \"$WORK\"\n" +
 				"  mkdir -p \"$WORK\"\n" +
 				"  git --work-tree=\"$WORK\" checkout -f \"$branch\"\n" +
 				"  cd \"$WORK\"\n" +
-				"  echo \"--- skiff: deploying $branch ---\"\n" +
-				"  \"$SKIFF\" deploy\n" +
+				"  if [ \"$branch\" = main ] || [ \"$branch\" = master ]; then\n" +
+				"    echo \"--- skiff: deploying $APP ($branch) ---\"\n" +
+				"    \"$SKIFF\" deploy\n" +
+				"  else\n" +
+				"    echo \"--- skiff: preview $slug-$APP ($branch) ---\"\n" +
+				"    \"$SKIFF\" deploy --name \"$slug-$APP\"\n" +
+				"  fi\n" +
 				"done\n"
 			if err := os.WriteFile(filepath.Join(repo, "hooks", "post-receive"), []byte(hook), 0o755); err != nil {
 				return err

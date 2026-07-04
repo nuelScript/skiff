@@ -29,26 +29,31 @@ func newDeployCmd() *cobra.Command {
 	var configPath string
 	var timeout time.Duration
 	var buildTimeout time.Duration
+	var name string
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Build and deploy the current app to your server",
 		Long: `Deploy builds your app, runs it, and serves it at a URL.
 Reads config from skiff.toml.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDeploy(configPath, timeout, buildTimeout)
+			return runDeploy(configPath, timeout, buildTimeout, name)
 		},
 	}
 	cmd.Flags().StringVarP(&configPath, "config", "c", config.DefaultFile, "path to skiff.toml")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultHealthTimeout, "how long to wait for the new version to become healthy")
 	cmd.Flags().DurationVar(&buildTimeout, "build-timeout", defaultBuildTimeout, "cancel the build if it runs longer than this")
+	cmd.Flags().StringVar(&name, "name", "", "override the app name (e.g. for preview environments)")
 	return cmd
 }
 
-func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
+func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverride string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		ui.Fail("Couldn't load config")
 		return err
+	}
+	if nameOverride != "" {
+		cfg.Name = nameOverride
 	}
 
 	// Local Docker, or a remote engine over SSH when [server] host is set.
