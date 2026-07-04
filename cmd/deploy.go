@@ -148,6 +148,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration) error {
 	if err := waitHealthy(healthHost, hostPort, timeout); err != nil {
 		_ = eng.Remove(container) // roll back; the old version keeps serving
 		ui.Fail("New version never became healthy — rolled back")
+		ui.Note(fmt.Sprintf("the app must listen on 0.0.0.0:%d (the `port` in skiff.toml) and answer HTTP", cfg.Build.Port))
 		return err
 	}
 	ui.Done("Healthy")
