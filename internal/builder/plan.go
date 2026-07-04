@@ -10,7 +10,7 @@ import (
 // A stack builder produces one; render turns it into a Dockerfile. This is the
 // seam every language and framework flows through.
 type Plan struct {
-	Base    string   // build/runtime base image (server apps)
+	Base    string   // build/runtime base image
 	Install []string // install commands
 	Build   []string // build commands (empty if none)
 
@@ -25,16 +25,27 @@ func render(p Plan) (string, error) {
 	var b strings.Builder
 	switch {
 	case p.StaticDir != "":
-		// Serve pre-built static files from a tiny image.
-		b.WriteString("FROM busybox\n")
-		b.WriteString("WORKDIR /site\n")
-		fmt.Fprintf(&b, "COPY %s ./\n", cleanDir(p.StaticDir))
+		if len(p.Install) > 0 || len(p.Build) > 0 {
+			// Build in the runtime image, then serve the output from a tiny image.
+			fmt.Fprintf(&b, "FROM %s AS build\n", p.Base)
+			b.WriteString("WORKDIR /app\nCOPY . .\n")
+			for _, c := range p.Install {
+				fmt.Fprintf(&b, "RUN %s\n", c)
+			}
+			for _, c := range p.Build {
+				fmt.Fprintf(&b, "RUN %s\n", c)
+			}
+			b.WriteString("FROM busybox\nWORKDIR /site\n")
+			fmt.Fprintf(&b, "COPY --from=build /app/%s/ ./\n", staticSrc(p.StaticDir))
+		} else {
+			b.WriteString("FROM busybox\nWORKDIR /site\n")
+			fmt.Fprintf(&b, "COPY %s ./\n", cleanDir(p.StaticDir))
+		}
 		fmt.Fprintf(&b, "EXPOSE %d\n", p.Port)
 		fmt.Fprintf(&b, "CMD [\"httpd\", \"-f\", \"-p\", \"%d\", \"-h\", \"/site\"]\n", p.Port)
 	case len(p.Start) > 0:
 		fmt.Fprintf(&b, "FROM %s\n", p.Base)
-		b.WriteString("WORKDIR /app\n")
-		b.WriteString("COPY . .\n")
+		b.WriteString("WORKDIR /app\nCOPY . .\n")
 		for _, c := range p.Install {
 			fmt.Fprintf(&b, "RUN %s\n", c)
 		}
@@ -62,6 +73,15 @@ func execForm(argv []string) string {
 func cleanDir(d string) string {
 	d = strings.TrimSuffix(d, "/")
 	if d == "" || d == "." {
+		return "."
+	}
+	return d
+}
+
+func staticSrc(d string) string {
+	d = strings.TrimPrefix(d, "./")
+	d = strings.TrimSuffix(d, "/")
+	if d == "" {
 		return "."
 	}
 	return d

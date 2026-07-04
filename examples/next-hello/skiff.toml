@@ -1,0 +1,4 @@
+name = "next-hello"
+
+[build]
+port = 3000
