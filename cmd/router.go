@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/router"
@@ -18,10 +19,10 @@ func newRouterCmd() *cobra.Command {
 			if domain == "" {
 				return fmt.Errorf("--domain is required (e.g. --domain useskiff.xyz)")
 			}
-			rt := &router.Router{Domain: domain, Engine: docker.Local()}
+			rt := &router.Router{Domains: strings.Split(domain, ","), Engine: docker.Local()}
 
 			ui.Banner(version)
-			ui.Field("router", "*."+domain)
+			ui.Field("router", domain)
 			if httpAddr != "" {
 				ui.Note("http-only test mode on " + httpAddr)
 				fmt.Println()

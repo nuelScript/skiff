@@ -17,8 +17,8 @@ import (
 )
 
 type Router struct {
-	Domain string
-	Engine *docker.Engine
+	Domains []string
+	Engine  *docker.Engine
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -58,8 +58,10 @@ func (rt *Router) appFor(host string) string {
 	if i := strings.IndexByte(host, ':'); i >= 0 {
 		host = host[:i]
 	}
-	if s := "." + rt.Domain; strings.HasSuffix(host, s) {
-		return strings.TrimSuffix(host, s)
+	for _, d := range rt.Domains {
+		if s := "." + d; strings.HasSuffix(host, s) {
+			return strings.TrimSuffix(host, s)
+		}
 	}
 	return ""
 }
@@ -76,8 +78,10 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 		Prompt: autocert.AcceptTOS,
 		Cache:  autocert.DirCache(cacheDir),
 		HostPolicy: func(_ context.Context, host string) error {
-			if host == rt.Domain || strings.HasSuffix(host, "."+rt.Domain) {
-				return nil
+			for _, d := range rt.Domains {
+				if host == d || strings.HasSuffix(host, "."+d) {
+					return nil
+				}
 			}
 			return fmt.Errorf("host not allowed: %s", host)
 		},
