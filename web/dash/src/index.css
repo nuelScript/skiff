@@ -127,6 +127,14 @@
   html {
     @apply font-sans;
     }
+  /* Tailwind v4 drops the default button cursor — put it back everywhere. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem'],
+  [role='option'],
+  summary {
+    cursor: pointer;
+    }
 }
 
 /* ── Skiff atmosphere + motion ─────────────────────────────────────────────

@@ -1,6 +1,21 @@
-import { GitBranch, ExternalLink, ScrollText, History, KeyRound, Square } from 'lucide-react'
+import {
+  GitBranch,
+  ExternalLink,
+  ScrollText,
+  History,
+  KeyRound,
+  Square,
+  MoreHorizontal,
+} from 'lucide-react'
 import type { App } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type StatusStyle = { dot: string; pill: string; edge: string; pulse: boolean }
 
@@ -59,7 +74,7 @@ export default function AppCard({
   return (
     <article
       style={{ animationDelay: `${Math.min(index, 10) * 45}ms` }}
-      className="animate-rise group relative flex flex-col gap-3.5 overflow-hidden rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_10px_40px_-15px_rgba(0,0,0,0.9)]"
+      className="animate-rise group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_10px_40px_-15px_rgba(0,0,0,0.9)]"
     >
       <span className={'absolute top-0 left-0 h-full w-[2px] ' + s.edge} />
 
@@ -101,7 +116,7 @@ export default function AppCard({
         <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100" />
       </a>
 
-      <div className="mt-auto flex items-center gap-0.5 pt-1">
+      <div className="mt-auto flex items-center gap-1 pt-1">
         <Button size="sm" variant="ghost" onClick={() => onLogs(app.name)}>
           <ScrollText />
           Logs
@@ -110,20 +125,34 @@ export default function AppCard({
           <History />
           History
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onEnv(app.name)}>
-          <KeyRound />
-          Env
-        </Button>
         <div className="flex-1" />
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title={'Stop ' + app.name}
-          onClick={() => onStop(app.name)}
-          className="text-muted-foreground hover:bg-rose-400/10 hover:text-rose-400"
-        >
-          <Square />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-sm" variant="ghost" className="text-muted-foreground" title="More">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => onEnv(app.name)} className="gap-2">
+              <KeyRound className="h-3.5 w-3.5" />
+              Environment
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="gap-2">
+              <a href={app.url} target="_blank" rel="noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Visit site
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onStop(app.name)}
+              className="gap-2 text-rose-400 focus:text-rose-400"
+            >
+              <Square className="h-3.5 w-3.5" />
+              Stop
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </article>
   )

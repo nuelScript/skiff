@@ -1,6 +1,26 @@
-import { useState } from 'react'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, Users } from 'lucide-react'
 import type { Me } from '@/services/api.service'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+
+function TeamAvatar({ name, className }: { name: string; className?: string }) {
+  return (
+    <span
+      className={
+        'text-foreground flex shrink-0 items-center justify-center rounded-md bg-linear-to-br from-white/25 to-white/5 font-semibold ' +
+        (className ?? '')
+      }
+    >
+      {(name || '?').charAt(0).toUpperCase()}
+    </span>
+  )
+}
 
 export default function TeamSwitcher({
   me,
@@ -13,60 +33,49 @@ export default function TeamSwitcher({
   onMembers: () => void
   onCreate: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const current = me.teams?.find((t) => t.id === me.team)
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="hover:bg-accent flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
-      >
-        <span className="max-w-[160px] truncate">{current?.name ?? 'Team'}</span>
-        <ChevronsUpDown className="text-muted-foreground h-3.5 w-3.5" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="border-border bg-popover absolute left-0 z-50 mt-1 w-60 rounded-md border p-1 shadow-lg">
-            <p className="text-muted-foreground px-2 py-1.5 font-mono text-[10px] tracking-wide uppercase">
-              Teams
-            </p>
-            {me.teams?.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  setOpen(false)
-                  if (t.id !== me.team) void switchTeam(t.id)
-                }}
-                className="hover:bg-accent flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm"
-              >
-                <span className="truncate">{t.name}</span>
-                {t.id === me.team && <Check className="h-3.5 w-3.5 shrink-0" />}
-              </button>
-            ))}
-            <div className="bg-border my-1 h-px" />
-            <button
-              onClick={() => {
-                setOpen(false)
-                onMembers()
-              }}
-              className="hover:bg-accent w-full rounded px-2 py-1.5 text-left text-sm"
-            >
-              Members
-            </button>
-            <button
-              onClick={() => {
-                setOpen(false)
-                onCreate()
-              }}
-              className="hover:bg-accent text-muted-foreground w-full rounded px-2 py-1.5 text-left text-sm"
-            >
-              Create team…
-            </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger className="hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent flex w-full items-center gap-2.5 rounded-lg border border-white/8 px-2 py-2 text-left transition-colors outline-none">
+        <TeamAvatar name={current?.name ?? 'Team'} className="h-7 w-7 text-[11px]" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm leading-tight font-medium">
+            {current?.name ?? 'Team'}
           </div>
-        </>
-      )}
-    </div>
+          <div className="text-muted-foreground truncate text-[11px] leading-tight">
+            Self-hosted
+          </div>
+        </div>
+        <ChevronsUpDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-60">
+        <DropdownMenuLabel className="text-muted-foreground font-mono text-[10px] tracking-wider uppercase">
+          Teams
+        </DropdownMenuLabel>
+        {me.teams?.map((t) => (
+          <DropdownMenuItem
+            key={t.id}
+            onClick={() => {
+              if (t.id !== me.team) void switchTeam(t.id)
+            }}
+            className="gap-2"
+          >
+            <TeamAvatar name={t.name} className="h-5 w-5 text-[9px]" />
+            <span className="flex-1 truncate">{t.name}</span>
+            {t.id === me.team && <Check className="h-3.5 w-3.5 shrink-0" />}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onMembers} className="gap-2">
+          <Users className="h-3.5 w-3.5" />
+          Members
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onCreate} className="text-muted-foreground gap-2">
+          <Plus className="h-3.5 w-3.5" />
+          Create team…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
