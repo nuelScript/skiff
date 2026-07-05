@@ -1,12 +1,142 @@
-import { Server } from 'lucide-react'
-import PagePlaceholder from '@/components/page-placeholder'
+import { useServer } from '@/hooks/use-server'
+
+function fmtBytes(b: number): string {
+  if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + ' GB'
+  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(0) + ' MB'
+  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + ' KB'
+  return b + ' B'
+}
+
+function fmtUptime(sec: number): string {
+  if (!sec) return '—'
+  const d = Math.floor(sec / 86400)
+  const h = Math.floor((sec % 86400) / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  if (d) return `${d}d ${h}h`
+  if (h) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+const barColor = (pct: number): string =>
+  pct >= 90 ? 'bg-rose-400' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-400'
+
+function Meter({
+  label,
+  big,
+  pct,
+  sub,
+}: {
+  label: string
+  big: string
+  pct: number
+  sub: string
+}) {
+  return (
+    <section className="rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-5">
+      <h2 className="text-muted-foreground font-mono text-[11px] tracking-wider uppercase">
+        {label}
+      </h2>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">{big}</span>
+        <span className="text-muted-foreground font-mono text-xs">{Math.round(pct)}%</span>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/8">
+        <div
+          className={'h-full rounded-full transition-all duration-500 ' + barColor(pct)}
+          style={{ width: Math.min(100, Math.max(2, pct)) + '%' }}
+        />
+      </div>
+      <p className="text-muted-foreground mt-2 text-xs">{sub}</p>
+    </section>
+  )
+}
+
+const Dot = () => <span className="text-white/20">·</span>
 
 export default function ServerPage() {
+  const { data: s } = useServer()
+
+  if (!s) {
+    return (
+      <div className="text-muted-foreground px-8 py-8 text-sm">Reading server metrics…</div>
+    )
+  }
+
+  const memPct = s.mem.total ? (s.mem.used / s.mem.total) * 100 : 0
+  const diskPct = s.disk.total ? (s.disk.used / s.disk.total) * 100 : 0
+  const load = s.load ?? []
+  const containers = s.containers ?? []
+
   return (
-    <PagePlaceholder
-      icon={Server}
-      title="Server"
-      note="Your box, laid bare — CPU, memory, disk, uptime, and every running container. The thing a hosted platform hides from you."
-    />
+    <div className="px-8 py-8">
+      <header className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight">Server</h1>
+        <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+          <span className="text-foreground/70">{s.hostname}</span>
+          <Dot />
+          <span>{s.os}</span>
+          {s.docker && (
+            <>
+              <Dot />
+              <span>docker {s.docker}</span>
+            </>
+          )}
+          <Dot />
+          <span>up {fmtUptime(s.uptime)}</span>
+        </p>
+      </header>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Meter
+          label="CPU"
+          big={Math.round(s.cpuPct) + '%'}
+          pct={s.cpuPct}
+          sub={`${s.cpuCount} cores${load.length ? ' · load ' + load.map((l) => l.toFixed(2)).join(' ') : ''}`}
+        />
+        <Meter
+          label="Memory"
+          big={`${fmtBytes(s.mem.used)} / ${fmtBytes(s.mem.total)}`}
+          pct={memPct}
+          sub={s.mem.total ? `${fmtBytes(s.mem.total - s.mem.used)} free` : 'unavailable'}
+        />
+        <Meter
+          label="Disk"
+          big={`${fmtBytes(s.disk.used)} / ${fmtBytes(s.disk.total)}`}
+          pct={diskPct}
+          sub={s.disk.total ? `${fmtBytes(s.disk.total - s.disk.used)} free` : 'unavailable'}
+        />
+      </div>
+
+      <section className="mt-6">
+        <h2 className="text-muted-foreground mb-3 font-mono text-[11px] tracking-wider uppercase">
+          Containers · {containers.length}
+        </h2>
+        <div className="overflow-hidden rounded-xl border border-white/8">
+          <div className="text-muted-foreground grid grid-cols-[1.5fr_2fr_0.8fr_1.2fr] gap-3 border-b border-white/8 px-4 py-2.5 font-mono text-[10px] tracking-wider uppercase">
+            <span>Name</span>
+            <span>Image</span>
+            <span className="text-right">CPU</span>
+            <span className="text-right">Memory</span>
+          </div>
+          {containers.length === 0 ? (
+            <p className="text-muted-foreground p-6 text-center text-sm">No running containers.</p>
+          ) : (
+            containers.map((c) => (
+              <div
+                key={c.name}
+                className="grid grid-cols-[1.5fr_2fr_0.8fr_1.2fr] items-center gap-3 border-b border-white/5 px-4 py-3 text-sm last:border-0"
+              >
+                <span className="truncate font-mono">{c.name}</span>
+                <span className="text-muted-foreground truncate font-mono text-xs">{c.image}</span>
+                <span className="text-right font-mono tabular-nums">{c.cpuPct.toFixed(1)}%</span>
+                <span className="text-muted-foreground text-right font-mono text-xs tabular-nums">
+                  {fmtBytes(c.memUsed)} <span className="text-white/25">·</span> {c.memPct.toFixed(1)}%
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    </div>
   )
 }

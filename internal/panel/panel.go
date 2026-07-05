@@ -73,6 +73,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/teams/invite", p.protected(p.handleInvite))
 	// projects
 	mux.HandleFunc("/api/system", p.protected(p.handleSystem))
+	mux.HandleFunc("/api/server", p.protected(p.handleServer))
 	mux.HandleFunc("/api/apps", p.protected(p.handleApps))
 	mux.HandleFunc("/api/project", p.protected(p.handleProject))
 	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
