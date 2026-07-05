@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router'
 import { AuthProvider, useAuthContext } from '@/context/auth-context'
 import Setup from '@/components/setup'
@@ -8,11 +9,12 @@ import ProjectsPage from '@/pages/projects'
 import ProjectDetailPage from '@/pages/project-detail'
 import DeploymentsPage from '@/pages/deployments'
 import LogsPage from '@/pages/logs'
-import AnalyticsPage from '@/pages/analytics'
 import ServerPage from '@/pages/server'
 import DomainsPage from '@/pages/domains'
 import EnvPage from '@/pages/env'
 import SettingsPage from '@/pages/settings'
+
+const AnalyticsPage = lazy(() => import('@/pages/analytics'))
 
 function InviteRoute() {
   const { token } = useParams()
@@ -45,7 +47,14 @@ export default function App() {
               <Route path="projects/:name" element={<ProjectDetailPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="logs" element={<LogsPage />} />
-              <Route path="analytics" element={<AnalyticsPage />} />
+              <Route
+                path="analytics"
+                element={
+                  <Suspense fallback={<div className="text-muted-foreground px-8 py-8 text-sm">Loading…</div>}>
+                    <AnalyticsPage />
+                  </Suspense>
+                }
+              />
               <Route path="server" element={<ServerPage />} />
               <Route path="domains" element={<DomainsPage />} />
               <Route path="env" element={<EnvPage />} />

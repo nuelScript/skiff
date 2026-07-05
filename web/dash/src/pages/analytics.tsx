@@ -1,5 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Activity } from 'lucide-react'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts'
+import { useApps } from '@/hooks/use-apps'
 import { useAnalytics } from '@/hooks/use-analytics'
 import {
   Select,
@@ -8,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Analytics, AnalyticsSeries } from '@/services/api.service'
+import type { Analytics } from '@/services/api.service'
 
 const RANGES = [
   { v: 60, label: 'Last hour' },
@@ -17,15 +29,20 @@ const RANGES = [
   { v: 1440, label: 'Last 24 hours' },
 ]
 
-const STATUS_LAYERS = [
-  { key: 's2' as const, label: '2XX', fill: 'fill-emerald-400/70', dot: 'bg-emerald-400' },
-  { key: 's3' as const, label: '3XX', fill: 'fill-sky-400/70', dot: 'bg-sky-400' },
-  { key: 's4' as const, label: '4XX', fill: 'fill-amber-400/70', dot: 'bg-amber-400' },
-  { key: 's5' as const, label: '5XX', fill: 'fill-rose-400/80', dot: 'bg-rose-400' },
+const STATUS = [
+  { key: 's2' as const, label: '2XX', color: '#34d399' },
+  { key: 's3' as const, label: '3XX', color: '#38bdf8' },
+  { key: 's4' as const, label: '4XX', color: '#fbbf24' },
+  { key: 's5' as const, label: '5XX', color: '#fb7185' },
 ]
 
-const fmtTime = (unix: number) =>
-  new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const axisTick = { fill: '#71717a', fontSize: 10, fontFamily: 'ui-monospace, monospace' }
+const gridStroke = 'rgba(255,255,255,0.05)'
+
+const fmtClock = (t: number) =>
+  new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+const timeRange = (t: number, secs: number) => `${fmtClock(t)} – ${fmtClock(t + secs)}`
 
 function fmtBytes(b: number): string {
   if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + 'GB'
@@ -35,10 +52,10 @@ function fmtBytes(b: number): string {
 }
 
 export default function AnalyticsPage() {
+  const { apps } = useApps()
   const [range, setRange] = useState(60)
   const [app, setApp] = useState('')
   const { data: a } = useAnalytics(range, app)
-
   const rangeLabel = RANGES.find((r) => r.v === range)?.label ?? 'Last hour'
 
   return (
@@ -57,7 +74,7 @@ export default function AnalyticsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All apps</SelectItem>
-              {(a?.appOptions ?? []).map((n) => (
+              {(a?.appOptions ?? apps.map((x) => x.name)).map((n) => (
                 <SelectItem key={n} value={n} className="font-mono">
                   {n}
                 </SelectItem>
@@ -98,166 +115,215 @@ export default function AnalyticsPage() {
   )
 }
 
-function Panel({
-  title,
-  head,
-  children,
-}: {
-  title: string
-  head?: React.ReactNode
-  children: React.ReactNode
-}) {
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-white/8 bg-linear-to-b from-white/2 to-transparent p-5">
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <h2 className="text-sm font-semibold">{title}</h2>
-      </div>
-      {head}
+      <h2 className="mb-3 text-sm font-semibold">{title}</h2>
       {children}
     </section>
   )
 }
 
-const axis = (s: AnalyticsSeries[]) => (
-  <div className="text-muted-foreground mt-2 flex justify-between font-mono text-[10px]">
-    <span>{fmtTime(s[0].t)}</span>
-    <span>{fmtTime(s[s.length - 1].t)}</span>
-  </div>
-)
-
-// Chart renders stacked areas or overlaid lines over a time series. Non-uniform
-// scaling is fine for filled areas; strokes use non-scaling width.
-function Chart({
-  layers,
-  max,
-  stacked,
-  height = 132,
+function TipCard({
+  title,
+  rows,
 }: {
-  layers: { values: number[]; className: string }[]
-  max: number
-  stacked?: boolean
-  height?: number
+  title: string
+  rows: { label: string; color: string; value: string }[]
 }) {
-  const n = layers[0]?.values.length ?? 0
-  const W = 600
-  const H = 100
-  const xi = (i: number) => (n <= 1 ? 0 : (i / (n - 1)) * W)
-  const yv = (v: number) => H - (max > 0 ? Math.min(1, v / max) * H : 0)
-  if (n === 0) return <div style={{ height }} />
-
-  const paths = stacked
-    ? layers.map((_, li) => {
-        const lower: number[] = []
-        const upper: number[] = []
-        for (let i = 0; i < n; i++) {
-          let lo = 0
-          for (let k = 0; k < li; k++) lo += layers[k].values[i]
-          lower.push(lo)
-          upper.push(lo + layers[li].values[i])
-        }
-        let d = 'M' + upper.map((v, i) => `${xi(i)} ${yv(v)}`).join(' L')
-        for (let i = n - 1; i >= 0; i--) d += ` L${xi(i)} ${yv(lower[i])}`
-        return { d: d + ' Z', className: layers[li].className, fill: true }
-      })
-    : layers.map((l) => ({
-        d: 'M' + l.values.map((v, i) => `${xi(i)} ${yv(v)}`).join(' L'),
-        className: l.className,
-        fill: false,
-      }))
-
   return (
-    <div style={{ height }}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-        {paths.map((p, i) =>
-          p.fill ? (
-            <path key={i} d={p.d} className={p.className} />
-          ) : (
-            <path
-              key={i}
-              d={p.d}
-              fill="none"
-              strokeWidth={1.5}
-              vectorEffect="non-scaling-stroke"
-              className={p.className}
-            />
-          ),
-        )}
-      </svg>
+    <div className="rounded-lg border border-white/10 bg-black/90 px-3 py-2 shadow-xl backdrop-blur-sm">
+      <p className="text-muted-foreground mb-1.5 font-mono text-[10px]">{title}</p>
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-6 text-xs">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: r.color }} />
+              {r.label}
+            </span>
+            <span className="font-mono tabular-nums">{r.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
+type Row = Record<string, number>
+
+function ChartTip(props: {
+  active?: boolean
+  payload?: { payload: Row }[]
+  build?: (row: Row) => { title: string; rows: { label: string; color: string; value: string }[] }
+}) {
+  const { active, payload, build } = props
+  if (!active || !payload?.length || !build) return null
+  const { title, rows } = build(payload[0].payload)
+  return <TipCard title={title} rows={rows} />
+}
+
 function EdgeRequests({ a }: { a: Analytics }) {
-  const max = useMemo(
-    () => Math.max(1, ...a.series.map((s) => s.s2 + s.s3 + s.s4 + s.s5)),
-    [a.series],
-  )
-  const layers = STATUS_LAYERS.map((l) => ({
-    values: a.series.map((s) => s[l.key]),
-    className: l.fill,
-  }))
   return (
     <Panel title="Edge Requests">
-      <div className="mb-3 flex items-center gap-4">
+      <div className="mb-3 flex flex-wrap items-center gap-4">
         <span className="text-2xl font-semibold tracking-tight tabular-nums">
           {a.total.toLocaleString()}
         </span>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {STATUS_LAYERS.map((l) => (
-            <span key={l.key} className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-              <span className={'h-1.5 w-1.5 rounded-full ' + l.dot} />
-              {l.label} {a.status[l.key].toLocaleString()}
+          {STATUS.map((s) => (
+            <span key={s.key} className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+              {s.label} {a.status[s.key].toLocaleString()}
             </span>
           ))}
         </div>
       </div>
-      <Chart layers={layers} max={max} stacked />
-      {axis(a.series)}
+      <ResponsiveContainer width="100%" height={150}>
+        <BarChart data={a.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid vertical={false} stroke={gridStroke} />
+          <XAxis
+            dataKey="t"
+            tickFormatter={fmtClock}
+            interval="preserveStartEnd"
+            minTickGap={80}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis allowDecimals={false} width={34} tick={axisTick} tickLine={false} axisLine={false} />
+          <Tooltip
+            cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+            content={
+              <ChartTip
+                build={(row) => ({
+                  title: timeRange(row.t, a.bucketSecs),
+                  rows: STATUS.map((s) => ({ label: s.label, color: s.color, value: String(row[s.key]) })),
+                })}
+              />
+            }
+          />
+          {STATUS.map((s, i) => (
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              stackId="s"
+              fill={s.color}
+              maxBarSize={16}
+              radius={i === STATUS.length - 1 ? [2, 2, 0, 0] : 0}
+              isAnimationActive={false}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
     </Panel>
   )
 }
 
 function DataTransfer({ a }: { a: Analytics }) {
-  const max = useMemo(() => Math.max(1, ...a.series.map((s) => Math.max(s.bi, s.bo))), [a.series])
   return (
     <Panel title="Data Transfer">
       <div className="mb-3 flex gap-6">
-        <div>
-          <p className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Incoming
-          </p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums">{fmtBytes(a.bytesIn)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Outgoing
-          </p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums">{fmtBytes(a.bytesOut)}</p>
-        </div>
+        <Metric dot="#fbbf24" label="Incoming" value={fmtBytes(a.bytesIn)} />
+        <Metric dot="#38bdf8" label="Outgoing" value={fmtBytes(a.bytesOut)} />
       </div>
-      <Chart
-        layers={[
-          { values: a.series.map((s) => s.bo), className: 'stroke-sky-400' },
-          { values: a.series.map((s) => s.bi), className: 'stroke-amber-400' },
-        ]}
-        max={max}
-      />
-      {axis(a.series)}
+      <ResponsiveContainer width="100%" height={150}>
+        <AreaChart data={a.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="bo" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="bi" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.2} />
+              <stop offset="100%" stopColor="#fbbf24" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke={gridStroke} />
+          <XAxis
+            dataKey="t"
+            tickFormatter={fmtClock}
+            interval="preserveStartEnd"
+            minTickGap={80}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis width={44} tickFormatter={fmtBytes} tick={axisTick} tickLine={false} axisLine={false} />
+          <Tooltip
+            cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+            content={
+              <ChartTip
+                build={(row) => ({
+                  title: timeRange(row.t, a.bucketSecs),
+                  rows: [
+                    { label: 'Outgoing', color: '#38bdf8', value: fmtBytes(row.bo) },
+                    { label: 'Incoming', color: '#fbbf24', value: fmtBytes(row.bi) },
+                  ],
+                })}
+              />
+            }
+          />
+          <Area dataKey="bo" stroke="#38bdf8" strokeWidth={1.5} fill="url(#bo)" isAnimationActive={false} />
+          <Area dataKey="bi" stroke="#fbbf24" strokeWidth={1.5} fill="url(#bi)" isAnimationActive={false} />
+        </AreaChart>
+      </ResponsiveContainer>
     </Panel>
   )
 }
 
 function Latency({ a }: { a: Analytics }) {
-  const max = useMemo(() => Math.max(1, ...a.series.map((s) => s.lat)), [a.series])
   return (
     <Panel title="Latency">
       <div className="mb-3 flex items-baseline gap-2">
         <span className="text-2xl font-semibold tracking-tight tabular-nums">{a.avgLatMs}</span>
         <span className="text-muted-foreground text-xs">ms average</span>
       </div>
-      <Chart layers={[{ values: a.series.map((s) => s.lat), className: 'stroke-violet-400' }]} max={max} />
-      {axis(a.series)}
+      <ResponsiveContainer width="100%" height={150}>
+        <AreaChart data={a.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="lat" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke={gridStroke} />
+          <XAxis
+            dataKey="t"
+            tickFormatter={fmtClock}
+            interval="preserveStartEnd"
+            minTickGap={80}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis width={32} tick={axisTick} tickLine={false} axisLine={false} />
+          <Tooltip
+            cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+            content={
+              <ChartTip
+                build={(row) => ({
+                  title: timeRange(row.t, a.bucketSecs),
+                  rows: [{ label: 'Avg latency', color: '#a78bfa', value: row.lat + 'ms' }],
+                })}
+              />
+            }
+          />
+          <Area dataKey="lat" stroke="#a78bfa" strokeWidth={1.5} fill="url(#lat)" isAnimationActive={false} />
+        </AreaChart>
+      </ResponsiveContainer>
     </Panel>
+  )
+}
+
+function Metric({ dot, label, value }: { dot: string; label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+        {label}
+      </p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p>
+    </div>
   )
 }
 
