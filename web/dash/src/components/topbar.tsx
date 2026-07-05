@@ -1,10 +1,12 @@
 import { useLocation } from 'react-router'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import NotificationBell from '@/components/notification-bell'
 
 const titles: Record<string, string> = {
   '/': 'Projects',
   '/deployments': 'Deployments',
   '/logs': 'Logs',
+  '/analytics': 'Analytics',
   '/server': 'Server',
   '/domains': 'Domains',
   '/env': 'Environment',
@@ -18,6 +20,9 @@ export default function Topbar() {
     <header className="border-border bg-background/70 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur-xl">
       <SidebarTrigger className="text-muted-foreground -ml-1" />
       <span className="text-sm font-medium">{title}</span>
+      <div className="ml-auto">
+        <NotificationBell />
+      </div>
     </header>
   )
 }

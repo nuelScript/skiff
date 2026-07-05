@@ -8,6 +8,7 @@ import { DeployModal } from '@/components/deploy-modal'
 import { Drawer } from '@/components/drawer'
 import { EnvDialog } from '@/components/env-dialog'
 import { LogoMark } from '@/components/logo'
+import { OnboardingChecklist } from '@/components/onboarding-checklist'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthContext } from '@/context/auth-context'
@@ -71,6 +72,8 @@ export default function ProjectsPage() {
           </Button>
         </div>
       </header>
+
+      <OnboardingChecklist appsCount={apps.length} onDeploy={() => setOpen(true)} />
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-[46vh]">
         {showControlPlane && (
