@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -196,6 +197,66 @@ func setEnv(app string, vars []EnvVar) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// sharedEnv returns a team's shared environment variables, applied to every app.
+func sharedEnv(team string) []EnvVar {
+	rows, err := sqlDB.Query(`SELECT key,value,build FROM shared_env WHERE team=? ORDER BY key`, team)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []EnvVar{}
+	for rows.Next() {
+		var e EnvVar
+		var build int
+		if rows.Scan(&e.Key, &e.Value, &build) == nil {
+			e.Build = build != 0
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func setSharedEnv(team string, vars []EnvVar) error {
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM shared_env WHERE team=?`, team); err != nil {
+		return err
+	}
+	for _, e := range vars {
+		key := sanitizeEnvKey(e.Key)
+		if key == "" {
+			continue
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO shared_env(team,key,value,build) VALUES(?,?,?,?)`,
+			team, key, e.Value, b2i(e.Build)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// deployEnv is the full environment for a deploy: the team's shared vars with
+// the app's own vars layered on top (the app wins on any key conflict).
+func deployEnv(src Source) []EnvVar {
+	merged := map[string]EnvVar{}
+	for _, e := range sharedEnv(src.Team) {
+		merged[e.Key] = e
+	}
+	for _, e := range getEnv(src.App) {
+		merged[e.Key] = e
+	}
+	out := make([]EnvVar, 0, len(merged))
+	for _, e := range merged {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 // sanitizeID keeps deploy ids filesystem-safe (used for log file paths).

@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS env_vars (
   build INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (app, key)
 );
+CREATE TABLE IF NOT EXISTS shared_env (
+  team  TEXT NOT NULL,
+  key   TEXT NOT NULL,
+  value TEXT NOT NULL DEFAULT '',
+  build INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (team, key)
+);
 CREATE TABLE IF NOT EXISTS domains (
   host    TEXT PRIMARY KEY,
   app     TEXT NOT NULL,

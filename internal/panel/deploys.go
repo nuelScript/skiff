@@ -80,7 +80,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		return
 	}
 	tomlPath := filepath.Join(ctxDir, "skiff.toml")
-	_ = os.WriteFile(tomlPath, []byte(projectToml(src, getEnv(src.App))), 0o644)
+	_ = os.WriteFile(tomlPath, []byte(projectToml(src, deployEnv(src))), 0o644)
 
 	logln("→ building & deploying")
 	self, _ := os.Executable()
@@ -133,7 +133,7 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 		return
 	}
 	tomlPath := filepath.Join(work, "skiff.toml")
-	_ = os.WriteFile(tomlPath, []byte(projectToml(src, getEnv(src.App))), 0o644)
+	_ = os.WriteFile(tomlPath, []byte(projectToml(src, deployEnv(src))), 0o644)
 
 	image := fmt.Sprintf("skiff-%s:%s", src.App, targetID)
 	logln("→ rolling back to " + image)

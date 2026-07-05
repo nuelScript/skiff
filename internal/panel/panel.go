@@ -80,6 +80,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
+	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
@@ -603,6 +604,33 @@ func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if err := setEnv(app, body.Vars); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleSharedEnv manages the caller team's shared environment variables, which
+// are merged into every app in the team on its next deploy.
+func (p *Panel) handleSharedEnv(w http.ResponseWriter, r *http.Request) {
+	team := p.teamID(r)
+	if team == "" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(sharedEnv(team))
+	case http.MethodPut:
+		var body struct {
+			Vars []EnvVar `json:"vars"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := setSharedEnv(team, body.Vars); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
