@@ -3,22 +3,33 @@ package panel
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Domain is a custom hostname pointed at one of the team's apps. The router
 // serves it (with an on-demand Let's Encrypt cert) once DNS points at the box.
 type Domain struct {
-	Host       string `json:"host"`
-	App        string `json:"app"`
-	Created    int64  `json:"created"`
-	PointsHere bool   `json:"pointsHere"` // computed: DNS resolves to this server
+	Host       string   `json:"host"`
+	App        string   `json:"app"`
+	Created    int64    `json:"created"`
+	PointsHere bool     `json:"pointsHere"`           // computed: DNS resolves to this server
+	ResolvesTo []string `json:"resolvesTo,omitempty"` // computed: where the host currently points
+}
+
+// domainsResponse carries the team's domains plus this server's public IP, so
+// the dashboard can show the exact A record to set.
+type domainsResponse struct {
+	ServerIP string   `json:"serverIp"`
+	Domains  []Domain `json:"domains"`
 }
 
 var hostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
@@ -94,9 +105,10 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		domains := teamDomains(p.teamID(r))
-		p.markPointsHere(domains)
+		ip := serverPublicIP(p.domain)
+		resolveDomains(domains, ip)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(domains)
+		_ = json.NewEncoder(w).Encode(domainsResponse{ServerIP: ip, Domains: domains})
 
 	case http.MethodPost:
 		var body struct{ App, Host string }
@@ -152,22 +164,14 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// markPointsHere flags each domain whose DNS resolves to this server, by
-// comparing its A records against the base domain's (a best-effort status).
-func (p *Panel) markPointsHere(domains []Domain) {
-	if len(domains) == 0 {
-		return
-	}
-	ours := resolveIPs(p.domain)
-	if len(ours) == 0 {
-		return
-	}
+// resolveDomains records where each host currently resolves and whether that
+// includes this server's public IP (i.e. DNS is pointed here).
+func resolveDomains(domains []Domain, serverIP string) {
 	for i := range domains {
-		for ip := range resolveIPs(domains[i].Host) {
-			if ours[ip] {
-				domains[i].PointsHere = true
-				break
-			}
+		ips := resolveIPs(domains[i].Host)
+		domains[i].ResolvesTo = sortedIPs(ips)
+		if serverIP != "" && ips[serverIP] {
+			domains[i].PointsHere = true
 		}
 	}
 }
@@ -184,4 +188,55 @@ func resolveIPs(host string) map[string]bool {
 		set[a] = true
 	}
 	return set
+}
+
+func sortedIPs(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for ip := range set {
+		out = append(out, ip)
+	}
+	sort.Strings(out)
+	return out
+}
+
+var (
+	pubIPMu  sync.Mutex
+	pubIPVal string
+)
+
+// serverPublicIP is this box's public IP — the value a custom domain's A record
+// should point at. Determined once via an egress lookup, falling back to the
+// base domain's own A record (which points here in the standard setup).
+func serverPublicIP(base string) string {
+	pubIPMu.Lock()
+	defer pubIPMu.Unlock()
+	if pubIPVal != "" {
+		return pubIPVal
+	}
+	if ip := egressIP(); ip != "" {
+		pubIPVal = ip
+	} else {
+		for ip := range resolveIPs(base) {
+			pubIPVal = ip
+			break
+		}
+	}
+	return pubIPVal
+}
+
+func egressIP() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.ipify.org", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
+	ip := strings.TrimSpace(string(b))
+	if net.ParseIP(ip) != nil {
+		return ip
+	}
+	return ""
 }

@@ -1,19 +1,37 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Globe, Plus, Trash2, ChevronDown, ExternalLink, Search, ShieldCheck, X } from 'lucide-react'
+import {
+  Globe,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ExternalLink,
+  Search,
+  ShieldCheck,
+  X,
+  Copy,
+  Check,
+} from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useDomains } from '@/hooks/use-domains'
 import { Button } from '@/components/ui/button'
 import type { App, Domain } from '@/services/api.service'
 
-// An app's <app>.<domain> host (the CNAME target), derived from its URL.
 const targetHost = (apps: App[], app: string): string => {
   const a = apps.find((x) => x.name === app)
   return a ? a.url.replace(/^https?:\/\//, '') : app
 }
 
+function dnsRecord(host: string, serverIp: string, appHost: string) {
+  const labels = host.split('.')
+  if (labels.length <= 2) {
+    return { type: 'A', name: '@', value: serverIp || 'your server IP', apex: true }
+  }
+  return { type: 'CNAME', name: labels[0], value: appHost, apex: false }
+}
+
 export default function DomainsPage() {
   const { apps } = useApps()
-  const { domains, add, remove } = useDomains()
+  const { domains, serverIp, add, remove } = useDomains()
 
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -65,7 +83,6 @@ export default function DomainsPage() {
         )}
       </header>
 
-      {/* add composer */}
       {(adding || domains.length === 0) && (
         <AddComposer
           apps={apps}
@@ -80,10 +97,10 @@ export default function DomainsPage() {
           onCancel={
             domains.length > 0
               ? () => {
-                  setAdding(false)
-                  setHost('')
-                  setError('')
-                }
+                setAdding(false)
+                setHost('')
+                setError('')
+              }
               : undefined
           }
           busy={busy}
@@ -93,7 +110,6 @@ export default function DomainsPage() {
 
       {domains.length > 0 && (
         <>
-          {/* toolbar */}
           <div className="mt-6 mb-3 flex items-center justify-between gap-3">
             <div className="relative max-w-xs flex-1">
               <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
@@ -109,7 +125,6 @@ export default function DomainsPage() {
             </span>
           </div>
 
-          {/* list */}
           <div className="overflow-hidden rounded-xl border border-white/8">
             {filtered.length === 0 ? (
               <p className="text-muted-foreground p-8 text-center text-sm">No domains match “{query}”.</p>
@@ -118,7 +133,8 @@ export default function DomainsPage() {
                 <DomainRow
                   key={d.host}
                   domain={d}
-                  target={targetHost(apps, d.app)}
+                  serverIp={serverIp}
+                  appHost={targetHost(apps, d.app)}
                   onRemove={() => {
                     if (confirm(`Remove ${d.host}?`)) remove(d.host)
                   }}
@@ -130,6 +146,174 @@ export default function DomainsPage() {
         </>
       )}
     </div>
+  )
+}
+
+function DomainRow({
+  domain,
+  serverIp,
+  appHost,
+  onRemove,
+  delay,
+}: {
+  domain: Domain
+  serverIp: string
+  appHost: string
+  onRemove: () => void
+  delay: number
+}) {
+  const [open, setOpen] = useState(false)
+  const rec = dnsRecord(domain.host, serverIp, appHost)
+  const resolves = domain.resolvesTo ?? []
+
+  return (
+    <div
+      className="animate-rise border-b border-white/5 last:border-0"
+      style={{ animationDelay: delay + 'ms' }}
+    >
+      {/* header (click to expand) */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-white/2"
+      >
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-linear-to-br from-white/[0.07] to-transparent">
+          <Globe className="h-4 w-4 text-white/55" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-mono text-sm font-medium">{domain.host}</p>
+          <p className="text-muted-foreground mt-0.5 truncate text-xs">
+            Connected to <span className="text-foreground/70">{domain.app}</span>
+          </p>
+        </div>
+        {domain.pointsHere ? (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Active
+          </span>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-amber-400" />
+            Pending DNS
+          </span>
+        )}
+        <ChevronDown
+          className={
+            'text-muted-foreground h-4 w-4 shrink-0 transition-transform ' + (open ? 'rotate-180' : '')
+          }
+        />
+      </button>
+
+      {/* expanded detail */}
+      {open && (
+        <div className="animate-rise space-y-4 border-t border-white/5 bg-black/20 px-4 py-4 pl-13.5">
+          {/* DNS record */}
+          <section>
+            <h3 className="text-muted-foreground mb-2 font-mono text-[10px] tracking-wider uppercase">
+              DNS record
+            </h3>
+            <div className="overflow-hidden rounded-lg border border-white/8">
+              <div className="text-muted-foreground grid grid-cols-[4rem_1fr_1.6fr] gap-2 border-b border-white/8 bg-white/2 px-3 py-1.5 font-mono text-[10px] tracking-wider uppercase">
+                <span>Type</span>
+                <span>Name</span>
+                <span>Value</span>
+              </div>
+              <div className="grid grid-cols-[4rem_1fr_1.6fr] items-center gap-2 px-3 py-2.5 font-mono text-xs">
+                <span className="text-foreground/90">{rec.type}</span>
+                <span className="text-foreground/70">{rec.name}</span>
+                <Copyable text={rec.value} />
+              </div>
+            </div>
+            <p className="text-muted-foreground mt-2 text-[11px]">
+              {rec.apex
+                ? 'Apex domains need an A record (a CNAME is not allowed at the root).'
+                : `Or an A record → ${serverIp || 'your server IP'}.`}
+            </p>
+          </section>
+
+          {/* status */}
+          <section className="flex flex-wrap items-start gap-x-6 gap-y-3">
+            <Detail label="Status">
+              {domain.pointsHere ? (
+                <span className="text-emerald-300">DNS points here</span>
+              ) : (
+                <span className="text-amber-300">
+                  Awaiting DNS
+                  {resolves.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      — resolves to <span className="font-mono">{resolves.join(', ')}</span>, expected{' '}
+                      <span className="font-mono text-foreground/70">{serverIp || '—'}</span>
+                    </span>
+                  )}
+                </span>
+              )}
+            </Detail>
+            <Detail label="Certificate">
+              <span className="flex items-center gap-1.5">
+                {domain.pointsHere ? (
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                ) : (
+                  <ShieldCheck className="text-muted-foreground h-3.5 w-3.5" />
+                )}
+                <span className="text-foreground/70">Automatic — Let's Encrypt</span>
+              </span>
+            </Detail>
+          </section>
+
+          {/* actions */}
+          <div className="flex items-center gap-2 pt-1">
+            <a
+              href={'https://' + domain.host}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:border-white/25 hover:text-foreground text-muted-foreground flex items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Visit
+            </a>
+            <button
+              onClick={onRemove}
+              className="text-muted-foreground flex items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition hover:border-rose-500/30 hover:text-rose-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">{label}</p>
+      <div className="text-xs">{children}</div>
+    </div>
+  )
+}
+
+function Copyable({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard?.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }}
+      className="group/copy hover:text-foreground text-foreground/90 flex items-center gap-1.5 truncate text-left transition"
+      title="Copy"
+    >
+      <span className="truncate">{text}</span>
+      {copied ? (
+        <Check className="h-3 w-3 shrink-0 text-emerald-400" />
+      ) : (
+        <Copy className="h-3 w-3 shrink-0 opacity-0 transition group-hover/copy:opacity-60" />
+      )}
+    </button>
   )
 }
 
@@ -207,82 +391,5 @@ function AddComposer({
         </p>
       )}
     </form>
-  )
-}
-
-function DomainRow({
-  domain,
-  target,
-  onRemove,
-  delay,
-}: {
-  domain: Domain
-  target: string
-  onRemove: () => void
-  delay: number
-}) {
-  return (
-    <div
-      className="animate-rise group border-b border-white/5 px-4 py-3.5 transition-colors last:border-0 hover:bg-white/2"
-      style={{ animationDelay: delay + 'ms' }}
-    >
-      <div className="flex items-center gap-3.5">
-        {/* glyph */}
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-linear-to-br from-white/[0.07] to-transparent">
-          <Globe className="h-4 w-4 text-white/55" />
-        </span>
-
-        {/* name + connection */}
-        <div className="min-w-0 flex-1">
-          <a
-            href={'https://' + domain.host}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-foreground group/link flex items-center gap-1.5 text-sm font-medium"
-          >
-            <span className="truncate font-mono">{domain.host}</span>
-            <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition group-hover/link:opacity-60" />
-          </a>
-          <p className="text-muted-foreground mt-0.5 truncate text-xs">
-            Connected to <span className="text-foreground/70">{domain.app}</span>
-          </p>
-        </div>
-
-        {/* status */}
-        {domain.pointsHere ? (
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Active
-          </span>
-        ) : (
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
-            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-amber-400" />
-            Pending DNS
-          </span>
-        )}
-
-        <button
-          onClick={onRemove}
-          title="Remove domain"
-          className="text-muted-foreground shrink-0 p-1 opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* DNS setup hint (until it resolves here) */}
-      {!domain.pointsHere && (
-        <div className="mt-3 ml-12.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-white/8 bg-black/20 px-3 py-2 text-[11px]">
-          <span className="text-muted-foreground">Point a</span>
-          <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-white/80">CNAME</code>
-          <span className="text-muted-foreground">to</span>
-          <code className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-white/80">{target}</code>
-          <span className="text-muted-foreground">
-            — or an <span className="font-mono text-white/70">A</span> record to your server's IP. The
-            certificate issues automatically once DNS resolves here.
-          </span>
-        </div>
-      )}
-    </div>
   )
 }

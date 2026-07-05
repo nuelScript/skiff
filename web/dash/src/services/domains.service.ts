@@ -5,12 +5,18 @@ export type Domain = {
   app: string
   created: number
   pointsHere?: boolean
+  resolvesTo?: string[]
+}
+
+export type DomainsResponse = {
+  serverIp: string
+  domains: Domain[]
 }
 
 class DomainsService extends BaseService {
-  // All custom domains across the team's apps.
+
   list() {
-    return this.get<Domain[]>('/domains')
+    return this.get<DomainsResponse>('/domains')
   }
 
   add(app: string, host: string) {
