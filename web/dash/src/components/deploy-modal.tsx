@@ -96,7 +96,7 @@ export function DeployModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Deploy an app</DialogTitle>
           <DialogDescription>
@@ -209,7 +209,7 @@ export function DeployModal({
                       onClick={() => pick(r)}
                       className="hover:bg-white/[0.04] flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors"
                     >
-                      <span className="truncate font-mono text-sm">{r.full_name}</span>
+                      <span className="min-w-0 truncate font-mono text-sm">{r.full_name}</span>
                       {r.private && (
                         <span className="text-muted-foreground shrink-0 font-mono text-[10px] uppercase">
                           private
