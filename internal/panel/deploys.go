@@ -31,6 +31,18 @@ var (
 	inflight   = map[string]inflightBuild{}
 )
 
+// cancelInflight cancels the app's in-flight build if one is running (matching
+// id when given). The build's own runDeploy then records it as "canceled".
+func cancelInflight(app, id string) bool {
+	inflightMu.Lock()
+	defer inflightMu.Unlock()
+	if b, ok := inflight[app]; ok && (id == "" || b.id == id) {
+		b.cancel()
+		return true
+	}
+	return false
+}
+
 // runDeploy clones a source, builds, and releases it, writing a persisted log
 // and recording the deploy in history. Shared by manual deploys and webhooks.
 // authURL, when set, overrides the clone URL (e.g. a pasted token); otherwise a

@@ -147,7 +147,7 @@ export default function ProjectsPage() {
 
       <EnvDialog app={envApp} onClose={() => setEnvApp(null)} />
 
-      {term.stream && <Drawer stream={term.stream} onClose={term.close} />}
+      {term.stream && <Drawer stream={term.stream} onClose={term.close} onStop={term.stop} />}
     </div>
   )
 }

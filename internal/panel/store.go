@@ -171,6 +171,15 @@ func allDeploys() []Deploy {
 	return out
 }
 
+// reconcileStuckDeploys clears deploys left "building" by a previous process
+// (e.g. the panel restarted mid-build), so an orphaned build doesn't hang around
+// forever. Only ones older than the cutoff, so a build running on the other
+// color during a blue-green swap isn't disturbed.
+func reconcileStuckDeploys() {
+	cutoff := time.Now().Unix() - 15*60
+	_, _ = sqlDB.Exec(`UPDATE deploys SET status='canceled' WHERE status='building' AND started < ?`, cutoff)
+}
+
 func deployStatus(app, id string) string {
 	var st string
 	_ = sqlDB.QueryRow(`SELECT status FROM deploys WHERE id=? AND app=?`, id, app).Scan(&st)

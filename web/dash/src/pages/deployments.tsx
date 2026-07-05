@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { Search, GitCommitHorizontal } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Search, GitCommitHorizontal, Square } from 'lucide-react'
 import { useAllDeploys } from '@/hooks/use-all-deploys'
 import { useConsole } from '@/hooks/use-console'
+import { deploysService, type Deploy } from '@/services/api.service'
+import { queryKeys } from '@/constants/query-keys'
 import { Drawer } from '@/components/drawer'
-import type { Deploy } from '@/services/api.service'
 
 function rel(unix: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
@@ -40,9 +42,15 @@ const matchesFilter = (d: Deploy, f: Filter): boolean =>
 
 export default function DeploymentsPage() {
   const { data: deploys = [], isLoading } = useAllDeploys()
+  const qc = useQueryClient()
   const term = useConsole(() => {})
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+
+  const cancel = async (app: string, id: string) => {
+    await deploysService.cancel(app, id)
+    qc.invalidateQueries({ queryKey: queryKeys.deploysAll })
+  }
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -108,54 +116,69 @@ export default function DeploymentsPage() {
           </p>
         ) : (
           rows.map((d) => (
-            <button
+            <div
               key={d.app + d.id}
-              onClick={() => term.showBuildLog(d.app, d.id)}
-              className="flex w-full items-center gap-3.5 border-b border-white/5 px-5 py-3.5 text-left transition-colors last:border-0 hover:bg-white/3"
+              className="group flex items-center border-b border-white/5 pr-3 transition-colors last:border-0 hover:bg-white/3"
             >
-              <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(d.status)} />
+              <button
+                onClick={() => term.showBuildLog(d.app, d.id)}
+                className="flex min-w-0 flex-1 items-center gap-3.5 px-5 py-3.5 text-left"
+              >
+                <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(d.status)} />
 
-              {/* project avatar */}
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-linear-to-br from-white/12 to-white/2 font-mono text-xs font-semibold text-white/80">
-                {d.app.charAt(0).toUpperCase()}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <Link
-                    to={'/projects/' + d.app}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:text-foreground truncate text-sm font-medium hover:underline"
-                  >
-                    {d.app}
-                  </Link>
-                  <span className="text-muted-foreground shrink-0 text-[11px]">
-                    {statusLabel(d.status)}
-                  </span>
-                </div>
-                <p className="text-muted-foreground mt-0.5 truncate text-xs">
-                  {d.message || 'No commit message'}
-                </p>
-              </div>
-
-              {d.commit && (
-                <span className="text-muted-foreground hidden shrink-0 items-center gap-1 font-mono text-xs sm:flex">
-                  <GitCommitHorizontal className="h-3.5 w-3.5 opacity-60" />
-                  {d.commit}
+                {/* project avatar */}
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-linear-to-br from-white/12 to-white/2 font-mono text-xs font-semibold text-white/80">
+                  {d.app.charAt(0).toUpperCase()}
                 </span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={'/projects/' + d.app}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:text-foreground truncate text-sm font-medium hover:underline"
+                    >
+                      {d.app}
+                    </Link>
+                    <span className="text-muted-foreground shrink-0 text-[11px]">
+                      {statusLabel(d.status)}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                    {d.message || 'No commit message'}
+                  </p>
+                </div>
+
+                {d.commit && (
+                  <span className="text-muted-foreground hidden shrink-0 items-center gap-1 font-mono text-xs sm:flex">
+                    <GitCommitHorizontal className="h-3.5 w-3.5 opacity-60" />
+                    {d.commit}
+                  </span>
+                )}
+                <span className="text-muted-foreground hidden w-14 shrink-0 truncate font-mono text-[11px] md:block">
+                  {d.trigger}
+                </span>
+                <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
+                  {rel(d.started)}
+                </span>
+              </button>
+
+              {d.status === 'building' && (
+                <button
+                  onClick={() => cancel(d.app, d.id)}
+                  title="Stop this build"
+                  className="ml-1 flex shrink-0 items-center gap-1 rounded-[6px] border border-white/10 px-2 py-1 text-[11px] text-rose-300 transition hover:border-rose-500/30 hover:bg-rose-500/10"
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  Stop
+                </button>
               )}
-              <span className="text-muted-foreground hidden w-14 shrink-0 truncate font-mono text-[11px] md:block">
-                {d.trigger}
-              </span>
-              <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
-                {rel(d.started)}
-              </span>
-            </button>
+            </div>
           ))
         )}
       </div>
 
-      {term.stream && <Drawer stream={term.stream} onClose={term.close} />}
+      {term.stream && <Drawer stream={term.stream} onClose={term.close} onStop={term.stop} />}
     </div>
   )
 }

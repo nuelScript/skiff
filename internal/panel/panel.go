@@ -43,6 +43,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		return nil, err
 	}
 	sqlDB = database
+	reconcileStuckDeploys() // clear builds orphaned by a previous process
 	home, _ := os.UserHomeDir()
 	branch := os.Getenv("SKIFF_SELF_BRANCH")
 	if branch == "" {
@@ -78,6 +79,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/project", p.protected(p.handleProject))
 	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
 	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
+	mux.HandleFunc("/api/cancel", p.protected(p.handleCancel))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
@@ -512,6 +514,26 @@ func (p *Panel) handleRollback(w http.ResponseWriter, r *http.Request) {
 	id := newDeployID()
 	go p.runRollback(src, target, commit, message, id)
 	p.tailLog(w, r, app, id)
+}
+
+// handleCancel stops a build: it cancels the live in-flight build for the app
+// (which records it as "canceled"), or force-clears a deploy stuck at "building"
+// with no live process behind it.
+func (p *Panel) handleCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	app := sanitizeName(r.URL.Query().Get("app"))
+	id := sanitizeID(r.URL.Query().Get("id"))
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !cancelInflight(app, id) && deployStatus(app, id) == "building" {
+		setDeployStatus(app, id, "canceled") // orphaned build — no live process
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleDeploy deploys from a pasted git URL (with an optional token), scoped to

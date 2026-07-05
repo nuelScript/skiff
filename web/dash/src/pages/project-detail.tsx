@@ -317,7 +317,7 @@ export default function ProjectDetailPage() {
         </TabsContent>
       </Tabs>
 
-      {term.stream && <Drawer stream={term.stream} onClose={term.close} />}
+      {term.stream && <Drawer stream={term.stream} onClose={term.close} onStop={term.stop} />}
     </div>
   )
 }

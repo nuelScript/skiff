@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Square } from 'lucide-react'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import type { Stream } from '@/hooks/use-console'
 
@@ -15,11 +15,18 @@ function lineClass(line: string): string {
 export function Drawer({
   stream,
   onClose,
+  onStop,
 }: {
   stream: Stream
   onClose: () => void
+  onStop?: () => void
 }) {
   const ref = useAutoScroll<HTMLDivElement>(stream.lines.length)
+  const [stopping, setStopping] = useState(false)
+
+  const last = stream.lines[stream.lines.length - 1] ?? ''
+  const finished = last.startsWith('✓ done') || last.startsWith('✗ failed')
+  const canStop = !!stream.app && !!onStop && !finished
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -42,6 +49,19 @@ export function Drawer({
           {stream.title}
         </span>
         <div className="flex-1" />
+        {canStop && (
+          <button
+            onClick={() => {
+              setStopping(true)
+              onStop?.()
+            }}
+            disabled={stopping}
+            className="flex items-center gap-1.5 rounded-md border border-rose-500/30 px-2 py-1 font-mono text-[11px] text-rose-300 transition-colors hover:bg-rose-500/10 disabled:opacity-50"
+          >
+            <Square className="h-3 w-3 fill-current" />
+            {stopping ? 'stopping…' : 'stop'}
+          </button>
+        )}
         <button
           onClick={onClose}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] transition-colors hover:bg-white/5"
