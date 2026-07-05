@@ -10,7 +10,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/crypto/acme/autocert"
 
@@ -20,8 +23,38 @@ import (
 type Router struct {
 	Domains []string
 	Engine  *docker.Engine
-	Panel   string // host:port of the control panel; dash.<domain> proxies here
-	SiteApp string // app that serves the apex + www.<domain>
+	Panel   string // fallback host:port of the control panel; dash.<domain> proxies here
+	// PanelPointer, when set, is a file holding the current panel host:port. The
+	// panel can rewrite it during a zero-downtime self-deploy to flip dash.<domain>
+	// onto the freshly-built process, so the router itself never restarts.
+	PanelPointer string
+	SiteApp      string // app that serves the apex + www.<domain>
+
+	mu          sync.Mutex
+	cachedPanel string
+	cachedAt    time.Time
+}
+
+// panelUpstream resolves where dash.<domain> should proxy to. When a pointer
+// file is configured it wins (cached briefly to avoid a read per request),
+// otherwise the static Panel address is used.
+func (rt *Router) panelUpstream() string {
+	if rt.PanelPointer == "" {
+		return rt.Panel
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.cachedPanel != "" && time.Since(rt.cachedAt) < 2*time.Second {
+		return rt.cachedPanel
+	}
+	up := rt.Panel
+	if b, err := os.ReadFile(rt.PanelPointer); err == nil {
+		if v := strings.TrimSpace(string(b)); v != "" {
+			up = v
+		}
+	}
+	rt.cachedPanel, rt.cachedAt = up, time.Now()
+	return up
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -36,8 +69,8 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.serveStatus(w, r)
 		return
 	case "dash":
-		if rt.Panel != "" {
-			proxyTo(w, r, rt.Panel)
+		if up := rt.panelUpstream(); up != "" {
+			proxyTo(w, r, up)
 			return
 		}
 	}

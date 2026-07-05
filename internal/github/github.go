@@ -241,9 +241,17 @@ type Push struct {
 	Repo   string // owner/name
 	Branch string
 	Commit string
+	Paths  []string // changed files (best-effort; GitHub truncates very large pushes)
 }
 
-// ParsePush extracts the repo, branch, and head commit from a push event.
+type commitFiles struct {
+	Added    []string `json:"added"`
+	Modified []string `json:"modified"`
+	Removed  []string `json:"removed"`
+}
+
+// ParsePush extracts the repo, branch, head commit, and changed paths from a
+// push event.
 func ParsePush(body []byte) (Push, bool) {
 	var p struct {
 		Ref        string `json:"ref"`
@@ -252,13 +260,36 @@ func ParsePush(body []byte) (Push, bool) {
 		Repository struct {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
+		HeadCommit *commitFiles  `json:"head_commit"`
+		Commits    []commitFiles `json:"commits"`
 	}
 	if json.Unmarshal(body, &p) != nil || p.Repository.FullName == "" || p.Deleted {
 		return Push{}, false
+	}
+	seen := map[string]bool{}
+	var paths []string
+	add := func(fs []string) {
+		for _, f := range fs {
+			if f != "" && !seen[f] {
+				seen[f] = true
+				paths = append(paths, f)
+			}
+		}
+	}
+	if p.HeadCommit != nil {
+		add(p.HeadCommit.Added)
+		add(p.HeadCommit.Modified)
+		add(p.HeadCommit.Removed)
+	}
+	for _, c := range p.Commits {
+		add(c.Added)
+		add(c.Modified)
+		add(c.Removed)
 	}
 	return Push{
 		Repo:   p.Repository.FullName,
 		Branch: strings.TrimPrefix(p.Ref, "refs/heads/"),
 		Commit: p.After,
+		Paths:  paths,
 	}, true
 }

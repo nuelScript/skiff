@@ -84,4 +84,10 @@ CREATE TABLE IF NOT EXISTS env_vars (
   build INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (app, key)
 );
+CREATE TABLE IF NOT EXISTS sessions (
+  token   TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  team_id TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL
+);
 `

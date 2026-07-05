@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/github"
 )
@@ -145,9 +146,23 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 	push, ok := github.ParsePush(body)
 	if ok {
+		// Rebuild each managed app whose root directory the push actually touched.
 		for _, src := range sourcesForRepo(push.Repo, push.Branch) {
+			if !touched(push.Paths, src.RootDir) {
+				continue
+			}
 			id := newDeployID()
 			go p.runDeploy(src, "", push.Commit, "push", id)
+		}
+		// If the push changed Skiff itself, rebuild and hot-swap the control plane.
+		if p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch &&
+			p.pushTouchesSelf(push.Paths) {
+			id := newDeployID()
+			addDeploy(Deploy{
+				ID: id, App: "panel", Commit: shortCommit(push.Commit),
+				Trigger: "push", Status: "building", Started: time.Now().Unix(),
+			})
+			p.launchSelfUpdate(id, push.Commit)
 		}
 	}
 	w.WriteHeader(http.StatusOK)

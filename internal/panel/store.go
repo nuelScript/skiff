@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Source is a deployable app's git origin (per team), so a webhook or redeploy
@@ -201,4 +202,27 @@ func b2i(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func putSession(token, userID, teamID string) {
+	_, _ = sqlDB.Exec(
+		`INSERT INTO sessions(token,user_id,team_id,created) VALUES(?,?,?,?)`,
+		token, userID, teamID, time.Now().Unix())
+}
+
+func getSession(token string) (sess, bool) {
+	var s sess
+	if sqlDB.QueryRow(`SELECT user_id,team_id FROM sessions WHERE token=?`, token).
+		Scan(&s.userID, &s.teamID) != nil {
+		return sess{}, false
+	}
+	return s, true
+}
+
+func deleteSession(token string) {
+	_, _ = sqlDB.Exec(`DELETE FROM sessions WHERE token=?`, token)
+}
+
+func setSessionTeam(token, teamID string) {
+	_, _ = sqlDB.Exec(`UPDATE sessions SET team_id=? WHERE token=?`, teamID, token)
 }

@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/panel"
@@ -34,7 +38,23 @@ func newPanelCmd() *cobra.Command {
 			ui.Field("domain", domain)
 			ui.Note("control panel — deploy + manage from the browser (ctrl-c to stop)")
 			fmt.Println()
-			return http.ListenAndServe(addr, pn.Handler())
+
+			// Graceful shutdown: on SIGTERM/SIGINT, drain in-flight requests before
+			// exiting so a control-plane swap (systemctl stop of the old panel)
+			// never severs a live deploy stream or request mid-flight.
+			srv := &http.Server{Addr: addr, Handler: pn.Handler()}
+			go func() {
+				sig := make(chan os.Signal, 1)
+				signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+				<-sig
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				defer cancel()
+				_ = srv.Shutdown(ctx)
+			}()
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				return err
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", ":7070", "listen address")

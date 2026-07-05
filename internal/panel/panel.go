@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/nuelScript/skiff/internal/auth"
 	"github.com/nuelScript/skiff/internal/db"
@@ -32,8 +31,10 @@ type Panel struct {
 	buildsDir   string
 	auth        *auth.Store
 
-	mu       sync.Mutex
-	sessions map[string]sess
+	// selfRepo/selfBranch identify Skiff's own repository, so a push to it
+	// rebuilds and hot-swaps the control plane. Empty (unset) disables self-deploy.
+	selfRepo   string
+	selfBranch string
 }
 
 func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
@@ -43,13 +44,18 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	}
 	sqlDB = database
 	home, _ := os.UserHomeDir()
+	branch := os.Getenv("SKIFF_SELF_BRANCH")
+	if branch == "" {
+		branch = "main"
+	}
 	return &Panel{
 		setupSecret: setupSecret,
 		domain:      domain,
 		eng:         eng,
 		buildsDir:   filepath.Join(home, ".skiff", "builds"),
 		auth:        auth.NewStore(database),
-		sessions:    map[string]sess{},
+		selfRepo:    os.Getenv("SKIFF_SELF_REPO"),
+		selfBranch:  branch,
 	}, nil
 }
 
@@ -100,17 +106,12 @@ func (p *Panel) session(r *http.Request) (sess, bool) {
 	if err != nil {
 		return sess{}, false
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	s, ok := p.sessions[c.Value]
-	return s, ok
+	return getSession(c.Value)
 }
 
 func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) {
 	tok := randToken()
-	p.mu.Lock()
-	p.sessions[tok] = sess{userID: userID, teamID: teamID}
-	p.mu.Unlock()
+	putSession(tok, userID, teamID)
 	http.SetCookie(w, &http.Cookie{Name: "skiff_session", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
 }
 
@@ -212,9 +213,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie("skiff_session"); err == nil {
-		p.mu.Lock()
-		delete(p.sessions, c.Value)
-		p.mu.Unlock()
+		deleteSession(c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: "skiff_session", Value: "", Path: "/", MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)
@@ -263,9 +262,7 @@ func (p *Panel) handleTeamSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c, err := r.Cookie("skiff_session"); err == nil {
-		p.mu.Lock()
-		p.sessions[c.Value] = sess{userID: s.userID, teamID: body.Team}
-		p.mu.Unlock()
+		setSessionTeam(c.Value, body.Team)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
