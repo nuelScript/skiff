@@ -8,6 +8,7 @@ import ProjectsPage from '@/pages/projects'
 import ProjectDetailPage from '@/pages/project-detail'
 import DeploymentsPage from '@/pages/deployments'
 import LogsPage from '@/pages/logs'
+import AnalyticsPage from '@/pages/analytics'
 import ServerPage from '@/pages/server'
 import DomainsPage from '@/pages/domains'
 import EnvPage from '@/pages/env'
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="projects/:name" element={<ProjectDetailPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="logs" element={<LogsPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="server" element={<ServerPage />} />
               <Route path="domains" element={<DomainsPage />} />
               <Route path="env" element={<EnvPage />} />

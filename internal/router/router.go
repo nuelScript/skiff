@@ -34,12 +34,24 @@ type Router struct {
 	// maintains. The router reads it live (cached briefly) so domains can be added
 	// or removed without restarting the edge.
 	DomainsFile string
+	// MetricsFile, when set, is where the router snapshots per-app request metrics
+	// for the panel's Analytics page.
+	MetricsFile string
 
+	metrics       *Metrics
 	mu            sync.Mutex
 	cachedPanel   string
 	cachedAt      time.Time
 	cachedDomains map[string]string
 	cachedDomAt   time.Time
+}
+
+// startMetrics begins request accounting if a metrics file is configured.
+func (rt *Router) startMetrics() {
+	if rt.MetricsFile != "" && rt.metrics == nil {
+		rt.metrics = NewMetrics(rt.MetricsFile)
+		go rt.metrics.Run()
+	}
 }
 
 // customDomains returns the current host→app map from DomainsFile, cached for a
@@ -91,26 +103,37 @@ func (rt *Router) panelUpstream() string {
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	start := time.Now()
+	label := rt.serve(rec, r)
+	if rt.metrics != nil {
+		rt.metrics.Record(label, rec.status, time.Since(start))
+	}
+}
+
+// serve routes a request and returns the app label it was accounted to (empty
+// when the host matched nothing, so it isn't recorded).
+func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	// A custom domain pointed at one of the apps wins over subdomain routing.
 	if app, ok := rt.customDomains()[hostOnly(r.Host)]; ok {
 		rt.proxyToApp(w, r, app)
-		return
+		return app
 	}
 
 	sub, ok := rt.subFor(r.Host)
 	if !ok {
 		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
-		return
+		return ""
 	}
 
 	switch sub {
 	case "status":
 		rt.serveStatus(w, r)
-		return
+		return "status"
 	case "dash":
 		if up := rt.panelUpstream(); up != "" {
 			proxyTo(w, r, up)
-			return
+			return "dash"
 		}
 	}
 
@@ -120,9 +143,10 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if app == "" {
 		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
-		return
+		return ""
 	}
 	rt.proxyToApp(w, r, app)
+	return app
 }
 
 // proxyToApp forwards the request to the named app's live container.
@@ -171,12 +195,14 @@ func (rt *Router) subFor(host string) (string, bool) {
 
 // ServeHTTPOnly runs the router over plain HTTP (for local testing, no TLS).
 func (rt *Router) ServeHTTPOnly(addr string) error {
+	rt.startMetrics()
 	return http.ListenAndServe(addr, rt)
 }
 
 // ServeTLS runs :443 with Let's Encrypt certs and :80 for ACME challenges +
 // an HTTP→HTTPS redirect.
 func (rt *Router) ServeTLS(cacheDir string) error {
+	rt.startMetrics()
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
 		Cache:  autocert.DirCache(cacheDir),

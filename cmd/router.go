@@ -13,7 +13,7 @@ import (
 )
 
 func newRouterCmd() *cobra.Command {
-	var domain, httpAddr, panel, panelPointer, siteApp, domainsFile string
+	var domain, httpAddr, panel, panelPointer, siteApp, domainsFile, metricsFile string
 	cmd := &cobra.Command{
 		Use:   "router",
 		Short: "Run the edge router (subdomain routing + auto HTTPS) — runs on the server",
@@ -28,6 +28,9 @@ func newRouterCmd() *cobra.Command {
 			if domainsFile == "" {
 				domainsFile = filepath.Join(home, ".skiff", "domains.json")
 			}
+			if metricsFile == "" {
+				metricsFile = filepath.Join(home, ".skiff", "metrics.json")
+			}
 			rt := &router.Router{
 				Domains:      strings.Split(domain, ","),
 				Engine:       docker.Local(),
@@ -35,6 +38,7 @@ func newRouterCmd() *cobra.Command {
 				PanelPointer: panelPointer,
 				SiteApp:      siteApp,
 				DomainsFile:  domainsFile,
+				MetricsFile:  metricsFile,
 			}
 
 			ui.Banner(version)
@@ -62,5 +66,6 @@ func newRouterCmd() *cobra.Command {
 	cmd.Flags().StringVar(&panelPointer, "panel-pointer", "", "file holding the live panel address (default ~/.skiff/panel.addr)")
 	cmd.Flags().StringVar(&siteApp, "site-app", "www", "app that serves the apex + www.<domain>")
 	cmd.Flags().StringVar(&domainsFile, "domains-file", "", "file of custom host→app mappings (default ~/.skiff/domains.json)")
+	cmd.Flags().StringVar(&metricsFile, "metrics-file", "", "file to snapshot request metrics to (default ~/.skiff/metrics.json)")
 	return cmd
 }

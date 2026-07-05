@@ -5,6 +5,7 @@ import {
   LayoutGrid,
   Rocket,
   ScrollText,
+  Activity,
   Server,
   Globe,
   KeyRound,
@@ -40,6 +41,7 @@ const SECTIONS: NavItem[][] = [
     { to: '/', label: 'Projects', icon: LayoutGrid, end: true },
     { to: '/deployments', label: 'Deployments', icon: Rocket },
     { to: '/logs', label: 'Logs', icon: ScrollText },
+    { to: '/analytics', label: 'Analytics', icon: Activity },
   ],
   [
     { to: '/server', label: 'Server', icon: Server },

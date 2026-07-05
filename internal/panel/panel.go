@@ -81,6 +81,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
+	mux.HandleFunc("/api/analytics", p.protected(p.handleAnalytics))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
