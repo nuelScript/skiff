@@ -105,7 +105,7 @@ export default function ProjectDetailPage() {
       </header>
 
       <Tabs defaultValue="overview">
-        <TabsList>
+        <TabsList variant="line" className="mb-6 w-full justify-start gap-6 border-b border-white/8">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="deployments">Deployments</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
@@ -115,49 +115,106 @@ export default function ProjectDetailPage() {
         {/* Overview */}
         <TabsContent value="overview" className="pb-[46vh]">
           <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-            <section className="rounded-xl border border-white/8 p-5">
-              <h2 className="text-muted-foreground mb-4 font-mono text-[11px] tracking-wider uppercase">
-                Production Deployment
-              </h2>
+            <section className="rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-muted-foreground font-mono text-[11px] tracking-wider uppercase">
+                  Production Deployment
+                </h2>
+                {latest && (
+                  <span
+                    className={
+                      'font-mono text-[10px] tracking-wider uppercase ' +
+                      (latest.status === 'live'
+                        ? 'text-emerald-300'
+                        : latest.status === 'failed'
+                          ? 'text-rose-300'
+                          : 'text-amber-300')
+                    }
+                  >
+                    {latest.status === 'live' ? 'Ready' : latest.status}
+                  </span>
+                )}
+              </div>
               {latest ? (
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(latest.status)} />
-                    <span className="font-mono text-sm">{latest.commit || '—'}</span>
-                    <span className="text-muted-foreground font-mono text-xs">
-                      {latest.trigger} · {rel(latest.started)}
-                    </span>
-                  </div>
-                  {latest.message && <p className="text-sm">{latest.message}</p>}
+                <div className="flex flex-col gap-4">
                   <a
                     href={project.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-muted-foreground hover:text-foreground w-fit font-mono text-xs transition-colors"
+                    className="group hover:text-foreground flex w-fit items-center gap-2 font-mono text-[15px] font-medium transition-colors"
                   >
+                    <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(latest.status)} />
                     {host}
+                    <ExternalLink className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
                   </a>
+                  <div className="flex flex-col gap-1.5 border-t border-white/5 pt-4">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {project.repo ? (
+                        <a
+                          href={'https://github.com/' + project.repo + '/commit/' + latest.commit}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-sm hover:underline"
+                        >
+                          {latest.commit || '—'}
+                        </a>
+                      ) : (
+                        <span className="font-mono text-sm">{latest.commit || '—'}</span>
+                      )}
+                      <span className="text-muted-foreground font-mono text-xs">
+                        on {project.branch || 'main'} · {latest.trigger} · {rel(latest.started)}
+                      </span>
+                    </div>
+                    {latest.message && <p className="text-foreground/90 text-sm">{latest.message}</p>}
+                  </div>
                 </div>
               ) : (
-                <p className="text-muted-foreground text-sm">No deployments yet.</p>
+                <p className="text-muted-foreground text-sm">
+                  No deployments yet — push to{' '}
+                  <span className="font-mono">{project.branch || 'main'}</span> or hit Redeploy.
+                </p>
               )}
             </section>
 
-            <section className="rounded-xl border border-white/8 p-5">
-              <h2 className="text-muted-foreground mb-4 font-mono text-[11px] tracking-wider uppercase">
+            <section className="rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-5">
+              <h2 className="text-muted-foreground mb-2 font-mono text-[11px] tracking-wider uppercase">
                 Source
               </h2>
-              <dl className="flex flex-col gap-2.5 text-sm">
-                <Row label="Repository" value={project.repo || '—'} mono />
-                <Row label="Branch" value={project.branch || 'main'} mono />
-                <Row label="Root directory" value={project.rootDir || '/'} mono />
-                <Row label="Port" value={project.port} mono />
-                <Row label="Auto-deploy" value={project.auto ? 'On' : 'Off'} />
+              <dl className="divide-y divide-white/5">
+                <Row label="Repository">
+                  {project.repo ? (
+                    <a
+                      href={'https://github.com/' + project.repo}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-xs hover:underline"
+                    >
+                      {project.repo}
+                    </a>
+                  ) : (
+                    <span className="font-mono text-xs">—</span>
+                  )}
+                </Row>
+                <Row label="Branch">
+                  <span className="font-mono text-xs">{project.branch || 'main'}</span>
+                </Row>
+                <Row label="Root directory">
+                  <span className="font-mono text-xs">{project.rootDir || '/'}</span>
+                </Row>
+                <Row label="Port">
+                  <span className="font-mono text-xs">{project.port}</span>
+                </Row>
+                <Row label="Auto-deploy">
+                  <span
+                    className={
+                      'font-mono text-xs ' +
+                      (project.auto ? 'text-emerald-300' : 'text-muted-foreground')
+                    }
+                  >
+                    {project.auto ? 'On' : 'Off'}
+                  </span>
+                </Row>
               </dl>
-              <p className="text-muted-foreground mt-4 text-xs">
-                Push to <span className="font-mono">{project.branch || 'main'}</span> to update, or
-                Redeploy the latest commit.
-              </p>
             </section>
           </div>
         </TabsContent>
@@ -220,11 +277,11 @@ export default function ProjectDetailPage() {
   )
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-4 py-2.5 text-sm first:pt-0 last:pb-0">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className={'truncate ' + (mono ? 'font-mono text-xs' : '')}>{value}</dd>
+      <dd className="truncate text-right">{children}</dd>
     </div>
   )
 }
