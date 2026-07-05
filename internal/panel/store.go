@@ -18,6 +18,7 @@ type Source struct {
 	Port     string `json:"port"`
 	CloneURL string `json:"cloneUrl"`
 	Auto     bool   `json:"auto"`
+	Parent   string `json:"parent,omitempty"` // set on preview environments: the production app they branch from
 }
 
 // Deploy is one build/release, with a persisted log the dashboard can replay.
@@ -54,24 +55,24 @@ func logPath(app, id string) string {
 	return filepath.Join(skiffDir(), "deploys", sanitizeName(app), sanitizeID(id)+".log")
 }
 
-const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto`
+const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent`
 
 func putSource(s Source) error {
 	_, err := sqlDB.Exec(`
-		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto)
-		VALUES(?,?,?,?,?,?,?,?)
+		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto,parent)
+		VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(app) DO UPDATE SET
 			team=excluded.team, repo=excluded.repo, branch=excluded.branch,
 			root_dir=excluded.root_dir, port=excluded.port,
-			clone_url=excluded.clone_url, auto=excluded.auto`,
-		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto))
+			clone_url=excluded.clone_url, auto=excluded.auto, parent=excluded.parent`,
+		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent)
 	return err
 }
 
 func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	var s Source
 	var auto int
-	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto) != nil {
+	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent) != nil {
 		return Source{}, false
 	}
 	s.Auto = auto != 0

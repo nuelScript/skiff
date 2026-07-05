@@ -23,6 +23,16 @@ export type ProjectDetail = {
   port: string
   auto: boolean
   deploys: Deploy[]
+  previews: Preview[]
+}
+
+export type Preview = {
+  name: string
+  branch: string
+  url: string
+  state: string
+  status: string
+  updated: number
 }
 
 export type ProjectSettings = {

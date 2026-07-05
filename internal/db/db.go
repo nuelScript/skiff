@@ -39,6 +39,7 @@ func Open() (*sql.DB, error) {
 // migrations are additive and safe to re-run; each fails harmlessly once applied.
 var migrations = []string{
 	`ALTER TABLE deploys ADD COLUMN message TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN parent TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -76,7 +77,8 @@ CREATE TABLE IF NOT EXISTS sources (
   root_dir  TEXT NOT NULL DEFAULT '',
   port      TEXT NOT NULL DEFAULT '3000',
   clone_url TEXT NOT NULL DEFAULT '',
-  auto      INTEGER NOT NULL DEFAULT 0
+  auto      INTEGER NOT NULL DEFAULT 0,
+  parent    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

@@ -79,6 +79,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
 	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
+	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
@@ -358,6 +359,9 @@ func (p *Panel) handleApps(w http.ResponseWriter, r *http.Request) {
 		if !ok || src.Team != team {
 			continue // only this team's projects
 		}
+		if src.Parent != "" {
+			continue // previews live under their project, not the grid
+		}
 		av := appView{
 			Name:   a.Name,
 			State:  p.eng.State(a.Container),
@@ -385,8 +389,9 @@ type projectView struct {
 	Branch  string   `json:"branch"`
 	RootDir string   `json:"rootDir"`
 	Port    string   `json:"port"`
-	Auto    bool     `json:"auto"`
-	Deploys []Deploy `json:"deploys"`
+	Auto     bool          `json:"auto"`
+	Deploys  []Deploy      `json:"deploys"`
+	Previews []previewView `json:"previews"`
 }
 
 // handleProject serves one project's detail (GET) or updates its settings (PUT):
@@ -412,7 +417,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, Deploys: deploys,
+			Auto: src.Auto, Deploys: deploys, Previews: p.buildPreviews(app),
 		})
 	case http.MethodPut:
 		var body struct {
@@ -576,6 +581,7 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = registry.Delete(name)
 	deleteSource(name)
+	p.removeAppImages(name) // free the build layers; nothing left to roll back to
 	w.WriteHeader(http.StatusNoContent)
 }
 

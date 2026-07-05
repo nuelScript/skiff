@@ -5,6 +5,7 @@ import {
   logsUrl,
   redeployUrl,
   rollbackUrl,
+  previewUrl,
   openStream,
 } from '@/services/stream.service'
 import { useCallback, useRef, useState } from 'react'
@@ -72,6 +73,12 @@ export function useConsole(onDeployed: () => void) {
     [start, onDeployed],
   )
 
+  const preview = useCallback(
+    (app: string, branch: string) =>
+      start('Preview · ' + branch, previewUrl(app, branch), onDeployed),
+    [start, onDeployed],
+  )
+
   const showLogs = useCallback(
     (name: string) => start('Logs: ' + name, logsUrl(name)),
     [start],
@@ -82,5 +89,5 @@ export function useConsole(onDeployed: () => void) {
     [start],
   )
 
-  return { stream, close, deploy, deployRepo, redeploy, rollback, showLogs, showBuildLog }
+  return { stream, close, deploy, deployRepo, redeploy, rollback, preview, showLogs, showBuildLog }
 }

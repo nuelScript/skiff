@@ -50,3 +50,6 @@ export const redeployUrl = (name: string) => `/api/redeploy?app=${q(name)}`
 
 export const rollbackUrl = (app: string, id: string) =>
   `/api/rollback?app=${q(app)}&id=${q(id)}`
+
+export const previewUrl = (app: string, branch: string) =>
+  `/api/preview?app=${q(app)}&branch=${q(branch)}`
