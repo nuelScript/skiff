@@ -6,6 +6,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -29,10 +30,42 @@ type Router struct {
 	// onto the freshly-built process, so the router itself never restarts.
 	PanelPointer string
 	SiteApp      string // app that serves the apex + www.<domain>
+	// DomainsFile, when set, is a JSON file of custom host→app mappings the panel
+	// maintains. The router reads it live (cached briefly) so domains can be added
+	// or removed without restarting the edge.
+	DomainsFile string
 
-	mu          sync.Mutex
-	cachedPanel string
-	cachedAt    time.Time
+	mu            sync.Mutex
+	cachedPanel   string
+	cachedAt      time.Time
+	cachedDomains map[string]string
+	cachedDomAt   time.Time
+}
+
+// customDomains returns the current host→app map from DomainsFile, cached for a
+// couple of seconds to avoid a read per request.
+func (rt *Router) customDomains() map[string]string {
+	if rt.DomainsFile == "" {
+		return nil
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.cachedDomains != nil && time.Since(rt.cachedDomAt) < 2*time.Second {
+		return rt.cachedDomains
+	}
+	m := map[string]string{}
+	if b, err := os.ReadFile(rt.DomainsFile); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	rt.cachedDomains, rt.cachedDomAt = m, time.Now()
+	return m
+}
+
+func hostOnly(host string) string {
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		return host[:i]
+	}
+	return host
 }
 
 // panelUpstream resolves where dash.<domain> should proxy to. When a pointer
@@ -58,6 +91,12 @@ func (rt *Router) panelUpstream() string {
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// A custom domain pointed at one of the apps wins over subdomain routing.
+	if app, ok := rt.customDomains()[hostOnly(r.Host)]; ok {
+		rt.proxyToApp(w, r, app)
+		return
+	}
+
 	sub, ok := rt.subFor(r.Host)
 	if !ok {
 		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
@@ -83,7 +122,11 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
 		return
 	}
+	rt.proxyToApp(w, r, app)
+}
 
+// proxyToApp forwards the request to the named app's live container.
+func (rt *Router) proxyToApp(w http.ResponseWriter, r *http.Request, app string) {
 	routes, err := rt.Engine.Routes()
 	if err != nil {
 		http.Error(w, "skiff: "+err.Error(), http.StatusInternalServerError)
@@ -142,6 +185,9 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 				if host == d || strings.HasSuffix(host, "."+d) {
 					return nil
 				}
+			}
+			if _, ok := rt.customDomains()[host]; ok {
+				return nil // a registered custom domain — allow its cert
 			}
 			return fmt.Errorf("host not allowed: %s", host)
 		},

@@ -6,6 +6,7 @@ export const queryKeys = {
   project: (name: string) => ['project', name] as const,
   system: ['system'] as const,
   server: ['server'] as const,
+  domains: ['domains'] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
   deploysAll: ['deploys', 'all'] as const,
   github: {
