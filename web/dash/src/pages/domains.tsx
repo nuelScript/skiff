@@ -14,6 +14,13 @@ import {
 import { useApps } from '@/hooks/use-apps'
 import { useDomains } from '@/hooks/use-domains'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { App, Domain } from '@/services/api.service'
 
 const targetHost = (apps: App[], app: string): string => {
@@ -364,21 +371,18 @@ function AddComposer({
           className="h-9 min-w-0 flex-1 rounded-[6px] border border-white/12 bg-black/30 px-3 font-mono text-sm outline-none placeholder:text-white/25 focus-visible:border-white/30"
         />
         <span className="text-muted-foreground hidden shrink-0 text-xs sm:block">→</span>
-        <div className="relative shrink-0 sm:w-44">
-          <select
-            value={chosenApp}
-            onChange={(e) => onApp(e.target.value)}
-            className="h-9 w-full cursor-pointer appearance-none rounded-[6px] border border-white/12 bg-black/30 pr-8 pl-3 text-sm outline-none focus-visible:border-white/30"
-          >
-            {apps.length === 0 && <option value="">No apps yet</option>}
+        <Select value={chosenApp} onValueChange={onApp} disabled={apps.length === 0}>
+          <SelectTrigger className="shrink-0 cursor-pointer bg-black/30 sm:w-44">
+            <SelectValue placeholder="Select app" />
+          </SelectTrigger>
+          <SelectContent>
             {apps.map((a) => (
-              <option key={a.name} value={a.name} className="bg-neutral-900">
+              <SelectItem key={a.name} value={a.name} className="font-mono">
                 {a.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-          <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-2.5 h-4 w-4 -translate-y-1/2" />
-        </div>
+          </SelectContent>
+        </Select>
         <Button type="submit" size="sm" disabled={busy || !host.trim() || !chosenApp} className="shrink-0">
           Add
         </Button>
