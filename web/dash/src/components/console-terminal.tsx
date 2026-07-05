@@ -3,9 +3,11 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
-// A live shell inside the app's container, over a WebSocket to /api/exec.
-export function ConsoleTerminal({ app }: { app: string }) {
+// A live shell over a WebSocket. Defaults to an app container's console
+// (/api/exec); pass `path` to point it elsewhere (e.g. a database shell).
+export function ConsoleTerminal({ app, path }: { app?: string; path?: string }) {
   const ref = useRef<HTMLDivElement>(null)
+  const wsPath = path ?? `/api/exec?app=${encodeURIComponent(app ?? '')}`
 
   useEffect(() => {
     const el = ref.current
@@ -35,7 +37,7 @@ export function ConsoleTerminal({ app }: { app: string }) {
     }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${location.host}/api/exec?app=${encodeURIComponent(app)}`)
+    const ws = new WebSocket(`${proto}//${location.host}${wsPath}`)
     ws.binaryType = 'arraybuffer'
 
     ws.onopen = () => {
@@ -71,7 +73,7 @@ export function ConsoleTerminal({ app }: { app: string }) {
       ws.close()
       term.dispose()
     }
-  }, [app])
+  }, [wsPath])
 
   return <div ref={ref} className="h-full w-full" />
 }

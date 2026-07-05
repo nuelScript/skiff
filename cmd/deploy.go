@@ -143,6 +143,12 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 	}
 
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
+	// Join the shared network so the app can reach managed databases by name.
+	// If it can't be created, fall back to no network rather than failing the deploy.
+	network := ""
+	if eng.EnsureNetwork("skiff") == nil {
+		network = "skiff"
+	}
 	ui.Step("Starting new version")
 	hostPort, err := eng.Run(docker.RunSpec{
 		Name:          container,
@@ -153,6 +159,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 		CPU:           cfg.Resources.CPU,
 		Env:           runtimeEnv,
 		Public:        eng.IsRemote(),
+		Network:       network,
 	})
 	if err != nil {
 		ui.Fail("Couldn't start container")

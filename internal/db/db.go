@@ -118,4 +118,23 @@ CREATE TABLE IF NOT EXISTS sessions (
   team_id TEXT NOT NULL DEFAULT '',
   created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS databases (
+  id        TEXT PRIMARY KEY,
+  team      TEXT NOT NULL,
+  name      TEXT NOT NULL,
+  engine    TEXT NOT NULL,
+  container TEXT NOT NULL,
+  host      TEXT NOT NULL,
+  port      INTEGER NOT NULL,
+  username  TEXT NOT NULL DEFAULT '',
+  password  TEXT NOT NULL DEFAULT '',
+  dbname    TEXT NOT NULL DEFAULT '',
+  created   INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS db_attachments (
+  db_id TEXT NOT NULL,
+  app   TEXT NOT NULL,
+  var   TEXT NOT NULL,
+  PRIMARY KEY (db_id, app)
+);
 `

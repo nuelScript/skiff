@@ -8,6 +8,7 @@ import {
   Activity,
   Server,
   Globe,
+  Database,
   KeyRound,
   Settings,
   Search,
@@ -46,6 +47,7 @@ const SECTIONS: NavItem[][] = [
   [
     { to: '/server', label: 'Server', icon: Server },
     { to: '/domains', label: 'Domains', icon: Globe },
+    { to: '/databases', label: 'Databases', icon: Database },
     { to: '/env', label: 'Environment', icon: KeyRound },
   ],
   [{ to: '/settings', label: 'Settings', icon: Settings }],

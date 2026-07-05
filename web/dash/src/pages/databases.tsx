@@ -1,0 +1,315 @@
+import { useMemo, useState, type FormEvent } from 'react'
+import { Database, Plus, Trash2, X, Copy, Check, TerminalSquare, Link2 } from 'lucide-react'
+import { useApps } from '@/hooks/use-apps'
+import { useDatabases } from '@/hooks/use-databases'
+import { ConsoleTerminal } from '@/components/console-terminal'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import type { Database as Db, DbEngine } from '@/services/api.service'
+
+const ENGINES: { value: DbEngine; label: string; dot: string; accent: string }[] = [
+  { value: 'postgres', label: 'PostgreSQL', dot: 'bg-sky-400', accent: 'text-sky-300' },
+  { value: 'redis', label: 'Redis', dot: 'bg-rose-400', accent: 'text-rose-300' },
+]
+
+const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[0]
+
+export default function DatabasesPage() {
+  const { apps } = useApps()
+  const { databases, create, remove, attach, detach } = useDatabases()
+
+  const [adding, setAdding] = useState(false)
+  const [engine, setEngine] = useState<DbEngine>('postgres')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!name.trim()) return
+    setBusy(true)
+    try {
+      await create(engine, name.trim())
+      setName('')
+      setAdding(false)
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: string } })?.response?.data
+      setError(typeof r === 'string' && r ? r.trim() : 'Could not create that database.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="px-8 py-8">
+      <header className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Databases</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Managed data stores your apps reach over a private network.
+          </p>
+        </div>
+        {databases.length > 0 && !adding && (
+          <Button size="sm" onClick={() => setAdding(true)} className="shrink-0">
+            <Plus className="h-4 w-4" />
+            New database
+          </Button>
+        )}
+      </header>
+
+      {(adding || databases.length === 0) && (
+        <form
+          onSubmit={submit}
+          className="animate-rise rounded-xl border border-white/10 bg-linear-to-b from-white/3 to-transparent p-4"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium">New database</h2>
+            {databases.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAdding(false)
+                  setName('')
+                  setError('')
+                }}
+                className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select value={engine} onValueChange={(v) => setEngine(v as DbEngine)}>
+              <SelectTrigger className="shrink-0 cursor-pointer bg-black/30 sm:w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ENGINES.map((e) => (
+                  <SelectItem key={e.value} value={e.value}>
+                    <span className="flex items-center gap-2">
+                      <span className={'h-1.5 w-1.5 rounded-full ' + e.dot} />
+                      {e.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setError('')
+              }}
+              autoFocus
+              placeholder="name (e.g. main)"
+              className="h-9 min-w-0 flex-1 rounded-[6px] border border-white/12 bg-black/30 px-3 font-mono text-sm outline-none placeholder:text-white/25 focus-visible:border-white/30"
+            />
+            <Button type="submit" size="sm" disabled={busy || !name.trim()} className="shrink-0">
+              {busy ? 'Creating…' : 'Create'}
+            </Button>
+          </div>
+          {error ? (
+            <p className="mt-2 text-xs text-rose-300">{error}</p>
+          ) : (
+            <p className="text-muted-foreground mt-2 text-xs">
+              Provisions a container with a persistent volume; attach it to an app to inject its connection URL.
+            </p>
+          )}
+        </form>
+      )}
+
+      {databases.length > 0 && (
+        <div className="mt-6 space-y-3">
+          {databases.map((db, i) => (
+            <DatabaseCard
+              key={db.id}
+              db={db}
+              apps={apps.map((a) => a.name)}
+              onAttach={(app) => attach(db.id, app)}
+              onDetach={(app) => detach(db.id, app)}
+              onRemove={() => {
+                if (confirm(`Delete ${db.name}? This destroys its data.`)) remove(db.id)
+              }}
+              delay={i * 40}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DatabaseCard({
+  db,
+  apps,
+  onAttach,
+  onDetach,
+  onRemove,
+  delay,
+}: {
+  db: Db
+  apps: string[]
+  onAttach: (app: string) => void
+  onDetach: (app: string) => void
+  onRemove: () => void
+  delay: number
+}) {
+  const [shell, setShell] = useState(false)
+  const meta = engineMeta(db.engine)
+  const running = db.state === 'running'
+  const unattached = useMemo(() => apps.filter((a) => !db.attached.includes(a)), [apps, db.attached])
+
+  return (
+    <div
+      className="animate-rise rounded-xl border border-white/8 bg-linear-to-b from-white/2 to-transparent p-4"
+      style={{ animationDelay: delay + 'ms' }}
+    >
+      <div className="flex items-center gap-3.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-linear-to-br from-white/[0.07] to-transparent">
+          <Database className="h-4 w-4 text-white/55" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-mono text-sm font-medium">{db.name}</p>
+            <span className={'flex items-center gap-1.5 text-[11px] ' + meta.accent}>
+              <span className={'h-1.5 w-1.5 rounded-full ' + meta.dot} />
+              {meta.label}
+            </span>
+          </div>
+          <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
+            {db.host}:{db.port}
+          </p>
+        </div>
+        <span
+          className={
+            'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ' +
+            (running
+              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+              : 'border-amber-400/20 bg-amber-400/10 text-amber-300')
+          }
+        >
+          <span
+            className={'h-1.5 w-1.5 rounded-full ' + (running ? 'bg-emerald-400' : 'pulse-dot bg-amber-400')}
+          />
+          {running ? 'Running' : db.state === 'missing' ? 'Stopped' : db.state}
+        </span>
+        <button
+          onClick={() => setShell(true)}
+          disabled={!running}
+          className="text-muted-foreground hover:border-white/25 hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition disabled:opacity-40"
+        >
+          <TerminalSquare className="h-3.5 w-3.5" />
+          Shell
+        </button>
+        <button
+          onClick={onRemove}
+          className="text-muted-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2 py-1 text-xs transition hover:border-rose-500/30 hover:text-rose-300"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-3 border-t border-white/5 pt-3.5 pl-12.5">
+        <div>
+          <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">
+            Connection URL
+          </p>
+          <Copyable text={db.url} />
+        </div>
+
+        <div>
+          <p className="text-muted-foreground mb-1.5 font-mono text-[10px] tracking-wider uppercase">
+            Attached apps
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {db.attached.map((app) => (
+              <span
+                key={app}
+                className="flex items-center gap-1.5 rounded-full border border-white/12 bg-white/2 py-1 pr-1 pl-2.5 font-mono text-xs"
+              >
+                {app}
+                <button
+                  onClick={() => onDetach(app)}
+                  className="text-muted-foreground hover:text-rose-300"
+                  title={`Detach ${app}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            {unattached.length > 0 && (
+              <Select value="" onValueChange={onAttach}>
+                <SelectTrigger
+                  size="sm"
+                  className="text-muted-foreground h-7 w-auto gap-1.5 border-dashed bg-transparent"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  <span>Attach app</span>
+                </SelectTrigger>
+                <SelectContent>
+                  {unattached.map((a) => (
+                    <SelectItem key={a} value={a} className="font-mono">
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {db.attached.length === 0 && unattached.length === 0 && (
+              <span className="text-muted-foreground text-xs">Deploy an app first, then attach it here.</span>
+            )}
+          </div>
+          {db.attached.length > 0 && (
+            <p className="text-muted-foreground mt-2 text-[11px]">
+              Redeploy an attached app for the connection URL to take effect.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Dialog open={shell} onOpenChange={setShell}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm">
+              {db.name} · {meta.label} shell
+            </DialogTitle>
+          </DialogHeader>
+          <div className="h-[55vh] overflow-hidden rounded-lg border border-white/10 bg-[#09090b] p-2">
+            {shell && <ConsoleTerminal path={`/api/db/exec?db=${encodeURIComponent(db.id)}`} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function Copyable({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard?.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }}
+      className="group/copy hover:border-white/20 flex w-full items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 text-left transition"
+      title="Copy"
+    >
+      <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">{text}</span>
+      {copied ? (
+        <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+      ) : (
+        <Copy className="text-muted-foreground h-3.5 w-3.5 shrink-0 opacity-50 transition group-hover/copy:opacity-90" />
+      )}
+    </button>
+  )
+}

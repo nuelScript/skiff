@@ -107,6 +107,7 @@ func deleteSource(app string) {
 	_, _ = sqlDB.Exec(`DELETE FROM sources WHERE app=?`, app)
 	_, _ = sqlDB.Exec(`DELETE FROM deploys WHERE app=?`, app)
 	_, _ = sqlDB.Exec(`DELETE FROM env_vars WHERE app=?`, app)
+	_, _ = sqlDB.Exec(`DELETE FROM db_attachments WHERE app=?`, app)
 }
 
 // sourcesForRepo returns auto-deploy sources matching a pushed repo + branch.

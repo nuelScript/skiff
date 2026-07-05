@@ -14,7 +14,6 @@ import (
 
 // handleExec opens an interactive shell inside an app's container over a
 // WebSocket — a browser terminal for running migrations, inspecting state, etc.
-// A PTY is used so docker sees a real TTY (line editing, colours, curses apps).
 func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	if !p.canAccess(r, app) {
@@ -35,7 +34,14 @@ func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "console isn't available for remote apps yet", http.StatusBadRequest)
 		return
 	}
+	p.serveContainerShell(w, r, a.Container,
+		[]string{"sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"})
+}
 
+// serveContainerShell bridges a WebSocket to a PTY running `docker exec -it
+// <container> <cmd...>`. A real TTY gives line editing, colours, and curses
+// apps (psql, redis-cli, migrations).
+func (p *Panel) serveContainerShell(w http.ResponseWriter, r *http.Request, container string, shellArgs []string) {
 	c, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return
@@ -47,10 +53,7 @@ func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Prefer bash, fall back to sh — whichever the image ships. Check bash exists
-	// before exec-ing it, since a failed exec would kill the shell outright.
-	cmd := exec.CommandContext(ctx, "docker", "exec", "-it", a.Container,
-		"sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh")
+	cmd := exec.CommandContext(ctx, "docker", append([]string{"exec", "-it", container}, shellArgs...)...)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		_ = c.Write(ctx, websocket.MessageText, []byte("\r\n\x1b[31mcouldn't open a shell in this container\x1b[0m\r\n"))
@@ -58,7 +61,6 @@ func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = ptmx.Close() }()
 
-	// Container output → browser.
 	go func() {
 		buf := make([]byte, 8192)
 		for {
@@ -76,7 +78,6 @@ func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Browser input (keystrokes + resize) → container.
 	var msg struct {
 		T string `json:"t"`
 		D string `json:"d"`

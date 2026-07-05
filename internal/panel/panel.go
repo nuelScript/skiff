@@ -60,6 +60,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		selfBranch:  branch,
 	}
 	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
+	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
 	return p, nil
 }
 
@@ -108,6 +109,9 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
 	mux.HandleFunc("/api/cancel", p.protected(p.handleCancel))
 	mux.HandleFunc("/api/exec", p.protected(p.handleExec))
+	mux.HandleFunc("/api/databases", p.protected(p.handleDatabases))
+	mux.HandleFunc("/api/databases/attach", p.protected(p.handleDatabaseAttach))
+	mux.HandleFunc("/api/db/exec", p.protected(p.handleDBShell))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))

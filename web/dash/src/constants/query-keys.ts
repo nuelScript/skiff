@@ -7,6 +7,7 @@ export const queryKeys = {
   system: ['system'] as const,
   server: ['server'] as const,
   domains: ['domains'] as const,
+  databases: ['databases'] as const,
   analytics: ['analytics'] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
   deploysAll: ['deploys', 'all'] as const,

@@ -91,7 +91,8 @@ type RunSpec struct {
 	Memory        string // optional, e.g. "512m"
 	CPU           string // optional, e.g. "0.5"
 	Env           map[string]string
-	Public        bool // publish on all interfaces instead of 127.0.0.1
+	Public        bool   // publish on all interfaces instead of 127.0.0.1
+	Network       string // optional docker network to join (for reaching managed resources by name)
 }
 
 // Route is a discovered app-to-hostport mapping (from container labels).
@@ -117,6 +118,9 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 	if s.App != "" {
 		args = append(args, "--label", "skiff.app="+s.App, "--label", fmt.Sprintf("skiff.port=%d", s.ContainerPort))
 	}
+	if s.Network != "" {
+		args = append(args, "--network", s.Network)
+	}
 	if s.Memory != "" {
 		args = append(args, "--memory", s.Memory)
 	}
@@ -133,6 +137,59 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 		return 0, fmt.Errorf("docker run failed: %s", firstLine(out))
 	}
 	return e.HostPort(s.Name, s.ContainerPort)
+}
+
+// EnsureNetwork creates a docker network if it doesn't already exist.
+func (e *Engine) EnsureNetwork(name string) error {
+	if e.command("network", "inspect", name).Run() == nil {
+		return nil
+	}
+	if out, err := e.command("network", "create", name).CombinedOutput(); err != nil {
+		return fmt.Errorf("network create failed: %s", firstLine(out))
+	}
+	return nil
+}
+
+// DBRunSpec runs a managed resource (a database) — network-internal, backed by a
+// named volume, and deliberately unlabeled with skiff=1 so the app reaper leaves
+// it alone.
+type DBRunSpec struct {
+	Name    string
+	Image   string
+	Network string
+	Volume  string // named volume for persistence
+	MountAt string // where the volume mounts inside the container
+	Env     map[string]string
+	Cmd     []string          // optional command/args after the image
+	Labels  map[string]string // ownership + kind labels
+}
+
+func (e *Engine) RunDatabase(s DBRunSpec) error {
+	_ = e.command("rm", "-f", s.Name).Run()
+	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped"}
+	for _, k := range sortedKeys(s.Labels) {
+		args = append(args, "--label", k+"="+s.Labels[k])
+	}
+	if s.Network != "" {
+		args = append(args, "--network", s.Network)
+	}
+	if s.Volume != "" && s.MountAt != "" {
+		args = append(args, "-v", s.Volume+":"+s.MountAt)
+	}
+	for _, k := range sortedKeys(s.Env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
+	}
+	args = append(args, s.Image)
+	args = append(args, s.Cmd...)
+	if out, err := e.command(args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("docker run failed: %s", firstLine(out))
+	}
+	return nil
+}
+
+// RemoveVolume deletes a named volume (used when tearing down a database).
+func (e *Engine) RemoveVolume(name string) error {
+	return e.command("volume", "rm", "-f", name).Run()
 }
 
 func (e *Engine) HostPort(name string, containerPort int) (int, error) {
