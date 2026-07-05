@@ -18,7 +18,7 @@ export function SiteFooter() {
           <a href="#features" className="hover:text-fg transition-colors">
             FEATURES
           </a>
-          <span className="text-subtle/70">© SKIFF</span>
+          <span className="text-subtle/70">© 2026 SKIFF</span>
         </div>
       </div>
     </footer>
