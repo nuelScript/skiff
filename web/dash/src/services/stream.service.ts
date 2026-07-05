@@ -47,3 +47,6 @@ export const deployLogUrl = (app: string, id: string) =>
   `/api/deploys/log?app=${q(app)}&id=${q(id)}`
 
 export const redeployUrl = (name: string) => `/api/redeploy?app=${q(name)}`
+
+export const rollbackUrl = (app: string, id: string) =>
+  `/api/rollback?app=${q(app)}&id=${q(id)}`

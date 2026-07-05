@@ -85,6 +85,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	logln("→ building & deploying")
 	self, _ := os.Executable()
 	cmd := exec.Command(self, "deploy", "-c", tomlPath)
+	cmd.Env = append(os.Environ(), "SKIFF_DEPLOY_ID="+id) // retain this build for rollback
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	errc := make(chan error, 1)
@@ -96,6 +97,59 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	if e := <-errc; e != nil {
 		logln("✗ deploy failed")
+		setDeployStatus(src.App, id, "failed")
+		return
+	}
+	logln("✓ live")
+	setDeployStatus(src.App, id, "live")
+}
+
+// runRollback re-runs a retained build image (skiff-<app>:<targetID>) with no
+// rebuild, records it as a new deploy, and writes a persisted log streamed over
+// SSE. commit/message are copied from the target so history reads sensibly.
+func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
+	logp := logPath(src.App, id)
+	if err := os.MkdirAll(filepath.Dir(logp), 0o755); err != nil {
+		return
+	}
+	f, err := os.Create(logp)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	logln := func(s string) { fmt.Fprintln(f, s) }
+
+	addDeploy(Deploy{
+		ID: id, App: src.App, Commit: commit, Message: message,
+		Trigger: "rollback", Status: "building", Started: time.Now().Unix(),
+	})
+
+	// A throwaway config dir carrying the current port/env/secrets for the run.
+	work := filepath.Join(p.buildsDir, sanitizeName(src.App)+"-rollback")
+	_ = os.RemoveAll(work)
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		logln("✗ rollback failed: " + err.Error())
+		setDeployStatus(src.App, id, "failed")
+		return
+	}
+	tomlPath := filepath.Join(work, "skiff.toml")
+	_ = os.WriteFile(tomlPath, []byte(projectToml(src, getEnv(src.App))), 0o644)
+
+	image := fmt.Sprintf("skiff-%s:%s", src.App, targetID)
+	logln("→ rolling back to " + image)
+	self, _ := os.Executable()
+	cmd := exec.Command(self, "rollback", "--image", image, "-c", tomlPath)
+	pr, pw := io.Pipe()
+	cmd.Stdout, cmd.Stderr = pw, pw
+	errc := make(chan error, 1)
+	go func() { errc <- cmd.Run(); _ = pw.Close() }()
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		logln(sc.Text())
+	}
+	if e := <-errc; e != nil {
+		logln("✗ rollback failed")
 		setDeployStatus(src.App, id, "failed")
 		return
 	}

@@ -8,6 +8,7 @@ export type Deploy = {
   trigger: string
   status: string
   started: number
+  rollbackable?: boolean
 }
 
 class DeploysService extends BaseService {

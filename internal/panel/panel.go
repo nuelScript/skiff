@@ -77,6 +77,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/apps", p.protected(p.handleApps))
 	mux.HandleFunc("/api/project", p.protected(p.handleProject))
 	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
+	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
@@ -404,11 +405,13 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 				state = p.eng.State(a.Container)
 			}
 		}
+		deploys := appDeploys(app)
+		p.markRollbackable(app, deploys)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, Deploys: appDeploys(app),
+			Auto: src.Auto, Deploys: deploys,
 		})
 	case http.MethodPut:
 		var body struct {
@@ -451,6 +454,51 @@ func (p *Panel) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	id := newDeployID()
 	go p.runDeploy(src, "", "", "", "redeploy", id)
+	p.tailLog(w, r, app, id)
+}
+
+// markRollbackable flags each past deploy whose build image is still retained
+// and that isn't the version currently serving — i.e. an instant-rollback target.
+func (p *Panel) markRollbackable(app string, deploys []Deploy) {
+	retained := map[string]bool{}
+	for _, t := range p.eng.AppImageTags(app) {
+		retained[t] = true
+	}
+	current := ""
+	for _, d := range deploys {
+		if d.Status == "live" {
+			current = d.ID // newest live deploy = what's running
+			break
+		}
+	}
+	for i := range deploys {
+		deploys[i].Rollbackable = deploys[i].ID != current && retained[deploys[i].ID]
+	}
+}
+
+// handleRollback re-runs a retained past build with no rebuild (instant
+// rollback), recording it as a new deploy and streaming progress over SSE.
+func (p *Panel) handleRollback(w http.ResponseWriter, r *http.Request) {
+	app := sanitizeName(r.URL.Query().Get("app"))
+	target := sanitizeID(r.URL.Query().Get("id"))
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	src, ok := getSource(app)
+	if !ok {
+		http.Error(w, "unknown project", http.StatusNotFound)
+		return
+	}
+	var commit, message string
+	for _, d := range appDeploys(app) {
+		if d.ID == target {
+			commit, message = d.Commit, d.Message
+			break
+		}
+	}
+	id := newDeployID()
+	go p.runRollback(src, target, commit, message, id)
 	p.tailLog(w, r, app, id)
 }
 

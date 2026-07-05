@@ -29,6 +29,9 @@ type Deploy struct {
 	Trigger string `json:"trigger"`
 	Status  string `json:"status"`
 	Started int64  `json:"started"`
+	// Rollbackable is computed (not persisted): the build's image is still
+	// retained and it isn't the version currently serving.
+	Rollbackable bool `json:"rollbackable,omitempty"`
 }
 
 // EnvVar is a project environment variable. Build vars land in the image build

@@ -117,15 +117,23 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 	}
 	ui.Done("Built " + image)
 
-	apps, err := registry.Load()
-	if err != nil {
-		ui.Fail("Couldn't read the app registry")
+	if err := releaseImage(eng, cfg, image, contextDir, timeout, start); err != nil {
 		return err
 	}
-	previous, hadPrevious := apps[cfg.Name]
 
-	// Start the new version alongside the current one, under its own name.
-	// Runtime env = build env + secrets. Secrets never bake into the image.
+	// Retain this build as a rollback point (tagged by deploy id), pruning old ones.
+	retainRollbackImage(eng, cfg.Name, image)
+	return nil
+}
+
+// releaseImage runs an already-built image as a new container alongside the
+// current one, waits for it to become healthy, atomically points the router at
+// it, and retires the previous version. Shared by `deploy` (after a build) and
+// `rollback` (re-running a retained image with no rebuild).
+func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir string, timeout time.Duration, start time.Time) error {
+	// Runtime env = build env + secrets. Secrets never bake into the image, so a
+	// rollback picks up the current secrets/env against the old code image.
+	buildEnv := cfg.Environment(contextDir)
 	runtimeEnv := make(map[string]string, len(buildEnv)+len(cfg.Secrets))
 	for k, v := range buildEnv {
 		runtimeEnv[k] = v
@@ -133,6 +141,13 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 	for k, v := range cfg.Secrets {
 		runtimeEnv[k] = v
 	}
+
+	apps, err := registry.Load()
+	if err != nil {
+		ui.Fail("Couldn't read the app registry")
+		return err
+	}
+	previous, hadPrevious := apps[cfg.Name]
 
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	ui.Step("Starting new version")
@@ -190,6 +205,26 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 		ui.Field("direct", fmt.Sprintf("http://localhost:%d", hostPort))
 	}
 	return nil
+}
+
+// retainImages is how many past builds to keep as instant-rollback points, per app.
+const retainImages = 5
+
+// retainRollbackImage tags the just-built image by its deploy id so a later
+// rollback can re-run it without a rebuild, then prunes builds beyond the last
+// retainImages. Only runs when invoked by the panel (which sets SKIFF_DEPLOY_ID).
+func retainRollbackImage(eng *docker.Engine, app, image string) {
+	did := os.Getenv("SKIFF_DEPLOY_ID")
+	if did == "" {
+		return
+	}
+	if err := eng.Tag(image, fmt.Sprintf("skiff-%s:%s", app, did)); err != nil {
+		return
+	}
+	tags := eng.AppImageTags(app) // newest first
+	for i := retainImages; i < len(tags); i++ {
+		_ = eng.RemoveImage(fmt.Sprintf("skiff-%s:%s", app, tags[i]))
+	}
 }
 
 func shortID() string {

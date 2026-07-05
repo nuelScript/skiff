@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router'
-import { ChevronRight, ExternalLink, RotateCw, GitBranch } from 'lucide-react'
+import { ChevronRight, ExternalLink, RotateCw, RotateCcw, GitBranch } from 'lucide-react'
 import { useProject } from '@/hooks/use-project'
 import { useConsole } from '@/hooks/use-console'
 import { projectsService } from '@/services/api.service'
@@ -226,27 +226,48 @@ export default function ProjectDetailPage() {
               <p className="text-muted-foreground p-8 text-center text-sm">No deployments yet.</p>
             ) : (
               project.deploys.map((d) => (
-                <button
+                <div
                   key={d.id}
-                  onClick={() => term.showBuildLog(project.name, d.id)}
-                  className="hover:bg-white/[0.03] flex w-full items-center gap-4 border-b border-white/5 px-5 py-3.5 text-left transition-colors last:border-0"
+                  className="group flex items-center gap-2 border-b border-white/5 pr-3 transition-colors last:border-0 hover:bg-white/[0.03]"
                 >
-                  <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(d.status)} />
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {d.message || d.commit || d.status}
-                  </span>
-                  {d.commit && (
-                    <span className="text-muted-foreground shrink-0 font-mono text-xs">
-                      {d.commit}
+                  <button
+                    onClick={() => term.showBuildLog(project.name, d.id)}
+                    className="flex min-w-0 flex-1 items-center gap-4 px-5 py-3.5 text-left"
+                  >
+                    <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(d.status)} />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {d.message || d.commit || d.status}
                     </span>
+                    {d.commit && (
+                      <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                        {d.commit}
+                      </span>
+                    )}
+                    <span className="text-muted-foreground w-16 shrink-0 font-mono text-[11px]">
+                      {d.trigger}
+                    </span>
+                    <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
+                      {rel(d.started)}
+                    </span>
+                  </button>
+                  {d.rollbackable && (
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Roll back ${project.name} to this build? It re-runs instantly — no rebuild.`,
+                          )
+                        )
+                          term.rollback(project.name, d.id)
+                      }}
+                      title="Instant rollback to this build"
+                      className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1 rounded-[6px] border border-white/10 px-2 py-1 text-[11px] opacity-0 transition group-hover:opacity-100 hover:border-white/20"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Rollback
+                    </button>
                   )}
-                  <span className="text-muted-foreground w-16 shrink-0 font-mono text-[11px]">
-                    {d.trigger}
-                  </span>
-                  <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
-                    {rel(d.started)}
-                  </span>
-                </button>
+                </div>
               ))
             )}
           </div>
