@@ -22,6 +22,7 @@ export type ProjectDetail = {
   rootDir: string
   port: string
   auto: boolean
+  previewAuto: boolean
   deploys: Deploy[]
   previews: Preview[]
 }
@@ -40,6 +41,7 @@ export type ProjectSettings = {
   rootDir: string
   port: string
   auto: boolean
+  previewAuto: boolean
 }
 
 class ProjectsService extends BaseService {

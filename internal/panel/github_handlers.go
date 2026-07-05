@@ -154,6 +154,17 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 			id := newDeployID()
 			go p.runDeploy(src, "", push.Commit, push.Message, "push", id)
 		}
+		// Auto-create a preview for a push to a branch that isn't a project's
+		// production branch (and doesn't already have one). Opt-in per project.
+		for _, app := range productionAppsForRepo(push.Repo) {
+			if !app.PreviewAuto || app.Branch == "" || app.Branch == push.Branch {
+				continue
+			}
+			if _, exists := getSource(previewName(app.App, push.Branch)); exists {
+				continue // already exists — redeployed by the loop above
+			}
+			p.createPreview(app, push.Branch, push.Commit, push.Message)
+		}
 		// If the push changed Skiff itself, rebuild and hot-swap the control plane.
 		if p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch &&
 			p.pushTouchesSelf(push.Paths) {

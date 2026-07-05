@@ -391,9 +391,10 @@ type projectView struct {
 	Branch  string   `json:"branch"`
 	RootDir string   `json:"rootDir"`
 	Port    string   `json:"port"`
-	Auto     bool          `json:"auto"`
-	Deploys  []Deploy      `json:"deploys"`
-	Previews []previewView `json:"previews"`
+	Auto        bool          `json:"auto"`
+	PreviewAuto bool          `json:"previewAuto"`
+	Deploys     []Deploy      `json:"deploys"`
+	Previews    []previewView `json:"previews"`
 }
 
 // handleProject serves one project's detail (GET) or updates its settings (PUT):
@@ -419,14 +420,16 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, Deploys: deploys, Previews: p.buildPreviews(app),
+			Auto: src.Auto, PreviewAuto: src.PreviewAuto,
+			Deploys: deploys, Previews: p.buildPreviews(app),
 		})
 	case http.MethodPut:
 		var body struct {
-			Branch  string `json:"branch"`
-			RootDir string `json:"rootDir"`
-			Port    string `json:"port"`
-			Auto    bool   `json:"auto"`
+			Branch      string `json:"branch"`
+			RootDir     string `json:"rootDir"`
+			Port        string `json:"port"`
+			Auto        bool   `json:"auto"`
+			PreviewAuto bool   `json:"previewAuto"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		src, ok := getSource(app)
@@ -440,6 +443,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			src.Port = port
 		}
 		src.Auto = body.Auto
+		src.PreviewAuto = body.PreviewAuto
 		_ = putSource(src)
 		w.WriteHeader(http.StatusNoContent)
 	default:

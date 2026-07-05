@@ -105,25 +105,33 @@ func (p *Panel) handleCreatePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a branch is required", http.StatusBadRequest)
 		return
 	}
-	name := previewName(parent, branch)
-	if name == "" || name == parent {
+	name, id, ok := p.createPreview(src, branch, "", fmt.Sprintf("preview of %s", branch))
+	if !ok {
 		http.Error(w, "couldn't derive a preview name from that branch", http.StatusBadRequest)
 		return
 	}
+	p.tailLog(w, r, name, id)
+}
 
-	// Inherit the project's source, on the chosen branch; auto so a push to that
-	// branch redeploys the preview through the normal webhook path.
+// createPreview provisions (or updates) a preview environment for a project's
+// branch — inheriting the project's source, build config and env — and starts
+// its deploy. Shared by the manual endpoint and webhook auto-creation.
+func (p *Panel) createPreview(parent Source, branch, commit, message string) (name, id string, ok bool) {
+	name = previewName(parent.App, branch)
+	if name == "" || name == parent.App {
+		return "", "", false
+	}
+	// auto so a push to that branch redeploys the preview through the webhook path.
 	pv := Source{
-		App: name, Team: src.Team, Repo: src.Repo, Branch: branch,
-		RootDir: src.RootDir, Port: src.Port, CloneURL: src.CloneURL,
-		Auto: true, Parent: parent,
+		App: name, Team: parent.Team, Repo: parent.Repo, Branch: branch,
+		RootDir: parent.RootDir, Port: parent.Port, CloneURL: parent.CloneURL,
+		Auto: true, Parent: parent.App,
 	}
 	_ = putSource(pv)
-	_ = setEnv(name, getEnv(parent)) // start from the project's environment
-
-	id := newDeployID()
-	go p.runDeploy(pv, "", "", fmt.Sprintf("preview of %s", branch), "preview", id)
-	p.tailLog(w, r, name, id)
+	_ = setEnv(name, getEnv(parent.App)) // start from the project's environment
+	id = newDeployID()
+	go p.runDeploy(pv, "", commit, message, "preview", id)
+	return name, id, true
 }
 
 // removeAppImages deletes every retained image for an app (used on teardown so

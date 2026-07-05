@@ -40,6 +40,7 @@ func Open() (*sql.DB, error) {
 var migrations = []string{
 	`ALTER TABLE deploys ADD COLUMN message TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN parent TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN preview_auto INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `
@@ -76,9 +77,10 @@ CREATE TABLE IF NOT EXISTS sources (
   branch    TEXT NOT NULL DEFAULT '',
   root_dir  TEXT NOT NULL DEFAULT '',
   port      TEXT NOT NULL DEFAULT '3000',
-  clone_url TEXT NOT NULL DEFAULT '',
-  auto      INTEGER NOT NULL DEFAULT 0,
-  parent    TEXT NOT NULL DEFAULT ''
+  clone_url    TEXT NOT NULL DEFAULT '',
+  auto         INTEGER NOT NULL DEFAULT 0,
+  parent       TEXT NOT NULL DEFAULT '',
+  preview_auto INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

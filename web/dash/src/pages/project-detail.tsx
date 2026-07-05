@@ -307,6 +307,7 @@ export default function ProjectDetailPage() {
             rootDir={project.rootDir}
             port={project.port}
             auto={project.auto}
+            previewAuto={project.previewAuto}
             onSaved={reload}
             onDeleted={() => navigate('/')}
             onRedeploy={() => term.redeploy(project.name)}
@@ -334,6 +335,7 @@ function SettingsForm({
   rootDir,
   port,
   auto,
+  previewAuto,
   onSaved,
   onDeleted,
   onRedeploy,
@@ -343,11 +345,12 @@ function SettingsForm({
   rootDir: string
   port: string
   auto: boolean
+  previewAuto: boolean
   onSaved: () => void
   onDeleted: () => void
   onRedeploy: () => void
 }) {
-  const [form, setForm] = useState({ branch, rootDir, port, auto })
+  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto })
   const [saved, setSaved] = useState(false)
 
   const save = async () => {
@@ -405,7 +408,26 @@ function SettingsForm({
               {form.auto ? 'On' : 'Off'}
             </button>
           </Field>
+          <Field label="Preview deployments">
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, previewAuto: !f.previewAuto }))}
+              className={
+                'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
+                (form.previewAuto
+                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                  : 'border-white/15 text-muted-foreground')
+              }
+            >
+              {form.previewAuto ? 'On' : 'Off'}
+            </button>
+          </Field>
         </div>
+        <p className="text-muted-foreground mt-3 text-xs">
+          With preview deployments on, a push to any branch other than{' '}
+          <span className="text-foreground/70 font-mono">{form.branch || 'main'}</span> spins up its
+          own preview environment automatically.
+        </p>
         <div className="mt-5 flex items-center justify-end gap-3">
           {saved && <span className="text-muted-foreground text-xs">Saved.</span>}
           <Button size="sm" variant="outline" onClick={onRedeploy}>

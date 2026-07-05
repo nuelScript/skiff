@@ -19,7 +19,8 @@ type Source struct {
 	Port     string `json:"port"`
 	CloneURL string `json:"cloneUrl"`
 	Auto     bool   `json:"auto"`
-	Parent   string `json:"parent,omitempty"` // set on preview environments: the production app they branch from
+	Parent   string `json:"parent,omitempty"`      // set on preview environments: the production app they branch from
+	PreviewAuto bool `json:"previewAuto,omitempty"` // auto-create a preview for pushes to other branches
 }
 
 // Deploy is one build/release, with a persisted log the dashboard can replay.
@@ -56,28 +57,46 @@ func logPath(app, id string) string {
 	return filepath.Join(skiffDir(), "deploys", sanitizeName(app), sanitizeID(id)+".log")
 }
 
-const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent`
+const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto`
 
 func putSource(s Source) error {
 	_, err := sqlDB.Exec(`
-		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto,parent)
-		VALUES(?,?,?,?,?,?,?,?,?)
+		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto)
+		VALUES(?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(app) DO UPDATE SET
 			team=excluded.team, repo=excluded.repo, branch=excluded.branch,
 			root_dir=excluded.root_dir, port=excluded.port,
-			clone_url=excluded.clone_url, auto=excluded.auto, parent=excluded.parent`,
-		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent)
+			clone_url=excluded.clone_url, auto=excluded.auto, parent=excluded.parent,
+			preview_auto=excluded.preview_auto`,
+		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent, b2i(s.PreviewAuto))
 	return err
 }
 
 func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	var s Source
-	var auto int
-	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent) != nil {
+	var auto, previewAuto int
+	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent, &previewAuto) != nil {
 		return Source{}, false
 	}
 	s.Auto = auto != 0
+	s.PreviewAuto = previewAuto != 0
 	return s, true
+}
+
+// productionAppsForRepo returns the top-level (non-preview) apps built from a repo.
+func productionAppsForRepo(repo string) []Source {
+	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent=''`, repo)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []Source
+	for rows.Next() {
+		if s, ok := scanSource(rows); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func getSource(app string) (Source, bool) {
