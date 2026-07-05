@@ -2,6 +2,7 @@ package panel
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -12,9 +13,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/github"
+)
+
+// inflight tracks the currently-building deploy per app so a newer deploy can
+// supersede (cancel) an older one still building, rather than racing it.
+type inflightBuild struct {
+	id     string
+	cancel context.CancelFunc
+}
+
+var (
+	inflightMu sync.Mutex
+	inflight   = map[string]inflightBuild{}
 )
 
 // runDeploy clones a source, builds, and releases it, writing a persisted log
@@ -37,6 +51,35 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		ID: id, App: src.App, Commit: shortCommit(commit), Message: message,
 		Trigger: trigger, Status: "building", Started: time.Now().Unix(),
 	})
+
+	// Cancel any in-flight build of the same app, and register this one as the
+	// current build so a later deploy can in turn supersede it.
+	ctx, cancel := context.WithCancel(context.Background())
+	inflightMu.Lock()
+	if prev, ok := inflight[src.App]; ok {
+		prev.cancel()
+	}
+	inflight[src.App] = inflightBuild{id: id, cancel: cancel}
+	inflightMu.Unlock()
+	defer func() {
+		inflightMu.Lock()
+		if b, ok := inflight[src.App]; ok && b.id == id {
+			delete(inflight, src.App)
+		}
+		inflightMu.Unlock()
+		cancel()
+	}()
+	// finish records the terminal status, mapping a cancellation (superseded by a
+	// newer deploy) to "canceled" rather than "failed".
+	finish := func(failMsg string) {
+		if ctx.Err() != nil {
+			logln("✗ superseded by a newer deploy")
+			setDeployStatus(src.App, id, "canceled")
+			return
+		}
+		logln(failMsg)
+		setDeployStatus(src.App, id, "failed")
+	}
 
 	clone := authURL
 	if clone == "" {
@@ -63,11 +106,10 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		args = append(args, "--branch", src.Branch)
 	}
 	args = append(args, clone, work)
-	cl := exec.Command("git", args...)
+	cl := exec.CommandContext(ctx, "git", args...)
 	cl.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if out, e := cl.CombinedOutput(); e != nil {
-		logln("✗ clone failed: " + cloneError(out))
-		setDeployStatus(src.App, id, "failed")
+		finish("✗ clone failed: " + cloneError(out))
 		return
 	}
 
@@ -84,7 +126,11 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 
 	logln("→ building & deploying")
 	self, _ := os.Executable()
-	cmd := exec.Command(self, "deploy", "-c", tomlPath)
+	cmd := exec.CommandContext(ctx, self, "deploy", "-c", tomlPath)
+	// On supersede, interrupt (SIGINT) so the build cancels gracefully rather than
+	// being hard-killed; fall back to a kill if it doesn't exit promptly.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 10 * time.Second
 	cmd.Env = append(os.Environ(), "SKIFF_DEPLOY_ID="+id) // retain this build for rollback
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
@@ -96,8 +142,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		logln(sc.Text())
 	}
 	if e := <-errc; e != nil {
-		logln("✗ deploy failed")
-		setDeployStatus(src.App, id, "failed")
+		finish("✗ deploy failed")
 		return
 	}
 	logln("✓ live")

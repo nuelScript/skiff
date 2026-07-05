@@ -19,7 +19,9 @@ const deployDot = (status: string): string =>
     ? 'bg-emerald-400'
     : status === 'failed'
       ? 'bg-rose-400'
-      : 'bg-amber-400 pulse-dot'
+      : status === 'canceled'
+        ? 'bg-white/25'
+        : 'bg-amber-400 pulse-dot'
 
 const statusLabel = (status: string): string =>
   status === 'live' ? 'Ready' : status.charAt(0).toUpperCase() + status.slice(1)
@@ -34,11 +36,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 const matchesFilter = (d: Deploy, f: Filter): boolean =>
-  f === 'all'
-    ? true
-    : f === 'building'
-      ? d.status !== 'live' && d.status !== 'failed'
-      : d.status === f
+  f === 'all' ? true : d.status === f
 
 export default function DeploymentsPage() {
   const { data: deploys = [], isLoading } = useAllDeploys()

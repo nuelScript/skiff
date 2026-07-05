@@ -31,7 +31,9 @@ const deployDot = (status: string): string =>
     ? 'bg-emerald-400'
     : status === 'failed'
       ? 'bg-rose-400'
-      : 'bg-amber-400 pulse-dot'
+      : status === 'canceled'
+        ? 'bg-white/25'
+        : 'bg-amber-400 pulse-dot'
 
 export default function ProjectDetailPage() {
   const { name = '' } = useParams()
