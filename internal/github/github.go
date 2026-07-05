@@ -1,0 +1,264 @@
+// Package github integrates Skiff with a GitHub App: it drives the app-manifest
+// creation flow, mints installation access tokens, lists installed repos, builds
+// authenticated clone URLs, and verifies incoming webhooks.
+package github
+
+import (
+	"crypto"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Config is the persisted GitHub App: its identity, private key, secrets, and
+// the installation it's bound to. Stored 0600 at ~/.skiff/github.json.
+type Config struct {
+	ID             int64  `json:"id"`
+	Slug           string `json:"slug"`
+	PEM            string `json:"pem"`
+	WebhookSecret  string `json:"webhook_secret"`
+	ClientID       string `json:"client_id"`
+	ClientSecret   string `json:"client_secret"`
+	InstallationID int64  `json:"installation_id"`
+}
+
+func configPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".skiff", "github.json")
+}
+
+func Load() *Config {
+	b, err := os.ReadFile(configPath())
+	if err != nil {
+		return nil
+	}
+	var c Config
+	if json.Unmarshal(b, &c) != nil {
+		return nil
+	}
+	return &c
+}
+
+func (c *Config) Save() error {
+	if err := os.MkdirAll(filepath.Dir(configPath()), 0o755); err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(c, "", "  ")
+	return os.WriteFile(configPath(), b, 0o600)
+}
+
+func (c *Config) Configured() bool { return c != nil && c.ID != 0 }
+func (c *Config) Installed() bool   { return c != nil && c.InstallationID != 0 }
+
+func (c *Config) InstallURL() string {
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.Slug)
+}
+
+// Manifest is the GitHub App manifest posted to github.com/settings/apps/new.
+func Manifest(baseURL, name string) string {
+	m := map[string]any{
+		"name":                name,
+		"url":                 baseURL,
+		"hook_attributes":     map[string]any{"url": baseURL + "/api/github/hook"},
+		"redirect_url":        baseURL + "/api/github/created",
+		"setup_url":           baseURL + "/api/github/installed",
+		"setup_on_update":     true,
+		"public":              false,
+		"default_permissions": map[string]string{"contents": "read", "metadata": "read"},
+		"default_events":      []string{"push"},
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+// ConvertManifest exchanges the temporary manifest code for the app credentials.
+func ConvertManifest(code string) (*Config, error) {
+	req, _ := http.NewRequest(http.MethodPost, "https://api.github.com/app-manifests/"+code+"/conversions", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("manifest conversion failed: %s", strings.TrimSpace(string(b)))
+	}
+	var c Config
+	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// appJWT builds a short-lived RS256 JWT signed with the app's private key.
+func (c *Config) appJWT() (string, error) {
+	block, _ := pem.Decode([]byte(c.PEM))
+	if block == nil {
+		return "", fmt.Errorf("invalid app private key")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		parsed, e2 := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if e2 != nil {
+			return "", err
+		}
+		rk, ok := parsed.(*rsa.PrivateKey)
+		if !ok {
+			return "", fmt.Errorf("unexpected private key type")
+		}
+		key = rk
+	}
+	now := time.Now()
+	header := b64(`{"alg":"RS256","typ":"JWT"}`)
+	claims := b64(fmt.Sprintf(`{"iat":%d,"exp":%d,"iss":%d}`,
+		now.Add(-30*time.Second).Unix(), now.Add(9*time.Minute).Unix(), c.ID))
+	signing := header + "." + claims
+	sum := sha256.Sum256([]byte(signing))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+	if err != nil {
+		return "", err
+	}
+	return signing + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+}
+
+func b64(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+
+var (
+	tokMu  sync.Mutex
+	tokVal string
+	tokExp time.Time
+)
+
+// InstallationToken returns a cached installation access token (1h TTL).
+func (c *Config) InstallationToken() (string, error) {
+	tokMu.Lock()
+	defer tokMu.Unlock()
+	if tokVal != "" && time.Until(tokExp) > time.Minute {
+		return tokVal, nil
+	}
+	jwt, err := c.appJWT()
+	if err != nil {
+		return "", err
+	}
+	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", c.InstallationID)
+	req, _ := http.NewRequest(http.MethodPost, url, nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("installation token failed: %s", strings.TrimSpace(string(b)))
+	}
+	var out struct {
+		Token     string    `json:"token"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	tokVal, tokExp = out.Token, out.ExpiresAt
+	return tokVal, nil
+}
+
+type Repo struct {
+	FullName      string `json:"full_name"`
+	Name          string `json:"name"`
+	Private       bool   `json:"private"`
+	DefaultBranch string `json:"default_branch"`
+	CloneURL      string `json:"clone_url"`
+}
+
+// ListRepos returns every repository the installation can access.
+func (c *Config) ListRepos() ([]Repo, error) {
+	token, err := c.InstallationToken()
+	if err != nil {
+		return nil, err
+	}
+	var repos []Repo
+	for page := 1; page <= 10; page++ {
+		url := fmt.Sprintf("https://api.github.com/installation/repositories?per_page=100&page=%d", page)
+		req, _ := http.NewRequest(http.MethodGet, url, nil)
+		req.Header.Set("Authorization", "token "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		var out struct {
+			Repositories []Repo `json:"repositories"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		repos = append(repos, out.Repositories...)
+		if len(out.Repositories) < 100 {
+			break
+		}
+	}
+	return repos, nil
+}
+
+// CloneURLWithToken returns an authenticated https clone URL for private repos.
+func (c *Config) CloneURLWithToken(cloneURL string) (string, error) {
+	token, err := c.InstallationToken()
+	if err != nil {
+		return "", err
+	}
+	const p = "https://"
+	if strings.HasPrefix(cloneURL, p) {
+		return p + "x-access-token:" + token + "@" + cloneURL[len(p):], nil
+	}
+	return cloneURL, nil
+}
+
+// VerifySignature checks the X-Hub-Signature-256 header against the webhook secret.
+func VerifySignature(secret string, body []byte, sig string) bool {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(want), []byte(sig))
+}
+
+type Push struct {
+	Repo   string // owner/name
+	Branch string
+	Commit string
+}
+
+// ParsePush extracts the repo, branch, and head commit from a push event.
+func ParsePush(body []byte) (Push, bool) {
+	var p struct {
+		Ref        string `json:"ref"`
+		After      string `json:"after"`
+		Deleted    bool   `json:"deleted"`
+		Repository struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
+	}
+	if json.Unmarshal(body, &p) != nil || p.Repository.FullName == "" || p.Deleted {
+		return Push{}, false
+	}
+	return Push{
+		Repo:   p.Repository.FullName,
+		Branch: strings.TrimPrefix(p.Ref, "refs/heads/"),
+		Commit: p.After,
+	}, true
+}

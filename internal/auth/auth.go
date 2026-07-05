@@ -1,0 +1,266 @@
+// Package auth is Skiff's accounts + teams layer: users authenticate, belong to
+// teams, and everything else (projects, env, deploys) is scoped to a team. It's
+// a self-hosted, single-instance model — teams organize collaborators on your
+// own box, not a central SaaS. Backed by SQLite.
+package auth
+
+import (
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	RoleOwner  = "owner"
+	RoleMember = "member"
+)
+
+type User struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Name         string `json:"name"`
+	PasswordHash string `json:"passwordHash,omitempty"`
+	Created      int64  `json:"created"`
+}
+
+type Team struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Slug    string `json:"slug"`
+	Created int64  `json:"created"`
+}
+
+type Invite struct {
+	Token   string `json:"token"`
+	Email   string `json:"email"`
+	TeamID  string `json:"teamId"`
+	Role    string `json:"role"`
+	Created int64  `json:"created"`
+}
+
+type Member struct {
+	User User   `json:"user"`
+	Role string `json:"role"`
+}
+
+type Store struct{ db *sql.DB }
+
+func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+
+func (s *Store) HasUsers() bool {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
+	return n > 0
+}
+
+// CreateUser adds a user with a bcrypt-hashed password and a personal team.
+func (s *Store) CreateUser(email, name, password string) (User, Team, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || len(password) < 8 {
+		return User{}, Team{}, fmt.Errorf("email and an 8+ character password are required")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, Team{}, err
+	}
+	if name == "" {
+		name = strings.SplitN(email, "@", 2)[0]
+	}
+	u := User{ID: id(), Email: email, Name: name, PasswordHash: string(hash), Created: now()}
+	team := Team{ID: id(), Name: name + "'s team", Slug: slug(name), Created: now()}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return User{}, Team{}, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var exists int
+	_ = tx.QueryRow(`SELECT COUNT(*) FROM users WHERE email = ?`, email).Scan(&exists)
+	if exists > 0 {
+		return User{}, Team{}, fmt.Errorf("an account with that email already exists")
+	}
+	if _, err := tx.Exec(`INSERT INTO users(id,email,name,password_hash,created) VALUES(?,?,?,?,?)`,
+		u.ID, u.Email, u.Name, u.PasswordHash, u.Created); err != nil {
+		return User{}, Team{}, err
+	}
+	if _, err := tx.Exec(`INSERT INTO teams(id,name,slug,created) VALUES(?,?,?,?)`,
+		team.ID, team.Name, team.Slug, team.Created); err != nil {
+		return User{}, Team{}, err
+	}
+	if _, err := tx.Exec(`INSERT INTO memberships(user_id,team_id,role) VALUES(?,?,?)`,
+		u.ID, team.ID, RoleOwner); err != nil {
+		return User{}, Team{}, err
+	}
+	return u, team, tx.Commit()
+}
+
+func (s *Store) Authenticate(email, password string) (User, bool) {
+	u, ok := s.UserByEmail(email)
+	if !ok {
+		return User{}, false
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil {
+		return User{}, false
+	}
+	return u, true
+}
+
+func (s *Store) scanUser(row *sql.Row) (User, bool) {
+	var u User
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Created); err != nil {
+		return User{}, false
+	}
+	return u, true
+}
+
+func (s *Store) User(userID string) (User, bool) {
+	return s.scanUser(s.db.QueryRow(
+		`SELECT id,email,name,password_hash,created FROM users WHERE id = ?`, userID))
+}
+
+func (s *Store) UserByEmail(email string) (User, bool) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	return s.scanUser(s.db.QueryRow(
+		`SELECT id,email,name,password_hash,created FROM users WHERE email = ?`, email))
+}
+
+func (s *Store) TeamsForUser(userID string) []Team {
+	rows, err := s.db.Query(`
+		SELECT t.id,t.name,t.slug,t.created FROM teams t
+		JOIN memberships m ON m.team_id = t.id
+		WHERE m.user_id = ? ORDER BY t.created`, userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []Team
+	for rows.Next() {
+		var t Team
+		if rows.Scan(&t.ID, &t.Name, &t.Slug, &t.Created) == nil {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (s *Store) Role(userID, teamID string) (string, bool) {
+	var role string
+	err := s.db.QueryRow(`SELECT role FROM memberships WHERE user_id = ? AND team_id = ?`,
+		userID, teamID).Scan(&role)
+	if err != nil {
+		return "", false
+	}
+	return role, true
+}
+
+func (s *Store) CreateTeam(name, ownerID string) (Team, error) {
+	t := Team{ID: id(), Name: name, Slug: slug(name), Created: now()}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Team{}, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`INSERT INTO teams(id,name,slug,created) VALUES(?,?,?,?)`,
+		t.ID, t.Name, t.Slug, t.Created); err != nil {
+		return Team{}, err
+	}
+	if _, err := tx.Exec(`INSERT INTO memberships(user_id,team_id,role) VALUES(?,?,?)`,
+		ownerID, t.ID, RoleOwner); err != nil {
+		return Team{}, err
+	}
+	return t, tx.Commit()
+}
+
+func (s *Store) Members(teamID string) []Member {
+	rows, err := s.db.Query(`
+		SELECT u.id,u.email,u.name,u.created,m.role FROM users u
+		JOIN memberships m ON m.user_id = u.id
+		WHERE m.team_id = ? ORDER BY m.role, u.created`, teamID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []Member{}
+	for rows.Next() {
+		var m Member
+		if rows.Scan(&m.User.ID, &m.User.Email, &m.User.Name, &m.User.Created, &m.Role) == nil {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func (s *Store) CreateInvite(email, teamID, role string) (Invite, error) {
+	if role != RoleOwner {
+		role = RoleMember
+	}
+	inv := Invite{Token: id() + id(), Email: strings.ToLower(strings.TrimSpace(email)),
+		TeamID: teamID, Role: role, Created: now()}
+	_, err := s.db.Exec(`INSERT INTO invites(token,email,team_id,role,created) VALUES(?,?,?,?,?)`,
+		inv.Token, inv.Email, inv.TeamID, inv.Role, inv.Created)
+	return inv, err
+}
+
+func (s *Store) Invite(token string) (Invite, bool) {
+	var inv Invite
+	err := s.db.QueryRow(`SELECT token,email,team_id,role,created FROM invites WHERE token = ?`, token).
+		Scan(&inv.Token, &inv.Email, &inv.TeamID, &inv.Role, &inv.Created)
+	if err != nil {
+		return Invite{}, false
+	}
+	return inv, true
+}
+
+func (s *Store) AcceptInvite(token, userID string) (Team, error) {
+	inv, ok := s.Invite(token)
+	if !ok {
+		return Team{}, fmt.Errorf("invite not found or already used")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Team{}, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(
+		`INSERT OR IGNORE INTO memberships(user_id,team_id,role) VALUES(?,?,?)`,
+		userID, inv.TeamID, inv.Role); err != nil {
+		return Team{}, err
+	}
+	if _, err := tx.Exec(`DELETE FROM invites WHERE token = ?`, token); err != nil {
+		return Team{}, err
+	}
+	var t Team
+	_ = tx.QueryRow(`SELECT id,name,slug,created FROM teams WHERE id = ?`, inv.TeamID).
+		Scan(&t.ID, &t.Name, &t.Slug, &t.Created)
+	return t, tx.Commit()
+}
+
+func id() string {
+	b := make([]byte, 9)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func now() int64 { return time.Now().Unix() }
+
+func slug(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' || r == '-' || r == '_':
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if s == "" {
+		s = "team"
+	}
+	return s
+}

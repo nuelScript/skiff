@@ -2,6 +2,7 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -193,6 +194,26 @@ func (e *Engine) Routes() ([]Route, error) {
 	return routes, nil
 }
 
+// AppStates maps each skiff app to its container state (running, exited, ...).
+// Running wins when an app has more than one container (e.g. mid-rollout).
+func (e *Engine) AppStates() (map[string]string, error) {
+	out, err := e.command("ps", "-a", "--filter", "label=skiff.app", "--format", `{{.Label "skiff.app"}}|{{.State}}`).Output()
+	if err != nil {
+		return nil, err
+	}
+	states := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		app, state, ok := strings.Cut(line, "|")
+		if !ok || app == "" {
+			continue
+		}
+		if states[app] != "running" {
+			states[app] = state
+		}
+	}
+	return states, nil
+}
+
 func (e *Engine) Stop(container string) error {
 	out, err := e.command("stop", container).CombinedOutput()
 	if err != nil {
@@ -229,6 +250,19 @@ func (e *Engine) StreamLogs(ctx context.Context, container string, out io.Writer
 	cmd.Stdout = out
 	cmd.Stderr = out
 	return cmd.Run()
+}
+
+// StreamLogsSSE follows a container's logs and writes them as SSE data frames,
+// flushing after each line.
+func (e *Engine) StreamLogsSSE(ctx context.Context, container string, w io.Writer, flush func()) {
+	pr, pw := io.Pipe()
+	go func() { _ = e.StreamLogs(ctx, container, pw); pw.Close() }()
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		fmt.Fprintf(w, "data: %s\n\n", sc.Text())
+		flush()
+	}
 }
 
 // ensureDockerignore writes a sensible default .dockerignore when the app has

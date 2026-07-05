@@ -1,0 +1,134 @@
+import { Check } from "lucide-react";
+import type { ReactNode } from "react";
+import { ConsoleMock } from "@/components/console-mock";
+
+function PreviewVisual() {
+  const branches = [
+    { b: "main", u: "app.useskiff.xyz" },
+    { b: "feat-auth", u: "feat-auth.useskiff.xyz" },
+    { b: "fix-cache", u: "fix-cache.useskiff.xyz" },
+  ];
+  return (
+    <div className="border-line bg-surface/70 glow-amber space-y-2.5 rounded-2xl border p-5">
+      {branches.map((x) => (
+        <div
+          key={x.b}
+          className="border-line bg-bg/50 flex items-center justify-between rounded-lg border px-4 py-3"
+        >
+          <span className="text-fg font-mono text-xs">{x.b}</span>
+          <span className="text-subtle flex items-center gap-2 font-mono text-[11px]">
+            {x.u}
+            <span className="bg-signal h-1.5 w-1.5 rounded-full shadow-[0_0_8px_var(--color-signal)]" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RolloutVisual() {
+  return (
+    <div className="border-line bg-surface/70 glow-amber rounded-2xl border p-6 font-mono text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-subtle">v41 → v42</span>
+        <span className="text-signal flex items-center gap-1.5">
+          <span className="bg-signal h-1.5 w-1.5 rounded-full" /> healthy
+        </span>
+      </div>
+      <div className="bg-line mt-4 h-1.5 w-full overflow-hidden rounded-full">
+        <div
+          className="h-full w-full rounded-full"
+          style={{ background: "linear-gradient(90deg, var(--muted), var(--fg))" }}
+        />
+      </div>
+      <div className="text-subtle mt-4 grid grid-cols-2 gap-3">
+        <span>drain · graceful</span>
+        <span className="text-right">rollback · armed</span>
+        <span>checks · 4/4 passing</span>
+        <span className="text-right">downtime · 0ms</span>
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  eyebrow,
+  title,
+  body,
+  points,
+  visual,
+  flip = false,
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  points: string[];
+  visual: ReactNode;
+  flip?: boolean;
+}) {
+  return (
+    <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+      <div className={flip ? "lg:order-2" : ""}>
+        <p className="text-brand font-mono text-[11px] tracking-[0.2em] uppercase">
+          {eyebrow}
+        </p>
+        <h3 className="font-display mt-4 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          {title}
+        </h3>
+        <p className="text-muted mt-4 max-w-md leading-relaxed">{body}</p>
+        <ul className="mt-6 space-y-2.5">
+          {points.map((p) => (
+            <li key={p} className="text-muted flex items-start gap-2.5 text-sm">
+              <Check className="text-signal mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.5} />
+              {p}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className={flip ? "lg:order-1" : ""}>{visual}</div>
+    </div>
+  );
+}
+
+export function FeatureRows() {
+  return (
+    <section id="features" className="mx-auto max-w-6xl px-6 py-28">
+      <div className="space-y-28">
+        <Row
+          eyebrow="Deploy"
+          title="Push, and it's live."
+          body="Point Skiff at a repo and it detects the stack, builds an image, and runs it — no Dockerfile, no YAML, no pipeline to babysit."
+          points={[
+            "Git push or one click in the console",
+            "Automatic HTTPS on your own domain",
+            "Ten-plus languages detected out of the box",
+          ]}
+          visual={<ConsoleMock />}
+        />
+        <Row
+          flip
+          eyebrow="Previews"
+          title="Every branch gets a URL."
+          body="Open a branch and Skiff spins up an isolated environment at its own address, so you can review real changes before they reach production."
+          points={[
+            "Isolated per-branch environments",
+            "Shareable preview links",
+            "Torn down when the branch is gone",
+          ]}
+          visual={<PreviewVisual />}
+        />
+        <Row
+          eyebrow="Reliability"
+          title="Releases that never blink."
+          body="Health-checked, zero-downtime rollouts with automatic rollback. A bad build is caught and reverted before a single request hits it."
+          points={[
+            "Graceful drain and cut-over",
+            "Automatic rollback on failed checks",
+            "Zero dropped requests",
+          ]}
+          visual={<RolloutVisual />}
+        />
+      </div>
+    </section>
+  );
+}

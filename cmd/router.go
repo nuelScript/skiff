@@ -11,7 +11,7 @@ import (
 )
 
 func newRouterCmd() *cobra.Command {
-	var domain, httpAddr string
+	var domain, httpAddr, panel, siteApp string
 	cmd := &cobra.Command{
 		Use:   "router",
 		Short: "Run the edge router (subdomain routing + auto HTTPS) — runs on the server",
@@ -19,10 +19,22 @@ func newRouterCmd() *cobra.Command {
 			if domain == "" {
 				return fmt.Errorf("--domain is required (e.g. --domain useskiff.xyz)")
 			}
-			rt := &router.Router{Domains: strings.Split(domain, ","), Engine: docker.Local()}
+			rt := &router.Router{
+				Domains: strings.Split(domain, ","),
+				Engine:  docker.Local(),
+				Panel:   panel,
+				SiteApp: siteApp,
+			}
 
 			ui.Banner(version)
 			ui.Field("router", domain)
+			if panel != "" {
+				ui.Field("dashboard", "dash.* → "+panel)
+			}
+			if siteApp != "" {
+				ui.Field("site", "apex + www → "+siteApp)
+			}
+			ui.Field("status", "status.* → live status page")
 			if httpAddr != "" {
 				ui.Note("http-only test mode on " + httpAddr)
 				fmt.Println()
@@ -35,5 +47,7 @@ func newRouterCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&domain, "domain", "", "base domain — apps served at <app>.<domain>")
 	cmd.Flags().StringVar(&httpAddr, "http-addr", "", "HTTP-only test mode on this address (no TLS)")
+	cmd.Flags().StringVar(&panel, "panel", "127.0.0.1:7070", "control panel address for dash.<domain>")
+	cmd.Flags().StringVar(&siteApp, "site-app", "www", "app that serves the apex + www.<domain>")
 	return cmd
 }

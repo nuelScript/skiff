@@ -1,6 +1,7 @@
 // Package router is Skiff's edge router: it discovers apps from Docker labels
 // and reverse-proxies <app>.<domain> to them, with automatic HTTPS. It runs on
-// the server.
+// the server. Reserved hosts: dash.<domain> → the control panel, status.<domain>
+// → a live status page, and the apex + www.<domain> → a designated site app.
 package router
 
 import (
@@ -19,32 +20,53 @@ import (
 type Router struct {
 	Domains []string
 	Engine  *docker.Engine
+	Panel   string // host:port of the control panel; dash.<domain> proxies here
+	SiteApp string // app that serves the apex + www.<domain>
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	app := rt.appFor(r.Host)
+	sub, ok := rt.subFor(r.Host)
+	if !ok {
+		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
+		return
+	}
+
+	switch sub {
+	case "status":
+		rt.serveStatus(w, r)
+		return
+	case "dash":
+		if rt.Panel != "" {
+			proxyTo(w, r, rt.Panel)
+			return
+		}
+	}
+
+	app := sub
+	if sub == "" || sub == "www" {
+		app = rt.SiteApp
+	}
 	if app == "" {
 		http.Error(w, "skiff: no app for "+r.Host, http.StatusNotFound)
 		return
 	}
+
 	routes, err := rt.Engine.Routes()
 	if err != nil {
 		http.Error(w, "skiff: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	port := 0
 	for _, rr := range routes {
 		if rr.App == app {
-			port = rr.HostPort
-			break
+			proxyTo(w, r, fmt.Sprintf("127.0.0.1:%d", rr.HostPort))
+			return
 		}
 	}
-	if port == 0 {
-		http.Error(w, "skiff: no app named "+app, http.StatusNotFound)
-		return
-	}
+	http.Error(w, "skiff: no app named "+app, http.StatusNotFound)
+}
 
-	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+func proxyTo(w http.ResponseWriter, r *http.Request, hostport string) {
+	target, _ := url.Parse("http://" + hostport)
 	rp := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
 		pr.SetURL(target)
 		pr.SetXForwarded()
@@ -53,17 +75,22 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rp.ServeHTTP(w, r)
 }
 
-// appFor pulls "blog" out of "blog.useskiff.xyz".
-func (rt *Router) appFor(host string) string {
+// subFor classifies a host under a served domain: "" for the apex, otherwise the
+// leading label ("dash", "status", "www", "blog"). ok is false when the host is
+// not under any served domain.
+func (rt *Router) subFor(host string) (string, bool) {
 	if i := strings.IndexByte(host, ':'); i >= 0 {
 		host = host[:i]
 	}
 	for _, d := range rt.Domains {
+		if host == d {
+			return "", true
+		}
 		if s := "." + d; strings.HasSuffix(host, s) {
-			return strings.TrimSuffix(host, s)
+			return strings.TrimSuffix(host, s), true
 		}
 	}
-	return ""
+	return "", false
 }
 
 // ServeHTTPOnly runs the router over plain HTTP (for local testing, no TLS).

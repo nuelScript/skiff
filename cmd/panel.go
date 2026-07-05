@@ -1,0 +1,43 @@
+package cmd
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/panel"
+	"github.com/nuelScript/skiff/internal/ui"
+	"github.com/spf13/cobra"
+)
+
+func newPanelCmd() *cobra.Command {
+	var addr, domain string
+	cmd := &cobra.Command{
+		Use:   "panel",
+		Short: "Run the hosted control panel (deploy + manage from the browser)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pw := os.Getenv("SKIFF_PANEL_PASSWORD")
+			if pw == "" {
+				return fmt.Errorf("set SKIFF_PANEL_PASSWORD (the setup secret for creating the first account)")
+			}
+			if domain == "" {
+				domain = "localhost"
+			}
+			pn, err := panel.New(pw, domain, docker.Local())
+			if err != nil {
+				return fmt.Errorf("open database: %w", err)
+			}
+
+			ui.Banner(version)
+			ui.Field("panel", "http://localhost"+addr)
+			ui.Field("domain", domain)
+			ui.Note("control panel — deploy + manage from the browser (ctrl-c to stop)")
+			fmt.Println()
+			return http.ListenAndServe(addr, pn.Handler())
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", ":7070", "listen address")
+	cmd.Flags().StringVar(&domain, "domain", "", "base domain for app URLs")
+	return cmd
+}

@@ -1,0 +1,154 @@
+package panel
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/nuelScript/skiff/internal/github"
+)
+
+func baseURL(r *http.Request) string {
+	scheme := "https"
+	if strings.HasPrefix(r.Host, "localhost") || strings.HasPrefix(r.Host, "127.0.0.1") {
+		scheme = "http"
+	}
+	return scheme + "://" + r.Host
+}
+
+func (p *Panel) handleGithubStatus(w http.ResponseWriter, _ *http.Request) {
+	cfg := github.Load()
+	out := map[string]any{
+		"configured": cfg.Configured(),
+		"installed":  cfg.Installed(),
+	}
+	if cfg.Configured() {
+		out["slug"] = cfg.Slug
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// handleGithubCreate serves an auto-submitting form that registers a Skiff
+// GitHub App via the manifest flow.
+func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
+	name := "Skiff Deploys (" + p.domain + ")"
+	manifest := github.Manifest(baseURL(r), name)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><body style="background:#000;color:#aaa;font-family:system-ui">
+<form id="f" action="https://github.com/settings/apps/new" method="post">
+<input type="hidden" name="manifest" value='%s'>
+</form>
+<p style="padding:40px">Redirecting to GitHub…</p>
+<script>document.getElementById('f').submit()</script></body>`, manifest)
+}
+
+// handleGithubCreated receives the manifest code, converts it to app credentials,
+// then sends the user on to install the app.
+func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+	cfg, err := github.ConvertManifest(code)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if err := cfg.Save(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, cfg.InstallURL(), http.StatusFound)
+}
+
+// handleGithubInstalled records the installation id (GitHub's setup redirect).
+func (p *Panel) handleGithubInstalled(w http.ResponseWriter, r *http.Request) {
+	cfg := github.Load()
+	if !cfg.Configured() {
+		http.Error(w, "app not configured", http.StatusBadRequest)
+		return
+	}
+	id, _ := strconv.ParseInt(r.URL.Query().Get("installation_id"), 10, 64)
+	cfg.InstallationID = id
+	if err := cfg.Save(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func (p *Panel) handleGithubRepos(w http.ResponseWriter, _ *http.Request) {
+	cfg := github.Load()
+	if !cfg.Installed() {
+		http.Error(w, "github not connected", http.StatusBadRequest)
+		return
+	}
+	repos, err := cfg.ListRepos()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(repos)
+}
+
+// handleGithubDeploy deploys a chosen repo and streams the build log.
+func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	repo := strings.TrimSpace(q.Get("repo"))
+	clone := strings.TrimSpace(q.Get("clone"))
+	name := sanitizeName(q.Get("name"))
+	branch := strings.TrimSpace(q.Get("branch"))
+	rootDir := strings.TrimSpace(q.Get("rootdir"))
+	port := strings.TrimSpace(q.Get("port"))
+	if repo == "" || clone == "" || name == "" {
+		http.Error(w, "repo, clone and name are required", http.StatusBadRequest)
+		return
+	}
+	if existing, ok := getSource(name); ok && existing.Team != p.teamID(r) {
+		http.Error(w, "an app with that name exists in another team", http.StatusConflict)
+		return
+	}
+	if port == "" {
+		port = "3000"
+	}
+	src := Source{
+		App: name, Team: p.teamID(r), Repo: repo, Branch: branch, RootDir: rootDir,
+		Port: port, CloneURL: clone, Auto: q.Get("auto") == "1",
+	}
+	_ = putSource(src)
+	id := newDeployID()
+	go p.runDeploy(src, "", "", "manual", id)
+	p.tailLog(w, r, name, id)
+}
+
+// handleHook is the GitHub webhook receiver — HMAC-verified, not session-gated.
+func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 5<<20))
+	cfg := github.Load()
+	if !cfg.Configured() {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !github.VerifySignature(cfg.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
+		http.Error(w, "bad signature", http.StatusUnauthorized)
+		return
+	}
+	if r.Header.Get("X-GitHub-Event") != "push" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	push, ok := github.ParsePush(body)
+	if ok {
+		for _, src := range sourcesForRepo(push.Repo, push.Branch) {
+			id := newDeployID()
+			go p.runDeploy(src, "", push.Commit, "push", id)
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
