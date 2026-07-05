@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitBranch, Search } from 'lucide-react'
+import { GitBranch, Search, Plus } from 'lucide-react'
 import { useGithub } from '@/hooks/use-github'
 import { useDeployForm } from '@/hooks/use-deploy-form'
-import type { Repo } from '@/services/api.service'
+import { envService, type EnvVar, type Repo } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EnvFields, blankVar } from '@/components/env-fields'
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,8 @@ export function DeployModal({
   const [port, setPort] = useState('3000')
   const [rootDir, setRootDir] = useState('')
   const [auto, setAuto] = useState(true)
+  const [envVars, setEnvVars] = useState<EnvVar[]>([blankVar()])
+  const [showEnv, setShowEnv] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -55,9 +58,7 @@ export function DeployModal({
   const filtered = useMemo(
     () =>
       gh.repos
-        .filter((r) =>
-          r.full_name.toLowerCase().includes(search.toLowerCase()),
-        )
+        .filter((r) => r.full_name.toLowerCase().includes(search.toLowerCase()))
         .slice(0, 40),
     [gh.repos, search],
   )
@@ -68,10 +69,20 @@ export function DeployModal({
     setPort('3000')
     setRootDir('')
     setAuto(true)
+    setEnvVars([blankVar()])
+    setShowEnv(false)
   }
 
-  const deployRepo = () => {
+  const deployRepo = async () => {
     if (!selected || !name.trim()) return
+    const filledEnv = envVars.filter((v) => v.key.trim())
+    if (filledEnv.length) {
+      try {
+        await envService.save(name.trim(), filledEnv)
+      } catch {
+        /* best effort — env can still be set after deploy */
+      }
+    }
     onDeployRepo(
       selected.full_name,
       selected.clone_url,
@@ -85,7 +96,7 @@ export function DeployModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Deploy an app</DialogTitle>
           <DialogDescription>
@@ -130,9 +141,7 @@ export function DeployModal({
             <div className="grid gap-2">
               <Label htmlFor="rd">
                 Root directory{' '}
-                <span className="text-muted-foreground">
-                  — for monorepos (optional)
-                </span>
+                <span className="text-muted-foreground">— for monorepos (optional)</span>
               </Label>
               <Input
                 id="rd"
@@ -141,6 +150,22 @@ export function DeployModal({
                 onChange={(e) => setRootDir(e.target.value)}
               />
             </div>
+
+            {showEnv ? (
+              <div className="grid gap-2">
+                <Label>Environment variables</Label>
+                <EnvFields vars={envVars} onChange={setEnvVars} />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowEnv(true)}
+                className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add environment variables
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setAuto(!auto)}
@@ -150,7 +175,7 @@ export function DeployModal({
               <span
                 className={
                   'font-mono text-[11px] uppercase ' +
-                  (auto ? 'text-emerald-500' : 'text-muted-foreground')
+                  (auto ? 'text-emerald-400' : 'text-muted-foreground')
                 }
               >
                 {auto ? 'on' : 'off'}
@@ -169,33 +194,31 @@ export function DeployModal({
                 className="pl-9"
               />
             </div>
-            <div className="max-h-64 overflow-auto rounded-md border">
-              {gh.loadingRepos ? (
-                <p className="text-muted-foreground p-4 text-center text-sm">
-                  Loading repositories…
-                </p>
-              ) : filtered.length === 0 ? (
-                <p className="text-muted-foreground p-4 text-center text-sm">
-                  No repositories.
-                </p>
-              ) : (
-                filtered.map((r) => (
-                  <button
-                    key={r.full_name}
-                    onClick={() => pick(r)}
-                    className="hover:bg-accent flex w-full items-center justify-between border-b px-3 py-2.5 text-left last:border-0"
-                  >
-                    <span className="truncate font-mono text-sm">
-                      {r.full_name}
-                    </span>
-                    {r.private && (
-                      <span className="text-muted-foreground ml-2 font-mono text-[10px] uppercase">
-                        private
-                      </span>
-                    )}
-                  </button>
-                ))
-              )}
+            <div className="overflow-hidden rounded-md border border-white/8">
+              <div className="max-h-64 divide-y divide-white/5 overflow-auto">
+                {gh.loadingRepos ? (
+                  <p className="text-muted-foreground p-4 text-center text-sm">
+                    Loading repositories…
+                  </p>
+                ) : filtered.length === 0 ? (
+                  <p className="text-muted-foreground p-4 text-center text-sm">No repositories.</p>
+                ) : (
+                  filtered.map((r) => (
+                    <button
+                      key={r.full_name}
+                      onClick={() => pick(r)}
+                      className="hover:bg-white/[0.04] flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors"
+                    >
+                      <span className="truncate font-mono text-sm">{r.full_name}</span>
+                      {r.private && (
+                        <span className="text-muted-foreground shrink-0 font-mono text-[10px] uppercase">
+                          private
+                        </span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -264,8 +287,7 @@ function UrlForm({
       </div>
       <div className="grid gap-2">
         <Label htmlFor="t">
-          Access token{' '}
-          <span className="text-muted-foreground">— private repos only</span>
+          Access token <span className="text-muted-foreground">— private repos only</span>
         </Label>
         <Input
           id="t"

@@ -319,12 +319,15 @@ func (p *Panel) handleInvite(w http.ResponseWriter, r *http.Request) {
 // ---- projects ----
 
 type appView struct {
-	Name   string `json:"name"`
-	State  string `json:"state"`
-	URL    string `json:"url"`
-	Repo   string `json:"repo,omitempty"`
-	Branch string `json:"branch,omitempty"`
-	Auto   bool   `json:"auto"`
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	URL     string `json:"url"`
+	Repo    string `json:"repo,omitempty"`
+	Branch  string `json:"branch,omitempty"`
+	Auto    bool   `json:"auto"`
+	Commit  string `json:"commit,omitempty"`
+	Message string `json:"message,omitempty"`
+	Updated int64  `json:"updated,omitempty"`
 }
 
 // handleSystem reports the control plane itself: whether it self-deploys, the
@@ -352,14 +355,20 @@ func (p *Panel) handleApps(w http.ResponseWriter, r *http.Request) {
 		if !ok || src.Team != team {
 			continue // only this team's projects
 		}
-		out = append(out, appView{
+		av := appView{
 			Name:   a.Name,
 			State:  p.eng.State(a.Container),
 			URL:    "https://" + a.Name + "." + p.domain,
 			Repo:   src.Repo,
 			Branch: src.Branch,
 			Auto:   src.Auto,
-		})
+		}
+		if ds := appDeploys(a.Name); len(ds) > 0 {
+			av.Commit = ds[0].Commit
+			av.Message = ds[0].Message
+			av.Updated = ds[0].Started
+		}
+		out = append(out, av)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -522,7 +531,9 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
-	if !p.canAccess(r, app) {
+	// A not-yet-deployed app has no source; allow staging env for it so it can be
+	// set from the deploy dialog. Once it exists, require team access.
+	if _, exists := getSource(app); exists && !p.canAccess(r, app) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

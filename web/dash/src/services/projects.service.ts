@@ -8,6 +8,9 @@ export type App = {
   repo?: string
   branch?: string
   auto: boolean
+  commit?: string
+  message?: string
+  updated?: number
 }
 
 export type ProjectDetail = {
