@@ -1,6 +1,16 @@
+import { useEffect } from 'react'
+import { X } from 'lucide-react'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import type { Stream } from '@/hooks/use-console'
-import { Button } from '@/components/ui/button'
+
+// Colour build/log lines by their leading glyph, matching the panel's output.
+function lineClass(line: string): string {
+  const t = line.trimStart()
+  if (t.startsWith('✓')) return 'text-emerald-400'
+  if (t.startsWith('✗')) return 'text-rose-400'
+  if (t.startsWith('→')) return 'text-sky-300/80'
+  return 'text-white/70'
+}
 
 export default function Drawer({
   stream,
@@ -9,25 +19,51 @@ export default function Drawer({
   stream: Stream
   onClose: () => void
 }) {
-  const ref = useAutoScroll<HTMLPreElement>(stream.lines.length)
+  const ref = useAutoScroll<HTMLDivElement>(stream.lines.length)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   return (
-    <div className="bg-popover fixed inset-x-0 bottom-0 flex h-[42vh] flex-col border-t">
-      <div className="flex items-center justify-between border-b px-4 py-2.5">
-        <span className="text-foreground flex items-center gap-2 font-mono text-xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+    <div className="animate-drawer-up fixed inset-x-0 bottom-0 z-50 flex h-[44vh] flex-col border-t border-white/12 bg-black/95 shadow-[0_-24px_70px_-24px_rgba(0,0,0,0.95)] backdrop-blur-md">
+      <div className="flex h-10 shrink-0 items-center gap-3 border-b border-white/6 px-4">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full border border-white/15" />
+          <span className="h-2.5 w-2.5 rounded-full border border-white/15" />
+          <span className="h-2.5 w-2.5 rounded-full border border-white/15" />
+        </div>
+        <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs">
+          <span className="text-white/30">▸</span>
           {stream.title}
         </span>
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+        <div className="flex-1" />
+        <button
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] transition-colors hover:bg-white/5"
+        >
+          <X className="h-3.5 w-3.5" />
+          esc
+        </button>
       </div>
-      <pre
+      <div
         ref={ref}
-        className="text-muted-foreground m-0 flex-1 overflow-auto px-4 py-3 font-mono text-xs whitespace-pre-wrap"
+        className="term-scroll flex-1 overflow-auto px-5 py-4 font-mono text-[12.5px] leading-[1.7]"
       >
-        {stream.lines.join('\n')}
-      </pre>
+        {stream.lines.length === 0 ? (
+          <div className="text-white/30">connecting…</div>
+        ) : (
+          stream.lines.map((line, i) => (
+            <div key={i} className={'break-words whitespace-pre-wrap ' + lineClass(line)}>
+              {line || ' '}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }

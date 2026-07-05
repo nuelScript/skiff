@@ -1,13 +1,14 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Me } from '@/services/api.service'
+import { queryKeys } from '@/constants/query-keys'
 
 export type AuthState = 'checking' | 'setup' | 'out' | 'in'
 
 export function useAuth() {
   const qc = useQueryClient()
   const { data: me = null, isPending } = useQuery<Me>({
-    queryKey: ['me'],
+    queryKey: queryKeys.me,
     queryFn: api.auth.me,
     retry: false,
     staleTime: Infinity,
@@ -22,7 +23,7 @@ export function useAuth() {
         : 'out'
 
   const refresh = useCallback(
-    () => qc.invalidateQueries({ queryKey: ['me'] }),
+    () => qc.invalidateQueries({ queryKey: queryKeys.me }),
     [qc],
   )
 
@@ -44,7 +45,7 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     await api.auth.logout()
-    qc.setQueryData(['me'], { authenticated: false, needsSetup: false } as Me)
+    qc.setQueryData(queryKeys.me, { authenticated: false, needsSetup: false } as Me)
   }, [qc])
 
   const switchTeam = useCallback(

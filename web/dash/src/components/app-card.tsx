@@ -1,80 +1,130 @@
-import { GitBranch } from 'lucide-react'
+import { GitBranch, ExternalLink, ScrollText, History, KeyRound, Square } from 'lucide-react'
 import type { App } from '@/services/api.service'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-const statusDot = (state: string): string =>
-  state === 'running'
-    ? 'bg-emerald-500'
-    : state === 'exited' || state === 'missing'
-      ? 'bg-red-500'
-      : 'bg-muted-foreground'
+type StatusStyle = { dot: string; pill: string; edge: string; pulse: boolean }
+
+function statusStyle(state: string): StatusStyle {
+  switch (state) {
+    case 'running':
+      return {
+        dot: 'bg-emerald-400',
+        pill: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
+        edge: 'bg-emerald-400/50',
+        pulse: false,
+      }
+    case 'exited':
+    case 'missing':
+      return {
+        dot: 'bg-rose-400',
+        pill: 'border-rose-400/25 bg-rose-400/10 text-rose-300',
+        edge: 'bg-rose-400/50',
+        pulse: false,
+      }
+    case 'building':
+    case 'starting':
+    case 'created':
+      return {
+        dot: 'bg-amber-400 text-amber-400',
+        pill: 'border-amber-400/25 bg-amber-400/10 text-amber-300',
+        edge: 'bg-amber-400/50',
+        pulse: true,
+      }
+    default:
+      return {
+        dot: 'bg-white/40',
+        pill: 'border-white/15 bg-white/5 text-muted-foreground',
+        edge: 'bg-white/15',
+        pulse: false,
+      }
+  }
+}
 
 export default function AppCard({
   app,
+  index = 0,
   onLogs,
   onHistory,
   onEnv,
   onStop,
 }: {
   app: App
+  index?: number
   onLogs: (name: string) => void
   onHistory: (name: string) => void
   onEnv: (name: string) => void
   onStop: (name: string) => void
 }) {
+  const s = statusStyle(app.state)
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{app.name}</CardTitle>
-        <CardAction>
-          <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-[11px] tracking-wide uppercase">
-            <span className={'h-1.5 w-1.5 rounded-full ' + statusDot(app.state)} />
-            {app.state}
-          </span>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {app.repo && (
-          <div className="text-muted-foreground flex items-center gap-2 text-xs">
-            <GitBranch className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate font-mono">{app.repo}</span>
-            {app.auto && (
-              <span className="rounded border border-emerald-500/40 px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-emerald-500 uppercase">
-                auto
-              </span>
-            )}
-          </div>
-        )}
-        <a
-          href={app.url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-muted-foreground hover:text-foreground truncate font-mono text-xs transition-colors"
+    <article
+      style={{ animationDelay: `${Math.min(index, 10) * 45}ms` }}
+      className="animate-rise group relative flex flex-col gap-3.5 overflow-hidden rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_10px_40px_-15px_rgba(0,0,0,0.9)]"
+    >
+      <span className={'absolute top-0 left-0 h-full w-[2px] ' + s.edge} />
+
+      <header className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
+          {app.name}
+        </h3>
+        <span
+          className={
+            'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wider uppercase ' +
+            s.pill
+          }
         >
-          {app.url.replace(/^https?:\/\//, '')}
-        </a>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => onLogs(app.name)}>
-            Logs
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onHistory(app.name)}>
-            History
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onEnv(app.name)}>
-            Env
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onStop(app.name)}>
-            Stop
-          </Button>
+          <span className={'h-1.5 w-1.5 rounded-full ' + s.dot + (s.pulse ? ' pulse-dot' : '')} />
+          {app.state}
+        </span>
+      </header>
+
+      {app.repo && (
+        <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
+          <GitBranch className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate font-mono">{app.repo}</span>
+          {app.branch && <span className="shrink-0 font-mono text-white/35">{app.branch}</span>}
+          {app.auto && (
+            <span className="shrink-0 rounded border border-emerald-400/30 px-1.5 py-px font-mono text-[9px] font-medium tracking-wider text-emerald-300/90 uppercase">
+              auto
+            </span>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      <a
+        href={app.url}
+        target="_blank"
+        rel="noreferrer"
+        className="group/url text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-1.5 font-mono text-xs transition-colors"
+      >
+        <span className="truncate">{app.url.replace(/^https?:\/\//, '')}</span>
+        <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100" />
+      </a>
+
+      <div className="mt-auto flex items-center gap-0.5 pt-1">
+        <Button size="sm" variant="ghost" onClick={() => onLogs(app.name)}>
+          <ScrollText />
+          Logs
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onHistory(app.name)}>
+          <History />
+          History
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onEnv(app.name)}>
+          <KeyRound />
+          Env
+        </Button>
+        <div className="flex-1" />
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          title={'Stop ' + app.name}
+          onClick={() => onStop(app.name)}
+          className="text-muted-foreground hover:bg-rose-400/10 hover:text-rose-400"
+        >
+          <Square />
+        </Button>
+      </div>
+    </article>
   )
 }

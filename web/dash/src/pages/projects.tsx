@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { GitBranch, Search } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useConsole } from '@/hooks/use-console'
 import { useDeploys } from '@/hooks/use-deploys'
 import { useSystem } from '@/hooks/use-system'
 import { useAuthContext } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import AppCard from '@/components/app-card'
 import ControlPlaneCard from '@/components/control-plane-card'
 import DeployModal from '@/components/deploy-modal'
@@ -21,6 +23,7 @@ export default function ProjectsPage() {
   const { info: system } = useSystem()
   const [open, setOpen] = useState(false)
   const [envApp, setEnvApp] = useState<string | null>(null)
+  const [q, setQ] = useState('')
 
   const teamName = me?.teams?.find((t) => t.id === me?.team)?.name ?? 'this team'
 
@@ -28,24 +31,50 @@ export default function ProjectsPage() {
     reload()
   }, [me?.team, reload])
 
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    if (!needle) return apps
+    return apps.filter(
+      (a) =>
+        a.name.toLowerCase().includes(needle) ||
+        (a.repo ?? '').toLowerCase().includes(needle),
+    )
+  }, [apps, q])
+
+  const showControlPlane = !q.trim() && !!system?.selfDeploy
+  const cpOffset = showControlPlane ? 1 : 0
+
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-end justify-between gap-4">
+    <div className="mx-auto max-w-[1400px] px-6 py-8">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-lg font-medium">Projects</h1>
-          <p className="text-muted-foreground text-sm">
-            Apps deployed from Git in {teamName}.
+          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {apps.length} {apps.length === 1 ? 'app' : 'apps'} deployed from Git in{' '}
+            <span className="text-foreground/70">{teamName}</span>.
           </p>
         </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          Deploy from Git
-        </Button>
-      </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search projects…"
+              className="h-8 w-52 pl-8 font-mono text-xs"
+            />
+          </div>
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <GitBranch />
+            Deploy from Git
+          </Button>
+        </div>
+      </header>
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 pb-[45vh]">
-        {system?.selfDeploy && (
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-[46vh]">
+        {showControlPlane && (
           <ControlPlaneCard
-            info={system}
+            info={system!}
             onHistory={history.open}
             onLogs={(app, id) => {
               history.close()
@@ -53,24 +82,39 @@ export default function ProjectsPage() {
             }}
           />
         )}
-        {apps.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center gap-3 p-16 text-center">
-            <LogoMark className="h-10 w-10 opacity-40" />
-            <p className="text-muted-foreground text-sm">
-              No apps yet — deploy your first from a git repo.
-            </p>
+
+        {filtered.map((a, i) => (
+          <AppCard
+            key={a.name}
+            app={a}
+            index={i + cpOffset}
+            onLogs={term.showLogs}
+            onHistory={history.open}
+            onEnv={setEnvApp}
+            onStop={stop}
+          />
+        ))}
+
+        {apps.length === 0 && !q.trim() && (
+          <div className="col-span-full flex flex-col items-center gap-4 rounded-xl border border-dashed border-white/10 py-16 text-center">
+            <LogoMark className="h-9 w-9 opacity-30" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">No projects yet</p>
+              <p className="text-muted-foreground text-sm">
+                Deploy your first app straight from a Git repository.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => setOpen(true)}>
+              <GitBranch />
+              Deploy from Git
+            </Button>
           </div>
-        ) : (
-          apps.map((a) => (
-            <AppCard
-              key={a.name}
-              app={a}
-              onLogs={term.showLogs}
-              onHistory={history.open}
-              onEnv={setEnvApp}
-              onStop={stop}
-            />
-          ))
+        )}
+
+        {apps.length > 0 && filtered.length === 0 && (
+          <p className="text-muted-foreground col-span-full py-12 text-center text-sm">
+            No projects match “{q}”.
+          </p>
         )}
       </div>
 
