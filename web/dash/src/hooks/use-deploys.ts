@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type Deploy } from '@/services/api.service'
+import { deploysService, type Deploy } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 
 // Deploy history for whichever app the user opened. The query is keyed by app
@@ -10,7 +10,7 @@ export function useDeploys() {
 
   const { data: deploys = [] } = useQuery<Deploy[]>({
     queryKey: queryKeys.deploys(app),
-    queryFn: () => api.deploys(app as string),
+    queryFn: () => deploysService.list(app as string),
     enabled: !!app,
   })
 

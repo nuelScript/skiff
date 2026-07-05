@@ -12,7 +12,7 @@ function lineClass(line: string): string {
   return 'text-white/70'
 }
 
-export default function Drawer({
+export function Drawer({
   stream,
   onClose,
 }: {

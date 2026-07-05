@@ -20,7 +20,7 @@ const deployDot = (status: string): string =>
 
 // The control plane itself — Skiff deploys itself on push, so its build history
 // lives here alongside the apps it runs. Given a distinct luminous treatment.
-export default function ControlPlaneCard({
+export function ControlPlaneCard({
   info,
   onHistory,
   onLogs,

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { api } from '@/services/api.service'
+import { authService } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,7 +24,7 @@ export default function AcceptInvite({ token }: { token: string }) {
     setBusy(true)
     setError('')
     try {
-      await api.auth.accept(token, name.trim(), password)
+      await authService.accept(token, name.trim(), password)
       window.location.href = '/'
     } catch (err) {
       setError(errText(err, 'Could not accept the invite'))

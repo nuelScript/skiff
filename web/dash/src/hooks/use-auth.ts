@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type Me } from '@/services/api.service'
+import { authService, type Me } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 
 export type AuthState = 'checking' | 'setup' | 'out' | 'in'
@@ -9,7 +9,7 @@ export function useAuth() {
   const qc = useQueryClient()
   const { data: me = null, isPending } = useQuery<Me>({
     queryKey: queryKeys.me,
-    queryFn: api.auth.me,
+    queryFn: () => authService.me(),
     retry: false,
     staleTime: Infinity,
   })
@@ -29,7 +29,7 @@ export function useAuth() {
 
   const setup = useCallback(
     async (secret: string, email: string, name: string, password: string) => {
-      await api.auth.setup(secret, email, name, password)
+      await authService.setup(secret, email, name, password)
       await refresh()
     },
     [refresh],
@@ -37,20 +37,20 @@ export function useAuth() {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      await api.auth.login(email, password)
+      await authService.login(email, password)
       await refresh()
     },
     [refresh],
   )
 
   const logout = useCallback(async () => {
-    await api.auth.logout()
+    await authService.logout()
     qc.setQueryData(queryKeys.me, { authenticated: false, needsSetup: false } as Me)
   }, [qc])
 
   const switchTeam = useCallback(
     async (team: string) => {
-      await api.auth.switchTeam(team)
+      await authService.switchTeam(team)
       await refresh()
     },
     [qc, refresh],

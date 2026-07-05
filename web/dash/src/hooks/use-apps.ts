@@ -1,13 +1,13 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type App } from '@/services/api.service'
+import { projectsService, type App } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 
 export function useApps() {
   const qc = useQueryClient()
   const { data: apps = [] } = useQuery<App[]>({
     queryKey: queryKeys.apps,
-    queryFn: api.apps,
+    queryFn: () => projectsService.list(),
     refetchInterval: 4000,
   })
 
@@ -19,7 +19,7 @@ export function useApps() {
   const stop = useCallback(
     async (name: string) => {
       if (!confirm('Stop ' + name + '?')) return
-      await api.down(name)
+      await projectsService.stop(name)
       reload()
     },
     [reload],

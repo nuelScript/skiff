@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { api, type EnvVar } from '@/services/api.service'
+import { envService, type EnvVar } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -26,8 +26,8 @@ export function EnvDialog({
   useEffect(() => {
     if (app) {
       setSaved(false)
-      api.env
-        .get(app)
+      envService
+        .list(app)
         .then((v) => setVars(v.length ? v : [blank()]))
         .catch(() => setVars([blank()]))
     }
@@ -38,7 +38,7 @@ export function EnvDialog({
 
   const save = async () => {
     if (!app) return
-    await api.env.set(
+    await envService.save(
       app,
       vars.filter((v) => v.key.trim()),
     )

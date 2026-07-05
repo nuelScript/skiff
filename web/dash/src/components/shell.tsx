@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router'
 import { useAuthContext } from '@/context/auth-context'
-import { api } from '@/services/api.service'
+import { authService } from '@/services/api.service'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import AppSidebar from '@/components/app-sidebar'
 import Topbar from '@/components/topbar'
@@ -28,7 +28,7 @@ export default function Shell() {
   const createTeam = async () => {
     const name = window.prompt('New team name')
     if (name && name.trim()) {
-      const t = await api.auth.createTeam(name.trim())
+      const t = await authService.createTeam(name.trim())
       await switchTeam(t.id)
     }
   }

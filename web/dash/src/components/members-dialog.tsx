@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Member } from '@/services/api.service'
+import { authService, type Member } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,16 +29,16 @@ export default function MembersDialog({
       setLink('')
       setEmail('')
       setError('')
-      api.auth.members().then(setMembers).catch(() => setMembers([]))
+      authService.members().then(setMembers).catch(() => setMembers([]))
     }
   }, [open])
 
   const invite = async () => {
     setError('')
     try {
-      const r = await api.auth.invite(email.trim(), 'member')
+      const r = await authService.invite(email.trim(), 'member')
       setLink(r.link)
-      api.auth.members().then(setMembers).catch(() => {})
+      authService.members().then(setMembers).catch(() => {})
     } catch (e) {
       setError(errText(e, 'Could not create invite'))
     }

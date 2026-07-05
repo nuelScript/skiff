@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type GithubStatus, type Repo } from '@/services/api.service'
+import { githubService, type GithubStatus, type Repo } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 
 export function useGithub(active: boolean) {
@@ -8,13 +8,13 @@ export function useGithub(active: boolean) {
 
   const { data: status = null } = useQuery<GithubStatus>({
     queryKey: queryKeys.github.status,
-    queryFn: api.github.status,
+    queryFn: () => githubService.status(),
     enabled: active,
   })
 
   const { data: repos = [], isFetching: loadingRepos } = useQuery<Repo[]>({
     queryKey: queryKeys.github.repos,
-    queryFn: api.github.repos,
+    queryFn: () => githubService.repos(),
     enabled: active && !!status?.installed,
   })
 
