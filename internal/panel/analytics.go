@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 )
 
 // Analytics reads the per-app request metrics the router snapshots and
-// aggregates them for the caller's team over a recent window.
+// aggregates them for the caller's team over a selectable window, optionally
+// scoped to a single app, bucketed for a clean time series.
 
 type metricBucket struct {
 	T   int64 `json:"t"`
@@ -20,6 +22,8 @@ type metricBucket struct {
 	S4  int   `json:"s4"`
 	S5  int   `json:"s5"`
 	Lat int64 `json:"lat"`
+	Bi  int64 `json:"bi"`
+	Bo  int64 `json:"bo"`
 }
 
 type metricsFile struct {
@@ -40,9 +44,16 @@ func readMetricsFile() metricsFile {
 	return m
 }
 
-type analyticsPoint struct {
+type analyticsSeries struct {
 	T   int64 `json:"t"`
 	Req int   `json:"req"`
+	S2  int   `json:"s2"`
+	S3  int   `json:"s3"`
+	S4  int   `json:"s4"`
+	S5  int   `json:"s5"`
+	Bi  int64 `json:"bi"`
+	Bo  int64 `json:"bo"`
+	Lat int   `json:"lat"` // average latency (ms) in the bucket
 }
 
 type analyticsApp struct {
@@ -52,7 +63,8 @@ type analyticsApp struct {
 }
 
 type analyticsResponse struct {
-	WindowMins int `json:"windowMins"`
+	RangeMins  int `json:"rangeMins"`
+	BucketSecs int `json:"bucketSecs"`
 	Total      int `json:"total"`
 	Status     struct {
 		S2 int `json:"s2"`
@@ -60,62 +72,126 @@ type analyticsResponse struct {
 		S4 int `json:"s4"`
 		S5 int `json:"s5"`
 	} `json:"status"`
-	Series  []analyticsPoint `json:"series"`
-	Apps    []analyticsApp   `json:"apps"`
-	Updated int64            `json:"updated"`
+	BytesIn    int64             `json:"bytesIn"`
+	BytesOut   int64             `json:"bytesOut"`
+	AvgLatMs   int               `json:"avgLatMs"`
+	Series     []analyticsSeries `json:"series"`
+	Apps       []analyticsApp    `json:"apps"`
+	AppOptions []string          `json:"appOptions"`
+	Updated    int64             `json:"updated"`
+}
+
+// clampRange keeps the requested window within [15m, 24h], defaulting to 1h.
+func clampRange(v string) int {
+	n, _ := strconv.Atoi(v)
+	if n < 15 {
+		return 60
+	}
+	if n > 1440 {
+		return 1440
+	}
+	return n
+}
+
+// displayBucket picks a bucket size that yields ~72 points across the window.
+func displayBucket(rangeMins int) int64 {
+	target := int64(rangeMins) * 60 / 72
+	if target < 60 {
+		return 60
+	}
+	return ((target + 59) / 60) * 60
 }
 
 func (p *Panel) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
+	only := sanitizeName(r.URL.Query().Get("app")) // "" = all team apps
+	rangeMins := clampRange(r.URL.Query().Get("range"))
+	bucketSecs := displayBucket(rangeMins)
+
 	data := readMetricsFile()
-
-	const windowMins = 60
 	now := time.Now().Unix()
-	startMin := ((now - windowMins*60) / 60) * 60
-	nowMin := (now / 60) * 60
+	startT := ((now - int64(rangeMins)*60) / bucketSecs) * bucketSecs
+	nowT := (now / bucketSecs) * bucketSecs
 
-	perMin := map[int64]int{}
-	type acc struct {
+	type agg struct {
+		s2, s3, s4, s5, req int
+		bi, bo, lat         int64
+	}
+	buckets := map[int64]*agg{}
+	type appAcc struct {
 		req int
 		lat int64
 	}
-	perApp := map[string]*acc{}
+	apps := map[string]*appAcc{}
+	var totalLat int64
 	var resp analyticsResponse
+	appOptions := []string{}
 
-	for app, buckets := range data.Apps {
+	for app, bs := range data.Apps {
 		src, ok := getSource(app)
 		if !ok || src.Team != team {
-			continue // only this team's apps
+			continue // this team's apps only
 		}
-		for _, b := range buckets {
-			if b.T < startMin {
+		appOptions = append(appOptions, app)
+		if only != "" && app != only {
+			continue
+		}
+		for _, b := range bs {
+			if b.T < startT {
 				continue
 			}
-			perMin[b.T] += b.Req
+			bt := (b.T / bucketSecs) * bucketSecs
+			a := buckets[bt]
+			if a == nil {
+				a = &agg{}
+				buckets[bt] = a
+			}
+			a.s2 += b.S2
+			a.s3 += b.S3
+			a.s4 += b.S4
+			a.s5 += b.S5
+			a.req += b.Req
+			a.bi += b.Bi
+			a.bo += b.Bo
+			a.lat += b.Lat
+
 			resp.Status.S2 += b.S2
 			resp.Status.S3 += b.S3
 			resp.Status.S4 += b.S4
 			resp.Status.S5 += b.S5
-			a := perApp[app]
-			if a == nil {
-				a = &acc{}
-				perApp[app] = a
+			resp.Total += b.Req
+			resp.BytesIn += b.Bi
+			resp.BytesOut += b.Bo
+			totalLat += b.Lat
+
+			ap := apps[app]
+			if ap == nil {
+				ap = &appAcc{}
+				apps[app] = ap
 			}
-			a.req += b.Req
-			a.lat += b.Lat
+			ap.req += b.Req
+			ap.lat += b.Lat
 		}
 	}
 
-	// A continuous per-minute series (zero-filled) makes for a clean chart.
-	resp.Series = make([]analyticsPoint, 0, windowMins+1)
-	for t := startMin; t <= nowMin; t += 60 {
-		req := perMin[t]
-		resp.Total += req
-		resp.Series = append(resp.Series, analyticsPoint{T: t, Req: req})
+	resp.Series = make([]analyticsSeries, 0, rangeMins)
+	for t := startT; t <= nowT; t += bucketSecs {
+		s := analyticsSeries{T: t}
+		if a := buckets[t]; a != nil {
+			s.S2, s.S3, s.S4, s.S5, s.Req = a.s2, a.s3, a.s4, a.s5, a.req
+			s.Bi, s.Bo = a.bi, a.bo
+			if a.req > 0 {
+				s.Lat = int(a.lat / int64(a.req))
+			}
+		}
+		resp.Series = append(resp.Series, s)
+	}
+	if resp.Total > 0 {
+		resp.AvgLatMs = int(totalLat / int64(resp.Total))
 	}
 
-	resp.Apps = make([]analyticsApp, 0, len(perApp))
-	for name, a := range perApp {
+	resp.Apps = make([]analyticsApp, 0, len(apps))
+	for name, a := range apps {
 		avg := 0
 		if a.req > 0 {
 			avg = int(a.lat / int64(a.req))
@@ -126,8 +202,11 @@ func (p *Panel) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	if len(resp.Apps) > 8 {
 		resp.Apps = resp.Apps[:8]
 	}
+	sort.Strings(appOptions)
 
-	resp.WindowMins = windowMins
+	resp.AppOptions = appOptions
+	resp.RangeMins = rangeMins
+	resp.BucketSecs = int(bucketSecs)
 	resp.Updated = data.Updated
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

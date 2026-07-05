@@ -107,7 +107,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	label := rt.serve(rec, r)
 	if rt.metrics != nil {
-		rt.metrics.Record(label, rec.status, time.Since(start))
+		rt.metrics.Record(label, rec.status, r.ContentLength, rec.bytes, time.Since(start))
 	}
 }
 

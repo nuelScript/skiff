@@ -27,13 +27,23 @@ const dot = (status: string): string =>
         ? 'bg-white/25'
         : 'bg-amber-400 pulse-dot'
 
+type Filter = 'all' | 'live' | 'failed'
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'live', label: 'Deployed' },
+  { key: 'failed', label: 'Failed' },
+]
+
 export default function NotificationBell() {
   const { data: deploys = [] } = useAllDeploys()
   const navigate = useNavigate()
   const [seen, setSeen] = useState<number>(() => Number(localStorage.getItem(SEEN_KEY) || 0))
+  const [filter, setFilter] = useState<Filter>('all')
 
-  const recent = deploys.slice(0, 8)
-  const unread = recent.filter((d) => d.started > seen).length
+  const unread = deploys.slice(0, 8).filter((d) => d.started > seen).length
+  const recent = deploys
+    .filter((d) => filter === 'all' || d.status === filter)
+    .slice(0, 12)
 
   const markSeen = () => {
     const latest = recent[0]?.started ?? Math.floor(Date.now() / 1000)
@@ -59,9 +69,32 @@ export default function NotificationBell() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 p-0">
-        <div className="border-b border-white/8 px-3 py-2 text-xs font-medium">Activity</div>
+        <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3 py-2">
+          <span className="text-xs font-medium">Activity</span>
+          <div className="flex items-center gap-0.5 rounded-[6px] border border-white/10 p-0.5">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={(e) => {
+                  e.preventDefault()
+                  setFilter(f.key)
+                }}
+                className={
+                  'rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium transition-colors ' +
+                  (filter === f.key
+                    ? 'text-foreground bg-white/10'
+                    : 'text-muted-foreground hover:text-foreground')
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {recent.length === 0 ? (
-          <p className="text-muted-foreground p-6 text-center text-xs">No deployments yet.</p>
+          <p className="text-muted-foreground p-6 text-center text-xs">
+            {filter === 'all' ? 'No deployments yet.' : 'Nothing matches this filter.'}
+          </p>
         ) : (
           <div className="max-h-96 overflow-auto py-1">
             {recent.map((d) => (

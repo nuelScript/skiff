@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { analyticsService, type Analytics } from '@/services/api.service'
-import { queryKeys } from '@/constants/query-keys'
 
-export function useAnalytics() {
+export function useAnalytics(rangeMins: number, app: string) {
   return useQuery<Analytics>({
-    queryKey: queryKeys.analytics,
-    queryFn: () => analyticsService.overview(),
+    queryKey: ['analytics', rangeMins, app],
+    queryFn: () => analyticsService.overview(rangeMins, app),
     refetchInterval: 10000,
   })
 }

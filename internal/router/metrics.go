@@ -15,19 +15,21 @@ import (
 // restart doesn't lose recent history.
 
 const (
-	metricsWindowSecs int64 = 3 * 60 * 60 // keep ~3h of buckets
-	metricsBucketSecs int64 = 60          // one bucket per minute
+	metricsWindowSecs int64 = 24 * 60 * 60 // keep ~24h of buckets
+	metricsBucketSecs int64 = 60           // one bucket per minute
 )
 
 // Bucket is one minute of traffic for an app.
 type Bucket struct {
-	T     int64 `json:"t"` // minute, unix seconds (floored)
-	Req   int   `json:"req"`
-	S2    int   `json:"s2"`
-	S3    int   `json:"s3"`
-	S4    int   `json:"s4"`
-	S5    int   `json:"s5"`
-	LatMs int64 `json:"lat"` // summed latency in ms (÷ Req for the average)
+	T      int64 `json:"t"` // minute, unix seconds (floored)
+	Req    int   `json:"req"`
+	S2     int   `json:"s2"`
+	S3     int   `json:"s3"`
+	S4     int   `json:"s4"`
+	S5     int   `json:"s5"`
+	LatMs  int64 `json:"lat"` // summed latency in ms (÷ Req for the average)
+	BytesI int64 `json:"bi"`  // request bytes in
+	BytesO int64 `json:"bo"`  // response bytes out
 }
 
 type metricsSnapshot struct {
@@ -48,7 +50,7 @@ func NewMetrics(file string) *Metrics {
 }
 
 // Record adds one request to the current minute's bucket for an app.
-func (m *Metrics) Record(app string, status int, dur time.Duration) {
+func (m *Metrics) Record(app string, status int, bytesIn, bytesOut int64, dur time.Duration) {
 	if app == "" {
 		return
 	}
@@ -77,6 +79,10 @@ func (m *Metrics) Record(app string, status int, dur time.Duration) {
 		b.S2++
 	}
 	b.LatMs += dur.Milliseconds()
+	if bytesIn > 0 {
+		b.BytesI += bytesIn
+	}
+	b.BytesO += bytesOut
 }
 
 // Run prunes the window and snapshots to disk on a fixed cadence, for the life
@@ -154,16 +160,23 @@ func (m *Metrics) load() {
 	}
 }
 
-// statusRecorder captures the response status while forwarding everything else
-// (including Flush, via Unwrap) so proxied SSE/streaming still works.
+// statusRecorder captures the response status and byte count while forwarding
+// everything else (including Flush, via Unwrap) so proxied SSE/streaming works.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	bytes  int64
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	n, err := s.ResponseWriter.Write(b)
+	s.bytes += int64(n)
+	return n, err
 }
 
 func (s *statusRecorder) Flush() {
