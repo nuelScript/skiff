@@ -1,19 +1,20 @@
 import { useCallback, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { api, type Deploy } from '@/services/api.service'
 
+// Deploy history for whichever app the user opened. The query is keyed by app
+// and only runs while one is selected.
 export function useDeploys() {
   const [app, setApp] = useState<string | null>(null)
-  const [deploys, setDeploys] = useState<Deploy[]>([])
 
-  const open = useCallback((name: string) => {
-    setApp(name)
-    api.deploys(name).then(setDeploys).catch(() => setDeploys([]))
-  }, [])
+  const { data: deploys = [] } = useQuery<Deploy[]>({
+    queryKey: ['deploys', app],
+    queryFn: () => api.deploys(app as string),
+    enabled: !!app,
+  })
 
-  const close = useCallback(() => {
-    setApp(null)
-    setDeploys([])
-  }, [])
+  const open = useCallback((name: string) => setApp(name), [])
+  const close = useCallback(() => setApp(null), [])
 
   return { app, deploys, open, close }
 }

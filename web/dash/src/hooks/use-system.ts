@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type SystemInfo } from '@/services/api.service'
 
-// useSystem loads the control-plane's self-deploy status + history and refreshes
-// it on an interval, so the card reflects a self-deploy as it lands.
+// The control-plane's self-deploy status + history, refreshed on an interval so
+// the card reflects a self-deploy as it lands.
 export function useSystem() {
-  const [info, setInfo] = useState<SystemInfo | null>(null)
+  const qc = useQueryClient()
+  const { data: info = null } = useQuery<SystemInfo>({
+    queryKey: ['system'],
+    queryFn: api.system,
+    refetchInterval: 20000,
+  })
 
-  const reload = useCallback(() => {
-    api
-      .system()
-      .then(setInfo)
-      .catch(() => setInfo(null))
-  }, [])
-
-  useEffect(() => {
-    reload()
-    const id = window.setInterval(reload, 20000)
-    return () => window.clearInterval(id)
-  }, [reload])
+  const reload = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['system'] }),
+    [qc],
+  )
 
   return { info, reload }
 }

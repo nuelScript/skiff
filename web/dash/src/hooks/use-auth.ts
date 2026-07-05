@@ -1,25 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Me } from '@/services/api.service'
 
 export type AuthState = 'checking' | 'setup' | 'out' | 'in'
 
 export function useAuth() {
-  const [state, setState] = useState<AuthState>('checking')
-  const [me, setMe] = useState<Me | null>(null)
+  const qc = useQueryClient()
+  const { data: me = null, isPending } = useQuery<Me>({
+    queryKey: ['me'],
+    queryFn: api.auth.me,
+    retry: false,
+    staleTime: Infinity,
+  })
 
-  const refresh = useCallback(async () => {
-    try {
-      const m = await api.auth.me()
-      setMe(m)
-      setState(m.authenticated ? 'in' : m.needsSetup ? 'setup' : 'out')
-    } catch {
-      setState('out')
-    }
-  }, [])
+  const state: AuthState = isPending
+    ? 'checking'
+    : me?.authenticated
+      ? 'in'
+      : me?.needsSetup
+        ? 'setup'
+        : 'out'
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+  const refresh = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['me'] }),
+    [qc],
+  )
 
   const setup = useCallback(
     async (secret: string, email: string, name: string, password: string) => {
@@ -39,16 +44,15 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     await api.auth.logout()
-    setMe(null)
-    setState('out')
-  }, [])
+    qc.setQueryData(['me'], { authenticated: false, needsSetup: false } as Me)
+  }, [qc])
 
   const switchTeam = useCallback(
     async (team: string) => {
       await api.auth.switchTeam(team)
       await refresh()
     },
-    [refresh],
+    [qc, refresh],
   )
 
   return { state, me, setup, login, logout, switchTeam, refresh }

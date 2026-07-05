@@ -1,34 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type GithubStatus, type Repo } from '@/services/api.service'
 
 export function useGithub(active: boolean) {
-  const [status, setStatus] = useState<GithubStatus | null>(null)
-  const [repos, setRepos] = useState<Repo[]>([])
-  const [loadingRepos, setLoadingRepos] = useState(false)
+  const qc = useQueryClient()
 
-  const refresh = useCallback(() => {
-    api.github
-      .status()
-      .then(setStatus)
-      .catch(() => setStatus({ configured: false, installed: false }))
-  }, [])
+  const { data: status = null } = useQuery<GithubStatus>({
+    queryKey: ['github', 'status'],
+    queryFn: api.github.status,
+    enabled: active,
+  })
 
-  const loadRepos = useCallback(() => {
-    setLoadingRepos(true)
-    api.github
-      .repos()
-      .then(setRepos)
-      .catch(() => setRepos([]))
-      .finally(() => setLoadingRepos(false))
-  }, [])
+  const { data: repos = [], isFetching: loadingRepos } = useQuery<Repo[]>({
+    queryKey: ['github', 'repos'],
+    queryFn: api.github.repos,
+    enabled: active && !!status?.installed,
+  })
 
-  useEffect(() => {
-    if (active) refresh()
-  }, [active, refresh])
-
-  useEffect(() => {
-    if (active && status?.installed) loadRepos()
-  }, [active, status?.installed, loadRepos])
+  const refresh = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['github', 'status'] }),
+    [qc],
+  )
+  const loadRepos = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['github', 'repos'] }),
+    [qc],
+  )
 
   return { status, repos, loadingRepos, refresh, loadRepos }
 }

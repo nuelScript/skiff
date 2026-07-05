@@ -3,57 +3,46 @@ import { useApps } from '@/hooks/use-apps'
 import { useConsole } from '@/hooks/use-console'
 import { useDeploys } from '@/hooks/use-deploys'
 import { useSystem } from '@/hooks/use-system'
-import { api, type Me } from '@/services/api.service'
-import Header from '@/components/header'
+import { useAuthContext } from '@/lib/auth-context'
+import { Button } from '@/components/ui/button'
 import AppCard from '@/components/app-card'
 import ControlPlaneCard from '@/components/control-plane-card'
 import DeployModal from '@/components/deploy-modal'
 import DeployHistory from '@/components/deploy-history'
 import EnvDialog from '@/components/env-dialog'
-import MembersDialog from '@/components/members-dialog'
 import Drawer from '@/components/drawer'
 import { LogoMark } from '@/components/logo'
 
-export default function Dashboard({
-  me,
-  logout,
-  switchTeam,
-}: {
-  me: Me
-  logout: () => void
-  switchTeam: (id: string) => Promise<void>
-}) {
+export default function ProjectsPage() {
+  const { me } = useAuthContext()
   const { apps, reload, stop } = useApps()
   const term = useConsole(reload)
   const history = useDeploys()
   const { info: system } = useSystem()
   const [open, setOpen] = useState(false)
-  const [members, setMembers] = useState(false)
   const [envApp, setEnvApp] = useState<string | null>(null)
+
+  const teamName = me?.teams?.find((t) => t.id === me?.team)?.name ?? 'this team'
 
   useEffect(() => {
     reload()
-  }, [me.team, reload])
-
-  const createTeam = async () => {
-    const name = window.prompt('New team name')
-    if (name && name.trim()) {
-      const t = await api.auth.createTeam(name.trim())
-      await switchTeam(t.id)
-    }
-  }
+  }, [me?.team, reload])
 
   return (
-    <>
-      <Header
-        me={me}
-        onDeploy={() => setOpen(true)}
-        onLogout={logout}
-        switchTeam={switchTeam}
-        onMembers={() => setMembers(true)}
-        onCreateTeam={createTeam}
-      />
-      <main className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 p-6 pb-[45vh]">
+    <div className="p-6">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-medium">Projects</h1>
+          <p className="text-muted-foreground text-sm">
+            Apps deployed from Git in {teamName}.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setOpen(true)}>
+          Deploy from Git
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 pb-[45vh]">
         {system?.selfDeploy && (
           <ControlPlaneCard
             info={system}
@@ -83,7 +72,7 @@ export default function Dashboard({
             />
           ))
         )}
-      </main>
+      </div>
 
       <DeployModal
         open={open}
@@ -108,11 +97,9 @@ export default function Dashboard({
         }}
       />
 
-      <MembersDialog open={members} onOpenChange={setMembers} />
-
       <EnvDialog app={envApp} onClose={() => setEnvApp(null)} />
 
       {term.stream && <Drawer stream={term.stream} onClose={term.close} />}
-    </>
+    </div>
   )
 }
