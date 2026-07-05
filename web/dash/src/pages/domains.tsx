@@ -67,7 +67,7 @@ export default function DomainsPage() {
   const active = domains.filter((d) => d.pointsHere).length
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="px-8 py-8">
       <header className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Domains</h1>
