@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Engine struct {
@@ -167,6 +168,47 @@ func (e *Engine) Containers() ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// AppContainers lists every container (running or not) for an app, so all stale
+// versions can be retired — not just the one the registry last recorded.
+func (e *Engine) AppContainers(app string) []string {
+	out, err := e.command("ps", "-a", "--filter", "label=skiff.app="+app, "--format", "{{.Names}}").Output()
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	return names
+}
+
+// ContainerInfo is a skiff-managed container's name and creation time.
+type ContainerInfo struct {
+	Name    string
+	Created time.Time
+}
+
+// SkiffContainers lists all skiff-managed containers with their creation time,
+// for reaping orphans (deleted apps, failed swaps) on startup.
+func (e *Engine) SkiffContainers() []ContainerInfo {
+	out, err := e.command("ps", "-a", "--filter", "label=skiff=1", "--format", "{{.Names}}|{{.CreatedAt}}").Output()
+	if err != nil {
+		return nil
+	}
+	var cs []ContainerInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name, created, ok := strings.Cut(line, "|")
+		if !ok || name == "" {
+			continue
+		}
+		t, _ := time.Parse("2006-01-02 15:04:05 -0700 MST", strings.TrimSpace(created))
+		cs = append(cs, ContainerInfo{Name: name, Created: t})
+	}
+	return cs
 }
 
 // Routes discovers app-to-hostport mappings from skiff.app-labeled containers.

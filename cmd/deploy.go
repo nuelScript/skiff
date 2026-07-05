@@ -142,13 +142,6 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 		runtimeEnv[k] = v
 	}
 
-	apps, err := registry.Load()
-	if err != nil {
-		ui.Fail("Couldn't read the app registry")
-		return err
-	}
-	previous, hadPrevious := apps[cfg.Name]
-
 	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	ui.Step("Starting new version")
 	hostPort, err := eng.Run(docker.RunSpec{
@@ -191,9 +184,17 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 		return err
 	}
 
-	if hadPrevious && previous.Container != "" && previous.Container != container {
-		_ = eng.Stop(previous.Container) // graceful drain (SIGTERM) before removal
-		_ = eng.Remove(previous.Container)
+	// Retire every other container for this app — the previous version plus any
+	// left over from a failed swap or a canceled build.
+	retired := 0
+	for _, name := range eng.AppContainers(cfg.Name) {
+		if name != container {
+			_ = eng.Stop(name) // graceful drain (SIGTERM) before removal
+			_ = eng.Remove(name)
+			retired++
+		}
+	}
+	if retired > 0 {
 		ui.Done("Retired the previous version")
 	}
 

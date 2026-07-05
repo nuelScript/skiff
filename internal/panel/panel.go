@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/auth"
 	"github.com/nuelScript/skiff/internal/db"
@@ -49,7 +50,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	if branch == "" {
 		branch = "main"
 	}
-	return &Panel{
+	p := &Panel{
 		setupSecret: setupSecret,
 		domain:      domain,
 		eng:         eng,
@@ -57,7 +58,33 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		auth:        auth.NewStore(database),
 		selfRepo:    os.Getenv("SKIFF_SELF_REPO"),
 		selfBranch:  branch,
-	}, nil
+	}
+	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
+	return p, nil
+}
+
+// reapOrphanContainers removes skiff-managed containers that aren't the current
+// version of any registered app (deleted apps, or orphans from a failed swap).
+// It skips very recent ones so a deploy in progress during startup isn't hit.
+func (p *Panel) reapOrphanContainers() {
+	apps, err := registry.Load()
+	if err != nil {
+		return
+	}
+	current := make(map[string]bool, len(apps))
+	for _, a := range apps {
+		current[a.Container] = true
+	}
+	cutoff := time.Now().Add(-10 * time.Minute)
+	for _, c := range p.eng.SkiffContainers() {
+		if current[c.Name] {
+			continue
+		}
+		if c.Created.IsZero() || c.Created.Before(cutoff) {
+			_ = p.eng.Stop(c.Name)
+			_ = p.eng.Remove(c.Name)
+		}
+	}
 }
 
 func (p *Panel) Handler() http.Handler {
