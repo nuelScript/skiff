@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EnvEditor } from '@/components/env-editor'
+import { ConsoleTerminal } from '@/components/console-terminal'
 import { Drawer } from '@/components/drawer'
 
 function rel(unix: number): string {
@@ -118,6 +119,7 @@ export default function ProjectDetailPage() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="console">Console</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -294,6 +296,25 @@ export default function ProjectDetailPage() {
               reload()
             }}
           />
+        </TabsContent>
+
+        {/* Console */}
+        <TabsContent value="console" className="pb-8">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold">Console</h2>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              A shell inside the running container — run migrations, inspect state, debug.
+            </p>
+          </div>
+          {project.state === 'running' ? (
+            <div className="h-[60vh] overflow-hidden rounded-xl border border-white/10 bg-[#09090b] p-3">
+              <ConsoleTerminal app={project.name} />
+            </div>
+          ) : (
+            <p className="text-muted-foreground rounded-xl border border-white/8 py-16 text-center text-sm">
+              The app isn't running — deploy it to open a console.
+            </p>
+          )}
         </TabsContent>
 
         {/* Environment */}

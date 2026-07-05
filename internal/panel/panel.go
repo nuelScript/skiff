@@ -107,6 +107,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
 	mux.HandleFunc("/api/rollback", p.protected(p.handleRollback))
 	mux.HandleFunc("/api/cancel", p.protected(p.handleCancel))
+	mux.HandleFunc("/api/exec", p.protected(p.handleExec))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
