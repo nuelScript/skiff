@@ -55,7 +55,7 @@ function statusStyle(state: string): StatusStyle {
   }
 }
 
-export default function AppCard({
+export function AppCard({
   app,
   index = 0,
   onLogs,

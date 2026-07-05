@@ -29,7 +29,7 @@ type Props = {
   ) => void
 }
 
-export default function DeployModal({
+export function DeployModal({
   open,
   onOpenChange,
   onDeployUrl,

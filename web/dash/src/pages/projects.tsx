@@ -4,14 +4,14 @@ import { useApps } from '@/hooks/use-apps'
 import { useConsole } from '@/hooks/use-console'
 import { useDeploys } from '@/hooks/use-deploys'
 import { useSystem } from '@/hooks/use-system'
-import { useAuthContext } from '@/lib/auth-context'
+import { useAuthContext } from '@/context/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import AppCard from '@/components/app-card'
+import { AppCard } from '@/components/app-card'
 import ControlPlaneCard from '@/components/control-plane-card'
-import DeployModal from '@/components/deploy-modal'
-import DeployHistory from '@/components/deploy-history'
-import EnvDialog from '@/components/env-dialog'
+import { DeployModal } from '@/components/deploy-modal'
+import { DeployHistory } from '@/components/deploy-history'
+import { EnvDialog } from '@/components/env-dialog'
 import Drawer from '@/components/drawer'
 import { LogoMark } from '@/components/logo'
 
@@ -45,8 +45,8 @@ export default function ProjectsPage() {
   const cpOffset = showControlPlane ? 1 : 0
 
   return (
-    <div className="mx-auto max-w-[1400px] px-6 py-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="px-8 py-8">
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-muted-foreground mt-1 text-sm">

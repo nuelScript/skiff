@@ -13,7 +13,7 @@ import {
 
 const blank = (): EnvVar => ({ key: '', value: '', build: false })
 
-export default function EnvDialog({
+export function EnvDialog({
   app,
   onClose,
 }: {

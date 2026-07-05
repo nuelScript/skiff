@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router'
-import { AuthProvider, useAuthContext } from '@/lib/auth-context'
+import { AuthProvider, useAuthContext } from '@/context/auth-context'
 import Setup from '@/components/setup'
 import Login from '@/components/login'
 import AcceptInvite from '@/components/accept-invite'

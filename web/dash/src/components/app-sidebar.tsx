@@ -95,13 +95,17 @@ export default function AppSidebar({
       <SidebarContent>
         {SECTIONS.map((section, i) => (
           <Fragment key={i}>
-            {i > 0 && <SidebarSeparator className="mx-3" />}
-            <SidebarGroup className="py-1">
+            {i > 0 && <SidebarSeparator className="mx-3 my-1.5" />}
+            <SidebarGroup className="py-1.5">
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-1.5">
                   {section.map((n) => (
                     <SidebarMenuItem key={n.to}>
-                      <SidebarMenuButton asChild isActive={active(n.to, n.end)}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active(n.to, n.end)}
+                        className="h-9 gap-2.5"
+                      >
                         <NavLink to={n.to} end={n.end}>
                           <n.icon />
                           <span>{n.label}</span>

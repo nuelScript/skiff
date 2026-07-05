@@ -21,7 +21,7 @@ function rel(unix: number): string {
   return Math.floor(s / 86400) + 'd ago'
 }
 
-export default function DeployHistory({
+export function DeployHistory({
   app,
   deploys,
   onClose,

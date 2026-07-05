@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router'
-import { useAuthContext } from '@/lib/auth-context'
+import { useAuthContext } from '@/context/auth-context'
 import { api } from '@/services/api.service'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import AppSidebar from '@/components/app-sidebar'
