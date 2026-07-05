@@ -13,6 +13,7 @@ skiff-*.toml
 # Node
 node_modules/
 .next/
+web/dash/dist/
 
 # Env / secrets
 .env

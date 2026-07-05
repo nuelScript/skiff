@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath } from 'node:url'
 
-// The dashboard builds into the Go binary's embed dir; dev proxies the API.
+// The dashboard builds to ./dist; the release step syncs it into the Go binary's
+// embed dir. Dev proxies the API.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -12,7 +13,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: fileURLToPath(new URL('../../internal/panel/dist', import.meta.url)),
+    outDir: 'dist',
     emptyOutDir: true,
   },
   server: {
