@@ -41,6 +41,13 @@ export type Deploy = {
 
 export type EnvVar = { key: string; value: string; build: boolean }
 
+export type SystemInfo = {
+  selfDeploy: boolean
+  repo: string
+  branch: string
+  deploys: Deploy[]
+}
+
 export const api = {
   auth: {
     me: () => http.get<Me>('/me').then((r) => r.data),
@@ -58,6 +65,7 @@ export const api = {
     invite: (email: string, role: string) =>
       http.post<{ link: string }>('/teams/invite', { email, role }).then((r) => r.data),
   },
+  system: () => http.get<SystemInfo>('/system').then((r) => r.data),
   apps: () => http.get<App[]>('/apps').then((r) => r.data),
   down: (name: string) => http.post('/down', null, { params: { app: name } }),
   deploys: (app: string) =>

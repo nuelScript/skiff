@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { useApps } from '@/hooks/use-apps'
 import { useConsole } from '@/hooks/use-console'
 import { useDeploys } from '@/hooks/use-deploys'
+import { useSystem } from '@/hooks/use-system'
 import { api, type Me } from '@/services/api.service'
 import Header from '@/components/header'
 import AppCard from '@/components/app-card'
+import ControlPlaneCard from '@/components/control-plane-card'
 import DeployModal from '@/components/deploy-modal'
 import DeployHistory from '@/components/deploy-history'
 import EnvDialog from '@/components/env-dialog'
@@ -24,6 +26,7 @@ export default function Dashboard({
   const { apps, reload, stop } = useApps()
   const term = useConsole(reload)
   const history = useDeploys()
+  const { info: system } = useSystem()
   const [open, setOpen] = useState(false)
   const [members, setMembers] = useState(false)
   const [envApp, setEnvApp] = useState<string | null>(null)
@@ -51,6 +54,16 @@ export default function Dashboard({
         onCreateTeam={createTeam}
       />
       <main className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 p-6 pb-[45vh]">
+        {system?.selfDeploy && (
+          <ControlPlaneCard
+            info={system}
+            onHistory={history.open}
+            onLogs={(app, id) => {
+              history.close()
+              term.showBuildLog(app, id)
+            }}
+          />
+        )}
         {apps.length === 0 ? (
           <div className="col-span-full flex flex-col items-center gap-3 p-16 text-center">
             <LogoMark className="h-10 w-10 opacity-40" />

@@ -72,6 +72,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/teams/members", p.protected(p.handleMembers))
 	mux.HandleFunc("/api/teams/invite", p.protected(p.handleInvite))
 	// projects
+	mux.HandleFunc("/api/system", p.protected(p.handleSystem))
 	mux.HandleFunc("/api/apps", p.protected(p.handleApps))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
@@ -322,6 +323,18 @@ type appView struct {
 	Repo   string `json:"repo,omitempty"`
 	Branch string `json:"branch,omitempty"`
 	Auto   bool   `json:"auto"`
+}
+
+// handleSystem reports the control plane itself: whether it self-deploys, the
+// repo it tracks, and its own deploy history (recorded under app "panel").
+func (p *Panel) handleSystem(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"selfDeploy": p.selfRepo != "",
+		"repo":       p.selfRepo,
+		"branch":     p.selfBranch,
+		"deploys":    appDeploys("panel"),
+	})
 }
 
 func (p *Panel) handleApps(w http.ResponseWriter, r *http.Request) {
