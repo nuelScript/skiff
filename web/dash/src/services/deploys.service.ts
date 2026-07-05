@@ -14,6 +14,11 @@ class DeploysService extends BaseService {
   list(app: string) {
     return this.get<Deploy[]>('/deploys', { params: { app } })
   }
+
+  // Global build feed across every app (no app filter).
+  listAll() {
+    return this.get<Deploy[]>('/deploys')
+  }
 }
 
 export const deploysService = new DeploysService()

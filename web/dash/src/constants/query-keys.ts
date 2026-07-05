@@ -7,6 +7,7 @@ export const queryKeys = {
   system: ['system'] as const,
   server: ['server'] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
+  deploysAll: ['deploys', 'all'] as const,
   github: {
     status: ['github', 'status'] as const,
     repos: ['github', 'repos'] as const,

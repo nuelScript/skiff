@@ -129,6 +129,24 @@ func appDeploys(app string) []Deploy {
 	return out
 }
 
+// allDeploys is the global build feed across every app, newest first.
+func allDeploys() []Deploy {
+	rows, err := sqlDB.Query(
+		`SELECT id,app,commit_sha,message,trigger,status,started FROM deploys ORDER BY started DESC LIMIT 100`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []Deploy{}
+	for rows.Next() {
+		var d Deploy
+		if rows.Scan(&d.ID, &d.App, &d.Commit, &d.Message, &d.Trigger, &d.Status, &d.Started) == nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 func deployStatus(app, id string) string {
 	var st string
 	_ = sqlDB.QueryRow(`SELECT status FROM deploys WHERE id=? AND app=?`, id, app).Scan(&st)

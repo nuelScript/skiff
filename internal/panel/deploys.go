@@ -154,6 +154,10 @@ func (p *Panel) handleDeployLog(w http.ResponseWriter, r *http.Request) {
 func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	w.Header().Set("Content-Type", "application/json")
+	if app == "" {
+		_ = json.NewEncoder(w).Encode(allDeploys())
+		return
+	}
 	_ = json.NewEncoder(w).Encode(appDeploys(app))
 }
 
