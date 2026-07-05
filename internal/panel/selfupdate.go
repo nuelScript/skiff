@@ -102,7 +102,10 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	if e := runLogged(f, "docker", "run", "--rm",
 		"-v", src+":/w", "-v", "skiff-npm:/root/.npm", "-w", "/w/web/dash",
 		"node:22", "sh", "-c",
-		"npm ci && npm run build && rm -rf ../../internal/panel/dist && cp -r dist ../../internal/panel/dist",
+		// Prefer a reproducible clean install; fall back to a plain install so a
+		// drifted lock file can't wedge a self-deploy.
+		"(npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && "+
+			"npm run build && rm -rf ../../internal/panel/dist && cp -r dist ../../internal/panel/dist",
 	); e != nil {
 		return fail("dashboard build failed (see log)")
 	}
