@@ -2,9 +2,10 @@ import { Logo } from "@/components/logo";
 import { DASHBOARD_URL } from "@/lib/site";
 
 const links = [
-  { href: "#features", label: "FEATURES" },
-  { href: "#how", label: "HOW IT WORKS" },
-  { href: "#stacks", label: "STACKS" },
+  { href: "/#features", label: "FEATURES" },
+  { href: "/#how", label: "HOW IT WORKS" },
+  { href: "/#stacks", label: "STACKS" },
+  { href: "/docs", label: "DOCS" },
 ];
 
 export function SiteNav() {

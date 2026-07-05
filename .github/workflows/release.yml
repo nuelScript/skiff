@@ -1,0 +1,53 @@
+name: release
+
+# Push a version tag to build the dashboard into the binary, cross-compile the
+# Linux binaries, and publish them to a GitHub Release. The installer at
+# useskiff.xyz/install downloads the latest release's binary.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build dashboard into the binary
+        working-directory: web/dash
+        run: |
+          npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+          npm run build
+          rm -rf ../../internal/panel/dist
+          cp -r dist ../../internal/panel/dist
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Cross-compile Linux binaries
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+        run: |
+          GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o skiff-linux-amd64 .
+          GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o skiff-linux-arm64 .
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            skiff-linux-amd64 skiff-linux-arm64 \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
