@@ -2,23 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const NAV = [
-  {
-    title: "Getting started",
-    items: [
-      { href: "/docs", label: "Overview" },
-      { href: "/docs/self-hosting", label: "Self-hosting" },
-    ],
-  },
-];
+import { DOCS_NAV } from "@/lib/docs-nav";
 
 export function DocsSidebar() {
   const path = usePathname();
   return (
     <aside className="hidden w-52 shrink-0 lg:block">
       <nav className="sticky top-24 space-y-6">
-        {NAV.map((section) => (
+        {DOCS_NAV.map((section) => (
           <div key={section.title}>
             <p className="text-subtle mb-2 font-mono text-[10px] tracking-[0.2em] uppercase">
               {section.title}
@@ -32,9 +23,7 @@ export function DocsSidebar() {
                       href={item.href}
                       className={
                         "block rounded-md px-2 py-1 text-sm transition " +
-                        (active
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:text-fg")
+                        (active ? "bg-elevated text-fg" : "text-muted hover:text-fg")
                       }
                     >
                       {item.label}
