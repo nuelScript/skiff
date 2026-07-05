@@ -74,6 +74,8 @@ func (p *Panel) Handler() http.Handler {
 	// projects
 	mux.HandleFunc("/api/system", p.protected(p.handleSystem))
 	mux.HandleFunc("/api/apps", p.protected(p.handleApps))
+	mux.HandleFunc("/api/project", p.protected(p.handleProject))
+	mux.HandleFunc("/api/redeploy", p.protected(p.handleRedeploy))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
@@ -363,6 +365,85 @@ func (p *Panel) handleApps(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
+type projectView struct {
+	Name    string   `json:"name"`
+	State   string   `json:"state"`
+	URL     string   `json:"url"`
+	Repo    string   `json:"repo"`
+	Branch  string   `json:"branch"`
+	RootDir string   `json:"rootDir"`
+	Port    string   `json:"port"`
+	Auto    bool     `json:"auto"`
+	Deploys []Deploy `json:"deploys"`
+}
+
+// handleProject serves one project's detail (GET) or updates its settings (PUT):
+// source config, live state, URL, and deploy history — the project page.
+func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
+	app := sanitizeName(r.URL.Query().Get("app"))
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		src, _ := getSource(app)
+		state := "missing"
+		if apps, err := registry.Load(); err == nil {
+			if a, ok := apps[app]; ok {
+				state = p.eng.State(a.Container)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(projectView{
+			Name: app, State: state, URL: "https://" + app + "." + p.domain,
+			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
+			Auto: src.Auto, Deploys: appDeploys(app),
+		})
+	case http.MethodPut:
+		var body struct {
+			Branch  string `json:"branch"`
+			RootDir string `json:"rootDir"`
+			Port    string `json:"port"`
+			Auto    bool   `json:"auto"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		src, ok := getSource(app)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusNotFound)
+			return
+		}
+		src.Branch = strings.TrimSpace(body.Branch)
+		src.RootDir = strings.TrimSpace(body.RootDir)
+		if port := strings.TrimSpace(body.Port); port != "" {
+			src.Port = port
+		}
+		src.Auto = body.Auto
+		_ = putSource(src)
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleRedeploy rebuilds a project's current source (its latest commit) without
+// needing a fresh push, streaming the build log over SSE.
+func (p *Panel) handleRedeploy(w http.ResponseWriter, r *http.Request) {
+	app := sanitizeName(r.URL.Query().Get("app"))
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	src, ok := getSource(app)
+	if !ok {
+		http.Error(w, "unknown project", http.StatusNotFound)
+		return
+	}
+	id := newDeployID()
+	go p.runDeploy(src, "", "", "", "redeploy", id)
+	p.tailLog(w, r, app, id)
+}
+
 // handleDeploy deploys from a pasted git URL (with an optional token), scoped to
 // the caller's team, recording history + a persisted log streamed over SSE.
 func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
@@ -390,7 +471,7 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		auth = injectToken(git, token)
 	}
 	id := newDeployID()
-	go p.runDeploy(src, auth, "", "manual", id)
+	go p.runDeploy(src, auth, "", "", "manual", id)
 	p.tailLog(w, r, name, id)
 }
 

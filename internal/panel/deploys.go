@@ -21,7 +21,7 @@ import (
 // and recording the deploy in history. Shared by manual deploys and webhooks.
 // authURL, when set, overrides the clone URL (e.g. a pasted token); otherwise a
 // GitHub-App token is used for repo sources.
-func (p *Panel) runDeploy(src Source, authURL, commit, trigger, id string) {
+func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id string) {
 	logp := logPath(src.App, id)
 	if err := os.MkdirAll(filepath.Dir(logp), 0o755); err != nil {
 		return
@@ -34,7 +34,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, trigger, id string) {
 	logln := func(s string) { fmt.Fprintln(f, s) }
 
 	addDeploy(Deploy{
-		ID: id, App: src.App, Commit: shortCommit(commit),
+		ID: id, App: src.App, Commit: shortCommit(commit), Message: message,
 		Trigger: trigger, Status: "building", Started: time.Now().Unix(),
 	})
 

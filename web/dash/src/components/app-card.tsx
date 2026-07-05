@@ -7,6 +7,7 @@ import {
   Square,
   MoreHorizontal,
 } from 'lucide-react'
+import { Link } from 'react-router'
 import type { App } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import {
@@ -79,9 +80,12 @@ export function AppCard({
       <span className={'absolute top-0 left-0 h-full w-[2px] ' + s.edge} />
 
       <header className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
+        <Link
+          to={'/projects/' + app.name}
+          className="hover:text-foreground min-w-0 truncate text-[15px] font-semibold tracking-tight hover:underline"
+        >
           {app.name}
-        </h3>
+        </Link>
         <span
           className={
             'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wider uppercase ' +

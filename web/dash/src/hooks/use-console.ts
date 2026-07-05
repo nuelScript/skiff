@@ -3,6 +3,7 @@ import {
   deployLogUrl,
   githubDeployUrl,
   logsUrl,
+  redeployUrl,
   openStream,
 } from '@/services/stream.service'
 import { useCallback, useRef, useState } from 'react'
@@ -59,6 +60,11 @@ export function useConsole(onDeployed: () => void) {
     [start, onDeployed],
   )
 
+  const redeploy = useCallback(
+    (name: string) => start('Redeploying ' + name, redeployUrl(name), onDeployed),
+    [start, onDeployed],
+  )
+
   const showLogs = useCallback(
     (name: string) => start('Logs: ' + name, logsUrl(name)),
     [start],
@@ -69,5 +75,5 @@ export function useConsole(onDeployed: () => void) {
     [start],
   )
 
-  return { stream, close, deploy, deployRepo, showLogs, showBuildLog }
+  return { stream, close, deploy, deployRepo, redeploy, showLogs, showBuildLog }
 }

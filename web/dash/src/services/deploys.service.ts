@@ -4,6 +4,7 @@ export type Deploy = {
   id: string
   app: string
   commit: string
+  message: string
   trigger: string
   status: string
   started: number

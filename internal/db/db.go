@@ -28,7 +28,17 @@ func Open() (*sql.DB, error) {
 	if _, err := d.Exec(schema); err != nil {
 		return nil, err
 	}
+	// Idempotent migrations for databases created before a column existed.
+	// (CREATE TABLE IF NOT EXISTS won't add columns to a table that's already there.)
+	for _, m := range migrations {
+		_, _ = d.Exec(m)
+	}
 	return d, nil
+}
+
+// migrations are additive and safe to re-run; each fails harmlessly once applied.
+var migrations = []string{
+	`ALTER TABLE deploys ADD COLUMN message TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -72,6 +82,7 @@ CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,
   app        TEXT NOT NULL,
   commit_sha TEXT NOT NULL DEFAULT '',
+  message    TEXT NOT NULL DEFAULT '',
   trigger    TEXT NOT NULL DEFAULT 'manual',
   status     TEXT NOT NULL DEFAULT 'building',
   started    INTEGER NOT NULL

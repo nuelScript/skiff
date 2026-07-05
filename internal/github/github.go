@@ -238,13 +238,15 @@ func VerifySignature(secret string, body []byte, sig string) bool {
 }
 
 type Push struct {
-	Repo   string // owner/name
-	Branch string
-	Commit string
-	Paths  []string // changed files (best-effort; GitHub truncates very large pushes)
+	Repo    string // owner/name
+	Branch  string
+	Commit  string
+	Message string   // head commit message (first line shown in the UI)
+	Paths   []string // changed files (best-effort; GitHub truncates very large pushes)
 }
 
 type commitFiles struct {
+	Message  string   `json:"message"`
 	Added    []string `json:"added"`
 	Modified []string `json:"modified"`
 	Removed  []string `json:"removed"`
@@ -286,10 +288,19 @@ func ParsePush(body []byte) (Push, bool) {
 		add(c.Modified)
 		add(c.Removed)
 	}
+	msg := ""
+	if p.HeadCommit != nil {
+		if i := strings.IndexByte(p.HeadCommit.Message, '\n'); i >= 0 {
+			msg = strings.TrimSpace(p.HeadCommit.Message[:i])
+		} else {
+			msg = strings.TrimSpace(p.HeadCommit.Message)
+		}
+	}
 	return Push{
-		Repo:   p.Repository.FullName,
-		Branch: strings.TrimPrefix(p.Ref, "refs/heads/"),
-		Commit: p.After,
-		Paths:  paths,
+		Repo:    p.Repository.FullName,
+		Branch:  strings.TrimPrefix(p.Ref, "refs/heads/"),
+		Commit:  p.After,
+		Message: msg,
+		Paths:   paths,
 	}, true
 }

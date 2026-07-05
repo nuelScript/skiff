@@ -3,6 +3,7 @@
 export const queryKeys = {
   me: ['me'] as const,
   apps: ['apps'] as const,
+  project: (name: string) => ['project', name] as const,
   system: ['system'] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
   github: {

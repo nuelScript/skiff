@@ -50,15 +50,18 @@ export function DeployHistory({
               <button
                 key={d.id}
                 onClick={() => app && onViewLog(app, d.id)}
-                className="hover:bg-accent flex w-full items-center justify-between border-b px-4 py-3 text-left last:border-0"
+                className="hover:bg-accent flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-0"
               >
-                <span className="flex items-center gap-2.5">
-                  <span className={'h-1.5 w-1.5 rounded-full ' + statusDot(d.status)} />
-                  <span className="font-mono text-xs">
-                    {d.commit || d.status}
-                  </span>
+                <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + statusDot(d.status)} />
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  {d.message || d.commit || d.status}
                 </span>
-                <span className="text-muted-foreground font-mono text-[11px]">
+                {d.commit && (
+                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+                    {d.commit}
+                  </span>
+                )}
+                <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
                   {d.trigger} · {rel(d.started)}
                 </span>
               </button>

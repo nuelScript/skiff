@@ -124,7 +124,7 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = putSource(src)
 	id := newDeployID()
-	go p.runDeploy(src, "", "", "manual", id)
+	go p.runDeploy(src, "", "", "", "manual", id)
 	p.tailLog(w, r, name, id)
 }
 
@@ -152,14 +152,14 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			id := newDeployID()
-			go p.runDeploy(src, "", push.Commit, "push", id)
+			go p.runDeploy(src, "", push.Commit, push.Message, "push", id)
 		}
 		// If the push changed Skiff itself, rebuild and hot-swap the control plane.
 		if p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch &&
 			p.pushTouchesSelf(push.Paths) {
 			id := newDeployID()
 			addDeploy(Deploy{
-				ID: id, App: "panel", Commit: shortCommit(push.Commit),
+				ID: id, App: "panel", Commit: shortCommit(push.Commit), Message: push.Message,
 				Trigger: "push", Status: "building", Started: time.Now().Unix(),
 			})
 			p.launchSelfUpdate(id, push.Commit)

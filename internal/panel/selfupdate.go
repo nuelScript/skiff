@@ -14,11 +14,6 @@ import (
 	"github.com/nuelScript/skiff/internal/github"
 )
 
-// The control plane runs as two systemd instances, skiff-panel@7070 and
-// skiff-panel@7071 (blue/green). Only one is live at a time; the router reads
-// panel.addr to know which. A self-deploy builds the new binary, boots the
-// inactive instance, health-checks it, flips the router, then drains the old —
-// the same zero-downtime swap Skiff does for any app, applied to itself.
 const (
 	portBlue  = "7070"
 	portGreen = "7071"
@@ -32,9 +27,6 @@ type SelfUpdateOpts struct {
 	DeployID string
 }
 
-// SelfUpdate rebuilds Skiff from its own git repo and hot-swaps the running
-// control plane behind the router with no downtime. It runs as a detached
-// process (see launchSelfUpdate) so stopping the old panel can't kill it.
 func SelfUpdate(opts SelfUpdateOpts) error {
 	if sqlDB == nil {
 		d, err := db.Open()
@@ -157,7 +149,7 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	time.Sleep(4 * time.Second) // router cache TTL + in-flight drain
 	log("→ draining old panel :%s", active)
 	_, _ = run("systemctl", "stop", "skiff-panel@"+active)
-	_, _ = run("systemctl", "enable", "skiff-panel@"+next)   // start this one on reboot
+	_, _ = run("systemctl", "enable", "skiff-panel@"+next)    // start this one on reboot
 	_, _ = run("systemctl", "disable", "skiff-panel@"+active) // not that one
 
 	log("✓ live on :%s — zero downtime, sessions preserved", next)

@@ -45,3 +45,5 @@ export const githubDeployUrl = (
 
 export const deployLogUrl = (app: string, id: string) =>
   `/api/deploys/log?app=${q(app)}&id=${q(id)}`
+
+export const redeployUrl = (name: string) => `/api/redeploy?app=${q(name)}`

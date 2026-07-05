@@ -1,0 +1,347 @@
+import { useState, type ReactNode } from 'react'
+import { useParams, useNavigate, Link } from 'react-router'
+import { ChevronRight, ExternalLink, RotateCw, GitBranch } from 'lucide-react'
+import { useProject } from '@/hooks/use-project'
+import { useConsole } from '@/hooks/use-console'
+import { projectsService } from '@/services/api.service'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { EnvEditor } from '@/components/env-editor'
+import { Drawer } from '@/components/drawer'
+
+function rel(unix: number): string {
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
+  if (s < 60) return s + 's ago'
+  if (s < 3600) return Math.floor(s / 60) + 'm ago'
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
+  return Math.floor(s / 86400) + 'd ago'
+}
+
+const runningPill = (state: string): string =>
+  state === 'running'
+    ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300'
+    : state === 'exited' || state === 'missing'
+      ? 'border-rose-400/25 bg-rose-400/10 text-rose-300'
+      : 'border-white/15 bg-white/5 text-muted-foreground'
+
+const deployDot = (status: string): string =>
+  status === 'live'
+    ? 'bg-emerald-400'
+    : status === 'failed'
+      ? 'bg-rose-400'
+      : 'bg-amber-400 pulse-dot'
+
+export default function ProjectDetailPage() {
+  const { name = '' } = useParams()
+  const navigate = useNavigate()
+  const { project, reload } = useProject(name)
+  const term = useConsole(reload)
+
+  if (!project) {
+    return (
+      <div className="text-muted-foreground flex h-full items-center justify-center">…</div>
+    )
+  }
+
+  const latest = project.deploys[0]
+  const host = project.url.replace(/^https?:\/\//, '')
+
+  return (
+    <div className="px-8 py-8">
+      {/* breadcrumb */}
+      <div className="text-muted-foreground mb-4 flex items-center gap-1.5 text-sm">
+        <Link to="/" className="hover:text-foreground transition-colors">
+          Projects
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="text-foreground font-medium">{project.name}</span>
+      </div>
+
+      {/* header */}
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
+          <span
+            className={
+              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wider uppercase ' +
+              runningPill(project.state)
+            }
+          >
+            <span
+              className={
+                'h-1.5 w-1.5 rounded-full ' +
+                (project.state === 'running' ? 'bg-emerald-400' : 'bg-rose-400')
+              }
+            />
+            {project.state}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {project.repo && (
+            <Button
+              size="sm"
+              variant="outline"
+              asChild
+            >
+              <a href={'https://github.com/' + project.repo} target="_blank" rel="noreferrer">
+                <GitBranch />
+                Repository
+              </a>
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => term.redeploy(project.name)}>
+            <RotateCw />
+            Redeploy
+          </Button>
+          <Button size="sm" asChild>
+            <a href={project.url} target="_blank" rel="noreferrer">
+              <ExternalLink />
+              Visit
+            </a>
+          </Button>
+        </div>
+      </header>
+
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="deployments">Deployments</TabsTrigger>
+          <TabsTrigger value="environment">Environment</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
+
+        {/* Overview */}
+        <TabsContent value="overview" className="pb-[46vh]">
+          <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+            <section className="rounded-xl border border-white/8 p-5">
+              <h2 className="text-muted-foreground mb-4 font-mono text-[11px] tracking-wider uppercase">
+                Production Deployment
+              </h2>
+              {latest ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(latest.status)} />
+                    <span className="font-mono text-sm">{latest.commit || '—'}</span>
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {latest.trigger} · {rel(latest.started)}
+                    </span>
+                  </div>
+                  {latest.message && <p className="text-sm">{latest.message}</p>}
+                  <a
+                    href={project.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-muted-foreground hover:text-foreground w-fit font-mono text-xs transition-colors"
+                  >
+                    {host}
+                  </a>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">No deployments yet.</p>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-white/8 p-5">
+              <h2 className="text-muted-foreground mb-4 font-mono text-[11px] tracking-wider uppercase">
+                Source
+              </h2>
+              <dl className="flex flex-col gap-2.5 text-sm">
+                <Row label="Repository" value={project.repo || '—'} mono />
+                <Row label="Branch" value={project.branch || 'main'} mono />
+                <Row label="Root directory" value={project.rootDir || '/'} mono />
+                <Row label="Port" value={project.port} mono />
+                <Row label="Auto-deploy" value={project.auto ? 'On' : 'Off'} />
+              </dl>
+              <p className="text-muted-foreground mt-4 text-xs">
+                Push to <span className="font-mono">{project.branch || 'main'}</span> to update, or
+                Redeploy the latest commit.
+              </p>
+            </section>
+          </div>
+        </TabsContent>
+
+        {/* Deployments */}
+        <TabsContent value="deployments" className="pb-[46vh]">
+          <div className="overflow-hidden rounded-xl border border-white/8">
+            {project.deploys.length === 0 ? (
+              <p className="text-muted-foreground p-8 text-center text-sm">No deployments yet.</p>
+            ) : (
+              project.deploys.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => term.showBuildLog(project.name, d.id)}
+                  className="hover:bg-white/[0.03] flex w-full items-center gap-4 border-b border-white/5 px-5 py-3.5 text-left transition-colors last:border-0"
+                >
+                  <span className={'h-2 w-2 shrink-0 rounded-full ' + deployDot(d.status)} />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {d.message || d.commit || d.status}
+                  </span>
+                  {d.commit && (
+                    <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                      {d.commit}
+                    </span>
+                  )}
+                  <span className="text-muted-foreground w-16 shrink-0 font-mono text-[11px]">
+                    {d.trigger}
+                  </span>
+                  <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
+                    {rel(d.started)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Environment */}
+        <TabsContent value="environment" className="max-w-2xl pb-[46vh]">
+          <EnvEditor app={project.name} />
+        </TabsContent>
+
+        {/* Settings */}
+        <TabsContent value="settings" className="max-w-2xl pb-[46vh]">
+          <SettingsForm
+            name={project.name}
+            branch={project.branch}
+            rootDir={project.rootDir}
+            port={project.port}
+            auto={project.auto}
+            onSaved={reload}
+            onDeleted={() => navigate('/')}
+            onRedeploy={() => term.redeploy(project.name)}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {term.stream && <Drawer stream={term.stream} onClose={term.close} />}
+    </div>
+  )
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={'truncate ' + (mono ? 'font-mono text-xs' : '')}>{value}</dd>
+    </div>
+  )
+}
+
+function SettingsForm({
+  name,
+  branch,
+  rootDir,
+  port,
+  auto,
+  onSaved,
+  onDeleted,
+  onRedeploy,
+}: {
+  name: string
+  branch: string
+  rootDir: string
+  port: string
+  auto: boolean
+  onSaved: () => void
+  onDeleted: () => void
+  onRedeploy: () => void
+}) {
+  const [form, setForm] = useState({ branch, rootDir, port, auto })
+  const [saved, setSaved] = useState(false)
+
+  const save = async () => {
+    await projectsService.update(name, form)
+    setSaved(true)
+    onSaved()
+  }
+
+  const del = async () => {
+    if (!confirm('Delete ' + name + '? This stops the app and removes its config.')) return
+    await projectsService.stop(name)
+    onDeleted()
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-xl border border-white/8 p-5">
+        <h2 className="mb-4 text-sm font-semibold">Build &amp; deploy</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Branch">
+            <Input
+              value={form.branch}
+              placeholder="main"
+              onChange={(e) => setForm((f) => ({ ...f, branch: e.target.value }))}
+              className="font-mono"
+            />
+          </Field>
+          <Field label="Root directory">
+            <Input
+              value={form.rootDir}
+              placeholder="/"
+              onChange={(e) => setForm((f) => ({ ...f, rootDir: e.target.value }))}
+              className="font-mono"
+            />
+          </Field>
+          <Field label="Port">
+            <Input
+              value={form.port}
+              placeholder="3000"
+              onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
+              className="font-mono"
+            />
+          </Field>
+          <Field label="Auto-deploy on push">
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, auto: !f.auto }))}
+              className={
+                'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
+                (form.auto
+                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                  : 'border-white/15 text-muted-foreground')
+              }
+            >
+              {form.auto ? 'On' : 'Off'}
+            </button>
+          </Field>
+        </div>
+        <div className="mt-5 flex items-center justify-end gap-3">
+          {saved && <span className="text-muted-foreground text-xs">Saved.</span>}
+          <Button size="sm" variant="outline" onClick={onRedeploy}>
+            <RotateCw />
+            Redeploy
+          </Button>
+          <Button size="sm" onClick={save}>
+            Save changes
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-5">
+        <h2 className="mb-1 text-sm font-semibold text-rose-300">Danger zone</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          Stop this app and remove its configuration. This cannot be undone.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={del}
+          className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
+        >
+          Delete project
+        </Button>
+      </section>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-2">
+      <Label className="text-muted-foreground text-xs">{label}</Label>
+      {children}
+    </div>
+  )
+}

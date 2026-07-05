@@ -5,6 +5,7 @@ import Login from '@/components/login'
 import AcceptInvite from '@/components/accept-invite'
 import Shell from '@/components/shell'
 import ProjectsPage from '@/pages/projects'
+import ProjectDetailPage from '@/pages/project-detail'
 import DeploymentsPage from '@/pages/deployments'
 import LogsPage from '@/pages/logs'
 import ServerPage from '@/pages/server'
@@ -40,6 +41,7 @@ export default function App() {
           <Route element={<AuthGate />}>
             <Route element={<Shell />}>
               <Route index element={<ProjectsPage />} />
+              <Route path="projects/:name" element={<ProjectDetailPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="logs" element={<LogsPage />} />
               <Route path="server" element={<ServerPage />} />

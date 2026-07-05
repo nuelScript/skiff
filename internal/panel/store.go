@@ -25,6 +25,7 @@ type Deploy struct {
 	ID      string `json:"id"`
 	App     string `json:"app"`
 	Commit  string `json:"commit"`
+	Message string `json:"message"`
 	Trigger string `json:"trigger"`
 	Status  string `json:"status"`
 	Started int64  `json:"started"`
@@ -103,8 +104,8 @@ func sourcesForRepo(repo, branch string) []Source {
 
 func addDeploy(d Deploy) {
 	_, _ = sqlDB.Exec(
-		`INSERT INTO deploys(id,app,commit_sha,trigger,status,started) VALUES(?,?,?,?,?,?)`,
-		d.ID, d.App, d.Commit, d.Trigger, d.Status, d.Started)
+		`INSERT INTO deploys(id,app,commit_sha,message,trigger,status,started) VALUES(?,?,?,?,?,?,?)`,
+		d.ID, d.App, d.Commit, d.Message, d.Trigger, d.Status, d.Started)
 }
 
 func setDeployStatus(app, id, status string) {
@@ -113,7 +114,7 @@ func setDeployStatus(app, id, status string) {
 
 func appDeploys(app string) []Deploy {
 	rows, err := sqlDB.Query(
-		`SELECT id,app,commit_sha,trigger,status,started FROM deploys WHERE app=? ORDER BY started DESC LIMIT 20`, app)
+		`SELECT id,app,commit_sha,message,trigger,status,started FROM deploys WHERE app=? ORDER BY started DESC LIMIT 20`, app)
 	if err != nil {
 		return nil
 	}
@@ -121,7 +122,7 @@ func appDeploys(app string) []Deploy {
 	out := []Deploy{}
 	for rows.Next() {
 		var d Deploy
-		if rows.Scan(&d.ID, &d.App, &d.Commit, &d.Trigger, &d.Status, &d.Started) == nil {
+		if rows.Scan(&d.ID, &d.App, &d.Commit, &d.Message, &d.Trigger, &d.Status, &d.Started) == nil {
 			out = append(out, d)
 		}
 	}
