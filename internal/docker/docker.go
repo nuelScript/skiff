@@ -192,6 +192,14 @@ func (e *Engine) RemoveVolume(name string) error {
 	return e.command("volume", "rm", "-f", name).Run()
 }
 
+// PullImage fetches an image ahead of time so a later run doesn't block on it.
+func (e *Engine) PullImage(image string) error {
+	if out, err := e.command("pull", image).CombinedOutput(); err != nil {
+		return fmt.Errorf("docker pull failed: %s", firstLine(out))
+	}
+	return nil
+}
+
 func (e *Engine) HostPort(name string, containerPort int) (int, error) {
 	out, err := e.command("port", name, strconv.Itoa(containerPort)).Output()
 	if err != nil {

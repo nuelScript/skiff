@@ -61,6 +61,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	}
 	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
+	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
 	return p, nil
 }
 

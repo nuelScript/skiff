@@ -16,6 +16,8 @@ import type { Database as Db, DbEngine } from '@/services/api.service'
 
 const ENGINES: { value: DbEngine; label: string; dot: string; accent: string }[] = [
   { value: 'postgres', label: 'PostgreSQL', dot: 'bg-sky-400', accent: 'text-sky-300' },
+  { value: 'mysql', label: 'MySQL', dot: 'bg-amber-400', accent: 'text-amber-300' },
+  { value: 'mongodb', label: 'MongoDB', dot: 'bg-emerald-400', accent: 'text-emerald-300' },
   { value: 'redis', label: 'Redis', dot: 'bg-rose-400', accent: 'text-rose-300' },
 ]
 

@@ -19,8 +19,10 @@ type dbEngine struct {
 	mountAt string
 	envVar  string // env var injected into an attached app
 	label   string
+	user    string // fixed application user ("" when the engine has none)
+	hasDB   bool   // provisions a named database
 	// container builds the run-time env + command for a fresh instance.
-	container func(pass, dbname string) (map[string]string, []string)
+	container func(user, pass, dbname string) (map[string]string, []string)
 	url       func(host string, port int, user, pass, dbname string) string
 	shell     func(pass, dbname string) []string
 }
@@ -28,9 +30,9 @@ type dbEngine struct {
 var dbEngines = map[string]dbEngine{
 	"postgres": {
 		image: "postgres:16-alpine", port: 5432, mountAt: "/var/lib/postgresql/data",
-		envVar: "DATABASE_URL", label: "PostgreSQL",
-		container: func(pass, dbname string) (map[string]string, []string) {
-			return map[string]string{"POSTGRES_USER": "skiff", "POSTGRES_PASSWORD": pass, "POSTGRES_DB": dbname}, nil
+		envVar: "DATABASE_URL", label: "PostgreSQL", user: "skiff", hasDB: true,
+		container: func(user, pass, dbname string) (map[string]string, []string) {
+			return map[string]string{"POSTGRES_USER": user, "POSTGRES_PASSWORD": pass, "POSTGRES_DB": dbname}, nil
 		},
 		url: func(host string, port int, user, pass, dbname string) string {
 			// sslmode=disable: it's a private-network hop, and some drivers (Go's
@@ -41,10 +43,44 @@ var dbEngines = map[string]dbEngine{
 			return []string{"sh", "-c", fmt.Sprintf("PGPASSWORD=%s exec psql -U skiff -d %s", pass, dbname)}
 		},
 	},
+	"mysql": {
+		image: "mysql:8", port: 3306, mountAt: "/var/lib/mysql",
+		envVar: "DATABASE_URL", label: "MySQL", user: "skiff", hasDB: true,
+		container: func(user, pass, dbname string) (map[string]string, []string) {
+			return map[string]string{
+				"MYSQL_USER": user, "MYSQL_PASSWORD": pass,
+				"MYSQL_DATABASE": dbname, "MYSQL_ROOT_PASSWORD": pass,
+			}, nil
+		},
+		url: func(host string, port int, user, pass, dbname string) string {
+			return fmt.Sprintf("mysql://%s:%s@%s:%d/%s", user, pass, host, port, dbname)
+		},
+		shell: func(pass, dbname string) []string {
+			// MYSQL_PWD avoids the password-on-argv warning the -p flag prints.
+			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s exec mysql -u skiff %s", pass, dbname)}
+		},
+	},
+	"mongodb": {
+		image: "mongo:7", port: 27017, mountAt: "/data/db",
+		envVar: "MONGODB_URI", label: "MongoDB", user: "skiff", hasDB: true,
+		container: func(user, pass, dbname string) (map[string]string, []string) {
+			return map[string]string{
+				"MONGO_INITDB_ROOT_USERNAME": user, "MONGO_INITDB_ROOT_PASSWORD": pass,
+				"MONGO_INITDB_DATABASE": dbname,
+			}, nil
+		},
+		url: func(host string, port int, user, pass, dbname string) string {
+			// Root user authenticates against admin, so authSource=admin is required.
+			return fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", user, pass, host, port, dbname)
+		},
+		shell: func(pass, dbname string) []string {
+			return []string{"sh", "-c", fmt.Sprintf("exec mongosh --quiet -u skiff -p %s --authenticationDatabase admin %s", pass, dbname)}
+		},
+	},
 	"redis": {
 		image: "redis:7-alpine", port: 6379, mountAt: "/data",
 		envVar: "REDIS_URL", label: "Redis",
-		container: func(pass, _ string) (map[string]string, []string) {
+		container: func(_, pass, _ string) (map[string]string, []string) {
 			return nil, []string{"redis-server", "--requirepass", pass, "--appendonly", "yes"}
 		},
 		url: func(host string, port int, _, pass, _ string) string {
@@ -190,6 +226,16 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// prewarmDatabaseImages pulls any missing engine images so the first provision
+// of a large image (MySQL, MongoDB) doesn't stall the create request.
+func (p *Panel) prewarmDatabaseImages() {
+	for _, e := range dbEngines {
+		if !p.eng.ImageExists(e.image) {
+			_ = p.eng.PullImage(e.image)
+		}
+	}
+}
+
 func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
 	if team == "" {
@@ -223,7 +269,12 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 		id := randToken()[:12]
 		container := "skiff-db-" + id
 		pass := randToken()
-		env, cmd := e.container(pass, name)
+		user := e.user
+		dbname := ""
+		if e.hasDB {
+			dbname = name
+		}
+		env, cmd := e.container(user, pass, dbname)
 		if err := p.eng.EnsureNetwork(dbNetwork); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -235,10 +286,6 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
-		}
-		user, dbname := "", ""
-		if body.Engine == "postgres" {
-			user, dbname = "skiff", name
 		}
 		d := dbRow{
 			ID: id, Team: team, Name: name, Engine: body.Engine, Container: container,

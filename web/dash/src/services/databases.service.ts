@@ -1,6 +1,6 @@
 import { BaseService } from '@/services/base.service'
 
-export type DbEngine = 'postgres' | 'redis'
+export type DbEngine = 'postgres' | 'mysql' | 'mongodb' | 'redis'
 
 export type Database = {
   id: string
