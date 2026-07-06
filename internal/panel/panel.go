@@ -102,6 +102,8 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/account/password", p.protected(p.handlePassword))
 	mux.HandleFunc("/api/teams", p.protected(p.handleTeamCreate))
 	mux.HandleFunc("/api/teams/rename", p.protected(p.handleTeamRename))
+	mux.HandleFunc("/api/teams/leave", p.protected(p.handleTeamLeave))
+	mux.HandleFunc("/api/teams/delete", p.protected(p.handleTeamDelete))
 	mux.HandleFunc("/api/teams/members", p.protected(p.handleMembers))
 	mux.HandleFunc("/api/teams/invite", p.protected(p.handleInvite))
 	// projects

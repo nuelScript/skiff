@@ -64,6 +64,14 @@ class AuthService extends BaseService {
   renameTeam(name: string) {
     return this.post('/teams/rename', { name })
   }
+
+  leaveTeam() {
+    return this.post('/teams/leave')
+  }
+
+  deleteTeam() {
+    return this.post('/teams/delete')
+  }
 }
 
 export const authService = new AuthService()

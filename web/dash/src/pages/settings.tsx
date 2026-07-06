@@ -233,6 +233,7 @@ function TeamSection({
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [dangerBusy, setDangerBusy] = useState(false)
   const dirty = name.trim() !== '' && name.trim() !== (team?.name ?? '')
 
   const submit = async (e: FormEvent) => {
@@ -248,6 +249,20 @@ function TeamSection({
       setError(errText(err, 'Could not rename the team.'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const leaveOrDelete = async () => {
+    const verb = isOwner ? 'Delete' : 'Leave'
+    if (!confirm(`${verb} ${team?.name ?? 'this team'}? This can't be undone.`)) return
+    setError('')
+    setDangerBusy(true)
+    try {
+      await (isOwner ? authService.deleteTeam() : authService.leaveTeam())
+      window.location.href = '/'
+    } catch (err) {
+      setError(errText(err, `Could not ${verb.toLowerCase()} the team.`))
+      setDangerBusy(false)
     }
   }
 
@@ -272,8 +287,24 @@ function TeamSection({
             <span className="text-muted-foreground text-xs">Only owners can rename the team.</span>
           )}
         </div>
-        {error && <p className="text-xs text-rose-300">{error}</p>}
       </form>
+
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/5 pt-4">
+        <p className="text-muted-foreground text-[11px]">
+          {isOwner
+            ? 'Deleting removes the team for everyone. Remove its projects and databases first.'
+            : "You'll lose access to this team's projects."}
+        </p>
+        <button
+          type="button"
+          onClick={leaveOrDelete}
+          disabled={dangerBusy}
+          className="shrink-0 rounded-[6px] border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
+        >
+          {isOwner ? 'Delete team' : 'Leave team'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
     </Section>
   )
 }

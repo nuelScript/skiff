@@ -321,6 +321,44 @@ func (s *Store) RemoveMember(teamID, userID string) error {
 	return err
 }
 
+// LeaveTeam drops the caller's own membership, refusing if they're the last owner.
+func (s *Store) LeaveTeam(userID, teamID string) error {
+	role, ok := s.Role(userID, teamID)
+	if !ok {
+		return fmt.Errorf("you're not a member of this team")
+	}
+	if role == RoleOwner {
+		var owners int
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM memberships WHERE team_id = ? AND role = ?`,
+			teamID, RoleOwner).Scan(&owners)
+		if owners <= 1 {
+			return fmt.Errorf("you're the last owner — delete the team instead")
+		}
+	}
+	_, err := s.db.Exec(`DELETE FROM memberships WHERE team_id = ? AND user_id = ?`, teamID, userID)
+	return err
+}
+
+// DeleteTeam removes a team along with its memberships and pending invites.
+// Callers must first ensure the team owns no apps or databases.
+func (s *Store) DeleteTeam(teamID string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM memberships WHERE team_id = ?`, teamID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM invites WHERE team_id = ?`, teamID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM teams WHERE id = ?`, teamID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func id() string {
 	b := make([]byte, 9)
 	_, _ = rand.Read(b)
