@@ -59,11 +59,13 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		selfRepo:    os.Getenv("SKIFF_SELF_REPO"),
 		selfBranch:  branch,
 	}
+	resStats = newResStore(filepath.Join(home, ".skiff", "resources.json"))
 	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
 	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
 	go p.backupLoop()            // daily database snapshots
 	go p.jobLoop()               // scheduled jobs (cron)
+	go p.resourceLoop()          // sample per-app CPU/memory
 	return p, nil
 }
 
@@ -134,6 +136,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
 	mux.HandleFunc("/api/analytics", p.protected(p.handleAnalytics))
+	mux.HandleFunc("/api/resources", p.protected(p.handleResources))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity } from 'lucide-react'
+import { Activity, Cpu } from 'lucide-react'
 import {
   ResponsiveContainer,
   BarChart,
@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { useApps } from '@/hooks/use-apps'
 import { useAnalytics } from '@/hooks/use-analytics'
+import { useResources } from '@/hooks/use-resources'
 import {
   Select,
   SelectContent,
@@ -20,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Analytics } from '@/services/api.service'
+import type { Analytics, Resources } from '@/services/api.service'
 
 const RANGES = [
   { v: 60, label: 'Last hour' },
@@ -51,12 +52,19 @@ function fmtBytes(b: number): string {
   return b + 'B'
 }
 
+const fmtPct = (v: number) => (v >= 100 ? Math.round(v) : v.toFixed(1)) + '%'
+
+const CPU_COLOR = '#fb923c' // orange-400
+const MEM_COLOR = '#2dd4bf' // teal-400
+
 export default function AnalyticsPage() {
   const { apps } = useApps()
   const [range, setRange] = useState(60)
   const [app, setApp] = useState('')
   const { data: a } = useAnalytics(range, app)
+  const { data: r } = useResources(range, app)
   const rangeLabel = RANGES.find((r) => r.v === range)?.label ?? 'Last hour'
+  const appNames = a?.appOptions ?? r?.appOptions ?? apps.map((x) => x.name)
 
   return (
     <div className="px-8 py-8">
@@ -64,7 +72,7 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Traffic your edge router served — {rangeLabel.toLowerCase()}.
+            Traffic and compute for your apps — {rangeLabel.toLowerCase()}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -74,7 +82,7 @@ export default function AnalyticsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All apps</SelectItem>
-              {(a?.appOptions ?? apps.map((x) => x.name)).map((n) => (
+              {appNames.map((n) => (
                 <SelectItem key={n} value={n} className="font-mono">
                   {n}
                 </SelectItem>
@@ -96,13 +104,11 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
+      <SectionLabel>Edge traffic</SectionLabel>
       {!a ? (
         <p className="text-muted-foreground text-sm">Loading analytics…</p>
       ) : a.total === 0 ? (
-        <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-white/8 py-20 text-sm">
-          <Activity className="h-6 w-6 opacity-40" />
-          <span>No traffic in this range.</span>
-        </div>
+        <EmptyState icon={<Activity className="h-6 w-6 opacity-40" />} label="No traffic in this range." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <EdgeRequests a={a} />
@@ -111,6 +117,42 @@ export default function AnalyticsPage() {
           <TopApps a={a} />
         </div>
       )}
+
+      <div className="mt-10">
+        <SectionLabel>Compute</SectionLabel>
+        {!r ? (
+          <p className="text-muted-foreground text-sm">Loading resource metrics…</p>
+        ) : r.samples === 0 ? (
+          <EmptyState
+            icon={<Cpu className="h-6 w-6 opacity-40" />}
+            label="No running containers to measure yet."
+          />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CpuChart r={r} />
+            <MemoryChart r={r} />
+            <ComputeApps r={r} />
+            <ComputeSummary r={r} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-muted-foreground mb-3 font-mono text-[11px] tracking-wide uppercase">
+      {children}
+    </h2>
+  )
+}
+
+function EmptyState({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-white/8 py-20 text-sm">
+      {icon}
+      <span>{label}</span>
     </div>
   )
 }
@@ -356,6 +398,165 @@ function TopApps({ a }: { a: Analytics }) {
           ))}
         </div>
       )}
+    </Panel>
+  )
+}
+
+function ResourceChart({
+  r,
+  color,
+  gradId,
+  dataKey,
+  fmt,
+  tipLabel,
+  yWidth,
+}: {
+  r: Resources
+  color: string
+  gradId: string
+  dataKey: 'cpu' | 'mem'
+  fmt: (v: number) => string
+  tipLabel: string
+  yWidth: number
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={150}>
+      <AreaChart data={r.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} stroke={gridStroke} />
+        <XAxis
+          dataKey="t"
+          tickFormatter={fmtClock}
+          interval="preserveStartEnd"
+          minTickGap={80}
+          tick={axisTick}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          width={yWidth}
+          tickFormatter={fmt}
+          tick={axisTick}
+          tickLine={false}
+          axisLine={false}
+        />
+        <Tooltip
+          cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+          content={
+            <ChartTip
+              build={(row) => ({
+                title: timeRange(row.t, r.bucketSecs),
+                rows: [{ label: tipLabel, color, value: fmt(row[dataKey]) }],
+              })}
+            />
+          }
+        />
+        <Area
+          dataKey={dataKey}
+          stroke={color}
+          strokeWidth={1.5}
+          fill={`url(#${gradId})`}
+          isAnimationActive={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+function CpuChart({ r }: { r: Resources }) {
+  return (
+    <Panel title="CPU">
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">{fmtPct(r.curCpu)}</span>
+        <span className="text-muted-foreground text-xs">now · peak {fmtPct(r.peakCpu)}</span>
+      </div>
+      <ResourceChart
+        r={r}
+        color={CPU_COLOR}
+        gradId="cpu"
+        dataKey="cpu"
+        fmt={fmtPct}
+        tipLabel="CPU"
+        yWidth={40}
+      />
+    </Panel>
+  )
+}
+
+function MemoryChart({ r }: { r: Resources }) {
+  return (
+    <Panel title="Memory">
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {fmtBytes(r.curMem)}
+        </span>
+        <span className="text-muted-foreground text-xs">now · peak {fmtBytes(r.peakMem)}</span>
+      </div>
+      <ResourceChart
+        r={r}
+        color={MEM_COLOR}
+        gradId="mem"
+        dataKey="mem"
+        fmt={fmtBytes}
+        tipLabel="Memory"
+        yWidth={56}
+      />
+    </Panel>
+  )
+}
+
+function ComputeApps({ r }: { r: Resources }) {
+  const max = Math.max(1, ...r.apps.map((x) => x.mem))
+  return (
+    <Panel title="Top apps by memory">
+      {r.apps.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No container usage yet.</p>
+      ) : (
+        <div className="space-y-2.5 pt-1">
+          {r.apps.map((app) => (
+            <div key={app.name} className="grid grid-cols-[1fr_auto] items-center gap-3">
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="truncate font-mono text-sm">{app.name}</span>
+                  <span className="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums">
+                    {fmtPct(app.cpu)} CPU
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: (app.mem / max) * 100 + '%', background: MEM_COLOR + '99' }}
+                  />
+                </div>
+              </div>
+              <span className="font-mono text-sm tabular-nums">{fmtBytes(app.mem)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function ComputeSummary({ r }: { r: Resources }) {
+  return (
+    <Panel title="Health">
+      <div className="grid grid-cols-2 gap-4 pt-1">
+        <Metric dot={CPU_COLOR} label="CPU now" value={fmtPct(r.curCpu)} />
+        <Metric dot={MEM_COLOR} label="Memory now" value={fmtBytes(r.curMem)} />
+        <Metric dot="#fb7185" label="Restarts" value={r.restarts.toLocaleString()} />
+        <Metric dot="#a78bfa" label="Peak memory" value={fmtBytes(r.peakMem)} />
+      </div>
+      <p className="text-muted-foreground mt-4 text-xs">
+        {r.restarts === 0
+          ? 'No container restarts in this range — everything held steady.'
+          : `${r.restarts} container restart${r.restarts === 1 ? '' : 's'} in this range.`}
+      </p>
     </Panel>
   )
 }
