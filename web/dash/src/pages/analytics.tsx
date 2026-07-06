@@ -52,7 +52,14 @@ function fmtBytes(b: number): string {
   return b + 'B'
 }
 
-const fmtPct = (v: number) => (v >= 100 ? Math.round(v) : v.toFixed(1)) + '%'
+// Small CPU values are real signal, not zero — keep two decimals under 1% so a
+// lightly-used app reads "0.12%" instead of a flat, misleading "0.0%".
+const fmtPct = (v: number) => {
+  if (v <= 0) return '0%'
+  if (v >= 100) return Math.round(v) + '%'
+  if (v < 1) return v.toFixed(2) + '%'
+  return v.toFixed(1) + '%'
+}
 
 const CPU_COLOR = '#fb923c' // orange-400
 const MEM_COLOR = '#2dd4bf' // teal-400
@@ -449,10 +456,13 @@ function ResourceChart({
           cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
           content={
             <ChartTip
-              build={(row) => ({
-                title: timeRange(row.t, r.bucketSecs),
-                rows: [{ label: tipLabel, color, value: fmt(row[dataKey]) }],
-              })}
+              build={(row) => {
+                const v = row[dataKey] as number | null
+                return {
+                  title: timeRange(row.t, r.bucketSecs),
+                  rows: [{ label: tipLabel, color, value: v == null ? 'no data' : fmt(v) }],
+                }
+              }}
             />
           }
         />

@@ -1,6 +1,6 @@
 import { BaseService } from '@/services/base.service'
 
-export type ResourcesSeries = { t: number; cpu: number; mem: number }
+export type ResourcesSeries = { t: number; cpu: number | null; mem: number | null }
 
 export type ResourcesApp = { name: string; cpu: number; mem: number }
 

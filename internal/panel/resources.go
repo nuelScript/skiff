@@ -21,7 +21,7 @@ import (
 const (
 	resWindowSecs int64 = 24 * 60 * 60
 	resBucketSecs int64 = 60
-	resSampleEvery      = 20 * time.Second
+	resSampleEvery      = 10 * time.Second // frequent enough to catch short-lived load between ticks
 	resSettle           = 12 * time.Second // let the box settle before the first sample
 )
 
@@ -186,9 +186,9 @@ func (p *Panel) resourceLoop() {
 }
 
 type resourcesSeries struct {
-	T   int64   `json:"t"`
-	CPU float64 `json:"cpu"` // average cpu% in the bucket (summed across replicas)
-	Mem int64   `json:"mem"` // average used bytes in the bucket
+	T   int64    `json:"t"`
+	CPU *float64 `json:"cpu"` // average cpu% in the bucket (summed across replicas); null = unmeasured
+	Mem *int64   `json:"mem"` // average used bytes in the bucket; null = unmeasured
 }
 
 type resourcesApp struct {
@@ -277,21 +277,22 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 	for t := startT; t <= nowT; t += bucketSecs {
 		s := resourcesSeries{T: t}
 		if a := buckets[t]; a != nil && a.n > 0 {
-			s.CPU = round2(a.cpuSum / float64(a.n))
-			s.Mem = a.memSum / int64(a.n)
-			if s.CPU > resp.PeakCPU {
-				resp.PeakCPU = s.CPU
+			cpu := round2(a.cpuSum / float64(a.n))
+			mem := a.memSum / int64(a.n)
+			s.CPU, s.Mem = &cpu, &mem
+			if cpu > resp.PeakCPU {
+				resp.PeakCPU = cpu
 			}
-			if s.Mem > resp.PeakMem {
-				resp.PeakMem = s.Mem
+			if mem > resp.PeakMem {
+				resp.PeakMem = mem
 			}
 		}
 		resp.Series = append(resp.Series, s)
 	}
 	for i := len(resp.Series) - 1; i >= 0; i-- {
-		if resp.Series[i].CPU > 0 || resp.Series[i].Mem > 0 {
-			resp.CurCPU = resp.Series[i].CPU
-			resp.CurMem = resp.Series[i].Mem
+		if resp.Series[i].CPU != nil {
+			resp.CurCPU = *resp.Series[i].CPU
+			resp.CurMem = *resp.Series[i].Mem
 			break
 		}
 	}
