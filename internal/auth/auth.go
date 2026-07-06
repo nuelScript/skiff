@@ -240,6 +240,64 @@ func (s *Store) AcceptInvite(token, userID string) (Team, error) {
 	return t, tx.Commit()
 }
 
+// UpdateName changes a user's display name.
+func (s *Store) UpdateName(userID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	_, err := s.db.Exec(`UPDATE users SET name = ? WHERE id = ?`, name, userID)
+	return err
+}
+
+// ChangePassword verifies the current password, then sets a new one.
+func (s *Store) ChangePassword(userID, current, next string) error {
+	if len(next) < 8 {
+		return fmt.Errorf("new password must be at least 8 characters")
+	}
+	u, ok := s.User(userID)
+	if !ok {
+		return fmt.Errorf("user not found")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(current)) != nil {
+		return fmt.Errorf("current password is incorrect")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(next), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, string(hash), userID)
+	return err
+}
+
+// RenameTeam changes a team's name (and slug).
+func (s *Store) RenameTeam(teamID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	_, err := s.db.Exec(`UPDATE teams SET name = ?, slug = ? WHERE id = ?`, name, slug(name), teamID)
+	return err
+}
+
+// RemoveMember drops a user from a team, refusing to remove the last owner.
+func (s *Store) RemoveMember(teamID, userID string) error {
+	role, ok := s.Role(userID, teamID)
+	if !ok {
+		return fmt.Errorf("not a member of this team")
+	}
+	if role == RoleOwner {
+		var owners int
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM memberships WHERE team_id = ? AND role = ?`,
+			teamID, RoleOwner).Scan(&owners)
+		if owners <= 1 {
+			return fmt.Errorf("can't remove the last owner")
+		}
+	}
+	_, err := s.db.Exec(`DELETE FROM memberships WHERE team_id = ? AND user_id = ?`, teamID, userID)
+	return err
+}
+
 func id() string {
 	b := make([]byte, 9)
 	_, _ = rand.Read(b)

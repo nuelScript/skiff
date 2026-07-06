@@ -9,6 +9,7 @@ export type Me = {
   user?: User
   teams?: Team[]
   team?: string
+  role?: string
 }
 
 class AuthService extends BaseService {
@@ -46,6 +47,22 @@ class AuthService extends BaseService {
 
   invite(email: string, role: string) {
     return this.post<{ link: string }>('/teams/invite', { email, role })
+  }
+
+  removeMember(userId: string) {
+    return this.delete('/teams/members', { params: { user: userId } })
+  }
+
+  updateProfile(name: string) {
+    return this.post('/account', { name })
+  }
+
+  changePassword(current: string, password: string) {
+    return this.post('/account/password', { current, password })
+  }
+
+  renameTeam(name: string) {
+    return this.post('/teams/rename', { name })
   }
 }
 

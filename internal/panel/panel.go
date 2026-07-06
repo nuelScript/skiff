@@ -98,7 +98,10 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/auth/logout", p.handleLogout)
 	mux.HandleFunc("/api/auth/accept", p.handleAccept)
 	mux.HandleFunc("/api/auth/team", p.protected(p.handleTeamSwitch))
+	mux.HandleFunc("/api/account", p.protected(p.handleAccount))
+	mux.HandleFunc("/api/account/password", p.protected(p.handlePassword))
 	mux.HandleFunc("/api/teams", p.protected(p.handleTeamCreate))
+	mux.HandleFunc("/api/teams/rename", p.protected(p.handleTeamRename))
 	mux.HandleFunc("/api/teams/members", p.protected(p.handleMembers))
 	mux.HandleFunc("/api/teams/invite", p.protected(p.handleInvite))
 	// projects
@@ -193,6 +196,7 @@ type meResponse struct {
 	User          *userView   `json:"user,omitempty"`
 	Teams         []auth.Team `json:"teams,omitempty"`
 	Team          string      `json:"team,omitempty"`
+	Role          string      `json:"role,omitempty"` // caller's role in the current team
 }
 
 func (p *Panel) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -203,11 +207,13 @@ func (p *Panel) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := p.auth.User(s.userID)
+	role, _ := p.auth.Role(s.userID, s.teamID)
 	_ = json.NewEncoder(w).Encode(meResponse{
 		Authenticated: true,
 		User:          &userView{ID: u.ID, Email: u.Email, Name: u.Name},
 		Teams:         p.auth.TeamsForUser(s.userID),
 		Team:          s.teamID,
+		Role:          role,
 	})
 }
 
@@ -330,12 +336,31 @@ func (p *Panel) handleTeamCreate(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleMembers(w http.ResponseWriter, r *http.Request) {
 	s, _ := p.session(r)
-	if _, ok := p.auth.Role(s.userID, s.teamID); !ok {
+	role, ok := p.auth.Role(s.userID, s.teamID)
+	if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(p.auth.Members(s.teamID))
+	switch r.Method {
+	case http.MethodDelete:
+		if role != auth.RoleOwner {
+			http.Error(w, "only owners can remove members", http.StatusForbidden)
+			return
+		}
+		uid := r.URL.Query().Get("user")
+		if uid == s.userID {
+			http.Error(w, "you can't remove yourself", http.StatusBadRequest)
+			return
+		}
+		if err := p.auth.RemoveMember(s.teamID, uid); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(p.auth.Members(s.teamID))
+	}
 }
 
 func (p *Panel) handleInvite(w http.ResponseWriter, r *http.Request) {
