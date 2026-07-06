@@ -72,6 +72,10 @@ class AuthService extends BaseService {
   deleteTeam() {
     return this.post('/teams/delete')
   }
+
+  deleteAccount(password: string) {
+    return this.post('/account/delete', { password })
+  }
 }
 
 export const authService = new AuthService()

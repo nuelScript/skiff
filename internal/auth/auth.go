@@ -359,6 +359,23 @@ func (s *Store) DeleteTeam(teamID string) error {
 	return tx.Commit()
 }
 
+// DeleteUser removes a user and all their team memberships. Callers must first
+// deal with any teams the user solely owns.
+func (s *Store) DeleteUser(userID string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM memberships WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM users WHERE id = ?`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func id() string {
 	b := make([]byte, 9)
 	_, _ = rand.Read(b)

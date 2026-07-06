@@ -71,6 +71,64 @@ func (p *Panel) reassignTeam(w http.ResponseWriter, r *http.Request, userID stri
 	}
 }
 
+// handleAccountDelete removes the caller's account. It's deliberate: it requires
+// the password, refuses to orphan a shared team the caller is the last owner of,
+// and refuses while a personal team still holds apps or databases. Personal teams
+// with nothing left in them are deleted along with the account.
+func (p *Panel) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
+	s, ok := p.session(r)
+	if !ok || r.Method != http.MethodPost {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var body struct{ Password string }
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	u, ok := p.auth.User(s.userID)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if _, valid := p.auth.Authenticate(u.Email, body.Password); !valid {
+		http.Error(w, "wrong password", http.StatusUnauthorized)
+		return
+	}
+
+	var soloTeams []string
+	for _, t := range p.auth.TeamsForUser(s.userID) {
+		members := p.auth.Members(t.ID)
+		if len(members) <= 1 {
+			if countTeamApps(t.ID) > 0 || countTeamDatabases(t.ID) > 0 {
+				http.Error(w, "Remove the projects and databases in “"+t.Name+"” before deleting your account.", http.StatusBadRequest)
+				return
+			}
+			soloTeams = append(soloTeams, t.ID)
+			continue
+		}
+		owners := 0
+		for _, m := range members {
+			if m.Role == auth.RoleOwner {
+				owners++
+			}
+		}
+		if role, _ := p.auth.Role(s.userID, t.ID); role == auth.RoleOwner && owners <= 1 {
+			http.Error(w, "You're the last owner of “"+t.Name+"”. Hand it over or delete that team first.", http.StatusBadRequest)
+			return
+		}
+	}
+
+	for _, tid := range soloTeams {
+		_, _ = sqlDB.Exec(`DELETE FROM shared_env WHERE team = ?`, tid)
+		_ = p.auth.DeleteTeam(tid)
+	}
+	if err := p.auth.DeleteUser(s.userID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = sqlDB.Exec(`DELETE FROM sessions WHERE user_id = ?`, s.userID)
+	http.SetCookie(w, &http.Cookie{Name: "skiff_session", Value: "", Path: "/", MaxAge: -1})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleTeamLeave removes the caller from the current team.
 func (p *Panel) handleTeamLeave(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
@@ -103,7 +161,7 @@ func (p *Panel) handleTeamDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(p.auth.TeamsForUser(s.userID)) <= 1 {
-		http.Error(w, "you can't delete your only team", http.StatusBadRequest)
+		http.Error(w, "you can't delete your only team — create another first, or delete your account", http.StatusBadRequest)
 		return
 	}
 	if countTeamApps(s.teamID) > 0 {

@@ -100,6 +100,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/auth/team", p.protected(p.handleTeamSwitch))
 	mux.HandleFunc("/api/account", p.protected(p.handleAccount))
 	mux.HandleFunc("/api/account/password", p.protected(p.handlePassword))
+	mux.HandleFunc("/api/account/delete", p.protected(p.handleAccountDelete))
 	mux.HandleFunc("/api/teams", p.protected(p.handleTeamCreate))
 	mux.HandleFunc("/api/teams/rename", p.protected(p.handleTeamRename))
 	mux.HandleFunc("/api/teams/leave", p.protected(p.handleTeamLeave))
