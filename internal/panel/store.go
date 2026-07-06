@@ -205,6 +205,14 @@ func deployStatus(app, id string) string {
 	return st
 }
 
+func getDeployByID(id string) (Deploy, bool) {
+	var d Deploy
+	err := sqlDB.QueryRow(
+		`SELECT id,app,commit_sha,message,trigger,status,started FROM deploys WHERE id=?`, id).
+		Scan(&d.ID, &d.App, &d.Commit, &d.Message, &d.Trigger, &d.Status, &d.Started)
+	return d, err == nil
+}
+
 func getEnv(app string) []EnvVar {
 	rows, err := sqlDB.Query(`SELECT key,value,build FROM env_vars WHERE app=? ORDER BY key`, app)
 	if err != nil {

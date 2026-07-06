@@ -143,6 +143,15 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/alerts", p.protected(p.handleAlerts))
 	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
 	mux.HandleFunc("/api/audit", p.protected(p.handleAudit))
+	mux.HandleFunc("/api/tokens", p.protected(p.handleTokens))
+
+	// Public API v1 — token-authenticated, stable JSON for CI.
+	mux.HandleFunc("GET /api/v1/apps", p.apiAuth(p.apiListApps))
+	mux.HandleFunc("GET /api/v1/apps/{name}", p.apiAuth(p.apiGetApp))
+	mux.HandleFunc("POST /api/v1/apps/{name}/deploy", p.apiAuth(p.apiDeploy))
+	mux.HandleFunc("GET /api/v1/apps/{name}/env", p.apiAuth(p.apiEnv))
+	mux.HandleFunc("PUT /api/v1/apps/{name}/env", p.apiAuth(p.apiEnv))
+	mux.HandleFunc("GET /api/v1/deploys/{id}", p.apiAuth(p.apiDeployStatus))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))

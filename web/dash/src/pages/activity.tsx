@@ -42,6 +42,8 @@ const KINDS: Record<string, Kind> = {
   'member.invite': { icon: UserPlus, verb: 'invited', tone: 'text-emerald-400' },
   'member.remove': { icon: UserMinus, verb: 'removed', tone: 'text-rose-400' },
   'alerts.update': { icon: Bell, verb: 'updated alert channels', tone: 'text-muted-foreground' },
+  'token.create': { icon: KeyRound, verb: 'created API token', tone: 'text-emerald-400' },
+  'token.revoke': { icon: KeyRound, verb: 'revoked an API token', tone: 'text-rose-400' },
 }
 
 export default function ActivityPage() {
@@ -99,10 +101,11 @@ function Row({ e, last }: { e: AuditEntry; last: boolean }) {
 }
 
 function Actor({ actor }: { actor: string }) {
-  if (actor === 'push') {
+  // System actors ("push", "token:<name>") render as a chip; users as a name.
+  if (actor === 'push' || actor.startsWith('token:')) {
     return (
       <span className="text-muted-foreground rounded bg-white/8 px-1.5 py-0.5 font-mono text-[11px]">
-        push
+        {actor.startsWith('token:') ? actor.slice('token:'.length) + ' (token)' : actor}
       </span>
     )
   }

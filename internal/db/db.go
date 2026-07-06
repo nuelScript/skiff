@@ -192,4 +192,13 @@ CREATE TABLE IF NOT EXISTS audit (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_team ON audit(team, id DESC);
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id         TEXT PRIMARY KEY,
+  team       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created    INTEGER NOT NULL,
+  last_used  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_team ON api_tokens(team, created DESC);
 `

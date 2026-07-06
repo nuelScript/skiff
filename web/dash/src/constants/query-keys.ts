@@ -13,6 +13,7 @@ export const queryKeys = {
   resources: ['resources'] as const,
   alerts: ['alerts'] as const,
   audit: ['audit'] as const,
+  tokens: ['tokens'] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
   deploysAll: ['deploys', 'all'] as const,
   github: {
