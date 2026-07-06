@@ -1,0 +1,284 @@
+package panel
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+)
+
+// backupRetention is how many backups we keep per database before pruning the
+// oldest.
+const backupRetention = 10
+
+func backupsDir() string { return filepath.Join(skiffDir(), "backups") }
+
+// Backup is a stored database dump as the dashboard sees it.
+type Backup struct {
+	ID      string `json:"id"`
+	Size    int64  `json:"size"`
+	Trigger string `json:"trigger"` // manual | scheduled
+	Created int64  `json:"created"`
+}
+
+type backupRow struct {
+	ID, DbID, Team, Engine, File string
+	Size                         int64
+	Trigger                      string
+	Created                      int64
+}
+
+const backupCols = `id,db_id,team,engine,file,size,trigger,created`
+
+func scanBackup(row interface{ Scan(...any) error }) (backupRow, bool) {
+	var b backupRow
+	if row.Scan(&b.ID, &b.DbID, &b.Team, &b.Engine, &b.File, &b.Size, &b.Trigger, &b.Created) != nil {
+		return backupRow{}, false
+	}
+	return b, true
+}
+
+func getBackup(id string) (backupRow, bool) {
+	return scanBackup(sqlDB.QueryRow(`SELECT `+backupCols+` FROM backups WHERE id=?`, id))
+}
+
+func listBackupRows(dbID string) []backupRow {
+	rows, err := sqlDB.Query(`SELECT `+backupCols+` FROM backups WHERE db_id=? ORDER BY created DESC`, dbID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []backupRow
+	for rows.Next() {
+		if b, ok := scanBackup(rows); ok {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func putBackup(b backupRow) error {
+	_, err := sqlDB.Exec(`INSERT INTO backups(`+backupCols+`) VALUES(?,?,?,?,?,?,?,?)`,
+		b.ID, b.DbID, b.Team, b.Engine, b.File, b.Size, b.Trigger, b.Created)
+	return err
+}
+
+func backupPath(b backupRow) string { return filepath.Join(backupsDir(), b.DbID, b.File) }
+
+func deleteBackup(b backupRow) {
+	_ = os.Remove(backupPath(b))
+	_, _ = sqlDB.Exec(`DELETE FROM backups WHERE id=?`, b.ID)
+}
+
+// pruneBackups keeps the newest `keep` backups for a database, dropping the rest.
+func pruneBackups(dbID string, keep int) {
+	all := listBackupRows(dbID)
+	for i := keep; i < len(all); i++ {
+		deleteBackup(all[i])
+	}
+}
+
+func lastBackupAt(dbID string) int64 {
+	var t int64
+	_ = sqlDB.QueryRow(`SELECT COALESCE(MAX(created), 0) FROM backups WHERE db_id=?`, dbID).Scan(&t)
+	return t
+}
+
+func allDatabases() []dbRow {
+	rows, err := sqlDB.Query(`SELECT ` + dbCols + ` FROM databases`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []dbRow
+	for rows.Next() {
+		if d, ok := scanDB(rows); ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// runBackup dumps a database to a new file, records it, and prunes old ones.
+func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
+	e := dbEngines[d.Engine]
+	if e.backupExt == "" {
+		return backupRow{}, fmt.Errorf("backups aren't supported for %s yet", e.label)
+	}
+	if p.eng.State(d.Container) != "running" {
+		return backupRow{}, fmt.Errorf("the database isn't running")
+	}
+	id := randToken()[:12]
+	dir := filepath.Join(backupsDir(), d.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return backupRow{}, err
+	}
+	path := filepath.Join(dir, id+e.backupExt)
+	f, err := os.Create(path)
+	if err != nil {
+		return backupRow{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	derr := p.eng.Exec(ctx, d.Container, e.dumpCmd(d.Password, d.DBName), nil, f)
+	_ = f.Close()
+	if derr != nil {
+		_ = os.Remove(path)
+		return backupRow{}, derr
+	}
+	var size int64
+	if info, err := os.Stat(path); err == nil {
+		size = info.Size()
+	}
+	b := backupRow{
+		ID: id, DbID: d.ID, Team: d.Team, Engine: d.Engine, File: id + e.backupExt,
+		Size: size, Trigger: trigger, Created: time.Now().Unix(),
+	}
+	if err := putBackup(b); err != nil {
+		_ = os.Remove(path)
+		return backupRow{}, err
+	}
+	pruneBackups(d.ID, backupRetention)
+	return b, nil
+}
+
+func toBackup(b backupRow) Backup {
+	return Backup{ID: b.ID, Size: b.Size, Trigger: b.Trigger, Created: b.Created}
+}
+
+func (p *Panel) handleBackups(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		d, ok := p.canAccessDB(r, sanitizeID(r.URL.Query().Get("db")))
+		if !ok {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		out := []Backup{}
+		for _, b := range listBackupRows(d.ID) {
+			out = append(out, toBackup(b))
+		}
+		writeJSON(w, out)
+
+	case http.MethodPost:
+		d, ok := p.canAccessDB(r, sanitizeID(r.URL.Query().Get("db")))
+		if !ok {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		b, err := p.runBackup(d, "manual")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, toBackup(b))
+
+	case http.MethodDelete:
+		b, ok := getBackup(sanitizeID(r.URL.Query().Get("id")))
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if _, ok := p.canAccessDB(r, b.DbID); !ok {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		deleteBackup(b)
+		w.WriteHeader(http.StatusNoContent)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleBackupRestore pipes a stored dump back into its database, replacing
+// current contents.
+func (p *Panel) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	b, ok := getBackup(sanitizeID(r.URL.Query().Get("id")))
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	d, ok := p.canAccessDB(r, b.DbID)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	e := dbEngines[d.Engine]
+	if e.restoreCmd == nil {
+		http.Error(w, "restore isn't supported for this database", http.StatusBadRequest)
+		return
+	}
+	if p.eng.State(d.Container) != "running" {
+		http.Error(w, "the database isn't running", http.StatusBadRequest)
+		return
+	}
+	f, err := os.Open(backupPath(b))
+	if err != nil {
+		http.Error(w, "backup file is missing", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	if err := p.eng.Exec(ctx, d.Container, e.restoreCmd(d.Password, d.DBName), f, io.Discard); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (p *Panel) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
+	b, ok := getBackup(sanitizeID(r.URL.Query().Get("id")))
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	d, ok := p.canAccessDB(r, b.DbID)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	f, err := os.Open(backupPath(b))
+	if err != nil {
+		http.Error(w, "backup file is missing", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	name := fmt.Sprintf("%s-%d%s", d.Name, b.Created, dbEngines[d.Engine].backupExt)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	if b.Size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(b.Size, 10))
+	}
+	_, _ = io.Copy(w, f)
+}
+
+// backupLoop takes a daily snapshot of every database that supports backups.
+func (p *Panel) backupLoop() {
+	time.Sleep(2 * time.Minute) // let startup settle before the first pass
+	for {
+		now := time.Now().Unix()
+		for _, d := range allDatabases() {
+			if dbEngines[d.Engine].backupExt == "" {
+				continue
+			}
+			if now-lastBackupAt(d.ID) < 24*3600 {
+				continue
+			}
+			if p.eng.State(d.Container) != "running" {
+				continue
+			}
+			_, _ = p.runBackup(d, "scheduled")
+		}
+		time.Sleep(time.Hour)
+	}
+}

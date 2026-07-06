@@ -62,6 +62,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
 	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
+	go p.backupLoop()            // daily database snapshots
 	return p, nil
 }
 
@@ -119,6 +120,9 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/databases", p.protected(p.handleDatabases))
 	mux.HandleFunc("/api/databases/attach", p.protected(p.handleDatabaseAttach))
 	mux.HandleFunc("/api/databases/public", p.protected(p.handleDatabasePublic))
+	mux.HandleFunc("/api/backups", p.protected(p.handleBackups))
+	mux.HandleFunc("/api/backups/restore", p.protected(p.handleBackupRestore))
+	mux.HandleFunc("/api/backups/download", p.protected(p.handleBackupDownload))
 	mux.HandleFunc("/api/db/exec", p.protected(p.handleDBShell))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))

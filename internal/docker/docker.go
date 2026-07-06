@@ -3,6 +3,7 @@ package docker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -207,6 +208,24 @@ func (e *Engine) RemoveVolume(name string) error {
 func (e *Engine) PullImage(image string) error {
 	if out, err := e.command("pull", image).CombinedOutput(); err != nil {
 		return fmt.Errorf("docker pull failed: %s", firstLine(out))
+	}
+	return nil
+}
+
+// Exec runs a command inside a container, wiring stdin/stdout to the given
+// streams — used to dump a database to a file and pipe a dump back in.
+func (e *Engine) Exec(ctx context.Context, container string, cmd []string, stdin io.Reader, stdout io.Writer) error {
+	args := append([]string{"exec", "-i", container}, cmd...)
+	c := e.contextCommand(ctx, args...)
+	c.Stdin = stdin
+	c.Stdout = stdout
+	var errb bytes.Buffer
+	c.Stderr = &errb
+	if err := c.Run(); err != nil {
+		if msg := firstLine(errb.Bytes()); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
 	}
 	return nil
 }

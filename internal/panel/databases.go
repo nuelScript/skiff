@@ -25,6 +25,11 @@ type dbEngine struct {
 	container func(user, pass, dbname string) (map[string]string, []string)
 	url       func(host string, port int, user, pass, dbname string) string
 	shell     func(pass, dbname string) []string
+	// backupExt is the dump file extension; "" means backups aren't supported.
+	// dumpCmd writes a backup to stdout; restoreCmd reads one from stdin.
+	backupExt  string
+	dumpCmd    func(pass, dbname string) []string
+	restoreCmd func(pass, dbname string) []string
 }
 
 var dbEngines = map[string]dbEngine{
@@ -42,6 +47,9 @@ var dbEngines = map[string]dbEngine{
 		shell: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("PGPASSWORD=%s exec psql -U skiff -d %s", pass, dbname)}
 		},
+		backupExt:  ".sql",
+		dumpCmd:    func(_, dbname string) []string { return []string{"pg_dump", "-U", "skiff", "-d", dbname} },
+		restoreCmd: func(_, dbname string) []string { return []string{"psql", "-U", "skiff", "-d", dbname} },
 	},
 	"mysql": {
 		image: "mysql:8", port: 3306, mountAt: "/var/lib/mysql",
@@ -59,6 +67,13 @@ var dbEngines = map[string]dbEngine{
 			// MYSQL_PWD avoids the password-on-argv warning the -p flag prints.
 			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s exec mysql -u skiff %s", pass, dbname)}
 		},
+		backupExt: ".sql",
+		dumpCmd: func(pass, dbname string) []string {
+			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s mysqldump -u skiff %s", pass, dbname)}
+		},
+		restoreCmd: func(pass, dbname string) []string {
+			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s mysql -u skiff %s", pass, dbname)}
+		},
 	},
 	"mongodb": {
 		image: "mongo:7", port: 27017, mountAt: "/data/db",
@@ -75,6 +90,13 @@ var dbEngines = map[string]dbEngine{
 		},
 		shell: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("exec mongosh --quiet -u skiff -p %s --authenticationDatabase admin %s", pass, dbname)}
+		},
+		backupExt: ".archive.gz",
+		dumpCmd: func(pass, dbname string) []string {
+			return []string{"mongodump", "-u", "skiff", "-p", pass, "--authenticationDatabase", "admin", "--db", dbname, "--archive", "--gzip"}
+		},
+		restoreCmd: func(pass, _ string) []string {
+			return []string{"mongorestore", "-u", "skiff", "-p", pass, "--authenticationDatabase", "admin", "--archive", "--gzip", "--drop"}
 		},
 	},
 	"redis": {

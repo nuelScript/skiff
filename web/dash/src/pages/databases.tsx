@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Database,
   Plus,
@@ -10,10 +11,14 @@ import {
   Link2,
   Globe,
   TriangleAlert,
+  Archive,
+  Download,
+  RotateCcw,
 } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useDatabases } from '@/hooks/use-databases'
 import { ConsoleTerminal } from '@/components/console-terminal'
+import { databasesService, type Backup } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -179,6 +184,7 @@ function DatabaseCard({
   delay: number
 }) {
   const [shell, setShell] = useState(false)
+  const [backups, setBackups] = useState(false)
   const [pubBusy, setPubBusy] = useState(false)
   const meta = engineMeta(db.engine)
   const running = db.state === 'running'
@@ -227,6 +233,15 @@ function DatabaseCard({
           />
           {running ? 'Running' : db.state === 'missing' ? 'Stopped' : db.state}
         </span>
+        {db.engine !== 'redis' && (
+          <button
+            onClick={() => setBackups(true)}
+            className="text-muted-foreground hover:border-white/25 hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition"
+          >
+            <Archive className="h-3.5 w-3.5" />
+            Backups
+          </button>
+        )}
         <button
           onClick={() => setShell(true)}
           disabled={!running}
@@ -340,7 +355,130 @@ function DatabaseCard({
           </div>
         </DialogContent>
       </Dialog>
+
+      <BackupsDialog db={db} open={backups} onOpenChange={setBackups} />
     </div>
+  )
+}
+
+function fmtDate(t: number) {
+  return new Date(t * 1000).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function fmtBytes(b: number): string {
+  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + ' MB'
+  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + ' kB'
+  return b + ' B'
+}
+
+function BackupsDialog({
+  db,
+  open,
+  onOpenChange,
+}: {
+  db: Db
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const { data: backups = [], isLoading } = useQuery<Backup[]>({
+    queryKey: ['backups', db.id],
+    queryFn: () => databasesService.listBackups(db.id),
+    enabled: open,
+  })
+  const reload = () => qc.invalidateQueries({ queryKey: ['backups', db.id] })
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    setError('')
+    setBusy(label)
+    try {
+      await fn()
+      reload()
+    } catch (err: unknown) {
+      const r = (err as { response?: { data?: string } })?.response?.data
+      setError(typeof r === 'string' && r ? r.trim() : 'Something went wrong.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-sm">{db.name} · backups</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-muted-foreground text-[11px]">
+            Automatic daily snapshot on. Keeps the latest {10}.
+          </p>
+          <Button
+            size="sm"
+            disabled={busy === 'create'}
+            onClick={() => run('create', () => databasesService.createBackup(db.id))}
+          >
+            {busy === 'create' ? 'Backing up…' : 'Back up now'}
+          </Button>
+        </div>
+
+        <div className="max-h-[50vh] divide-y divide-white/5 overflow-y-auto rounded-lg border border-white/8">
+          {isLoading ? (
+            <p className="text-muted-foreground p-5 text-center text-sm">Loading…</p>
+          ) : backups.length === 0 ? (
+            <p className="text-muted-foreground p-6 text-center text-sm">
+              No backups yet. Take one now, or wait for the daily snapshot.
+            </p>
+          ) : (
+            backups.map((b) => (
+              <div key={b.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-xs">{fmtDate(b.created)}</p>
+                  <p className="text-muted-foreground mt-0.5 text-[11px]">
+                    {fmtBytes(b.size)}
+                    {b.trigger === 'scheduled' && ' · auto'}
+                  </p>
+                </div>
+                <a
+                  href={databasesService.backupDownloadUrl(b.id)}
+                  className="text-muted-foreground hover:text-foreground p-1.5"
+                  title="Download"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+                <button
+                  onClick={() => {
+                    if (confirm(`Restore ${db.name} from ${fmtDate(b.created)}? This replaces its current contents.`))
+                      run('restore-' + b.id, () => databasesService.restoreBackup(b.id))
+                  }}
+                  disabled={busy === 'restore-' + b.id}
+                  className="text-muted-foreground hover:text-foreground p-1.5 disabled:opacity-40"
+                  title="Restore"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => run('del-' + b.id, () => databasesService.deleteBackup(b.id))}
+                  disabled={busy === 'del-' + b.id}
+                  className="text-muted-foreground p-1.5 transition hover:text-rose-300 disabled:opacity-40"
+                  title="Delete"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        {error && <p className="text-xs text-rose-300">{error}</p>}
+      </DialogContent>
+    </Dialog>
   )
 }
 

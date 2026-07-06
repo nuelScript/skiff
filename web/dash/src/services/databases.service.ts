@@ -2,6 +2,13 @@ import { BaseService } from '@/services/base.service'
 
 export type DbEngine = 'postgres' | 'mysql' | 'mongodb' | 'redis'
 
+export type Backup = {
+  id: string
+  size: number
+  trigger: string
+  created: number
+}
+
 export type Database = {
   id: string
   name: string
@@ -39,6 +46,26 @@ class DatabasesService extends BaseService {
 
   detach(id: string, app: string) {
     return this.delete<Database>('/databases/attach', { params: { id, app } })
+  }
+
+  listBackups(dbId: string) {
+    return this.get<Backup[]>('/backups', { params: { db: dbId } })
+  }
+
+  createBackup(dbId: string) {
+    return this.post<Backup>('/backups', undefined, { params: { db: dbId } })
+  }
+
+  restoreBackup(id: string) {
+    return this.post('/backups/restore', undefined, { params: { id } })
+  }
+
+  deleteBackup(id: string) {
+    return this.delete('/backups', { params: { id } })
+  }
+
+  backupDownloadUrl(id: string) {
+    return `/api/backups/download?id=${encodeURIComponent(id)}`
   }
 }
 

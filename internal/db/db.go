@@ -141,4 +141,15 @@ CREATE TABLE IF NOT EXISTS db_attachments (
   var   TEXT NOT NULL,
   PRIMARY KEY (db_id, app)
 );
+CREATE TABLE IF NOT EXISTS backups (
+  id      TEXT PRIMARY KEY,
+  db_id   TEXT NOT NULL,
+  team    TEXT NOT NULL,
+  engine  TEXT NOT NULL,
+  file    TEXT NOT NULL,
+  size    INTEGER NOT NULL DEFAULT 0,
+  trigger TEXT NOT NULL DEFAULT 'manual',
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_backups_db ON backups(db_id, created DESC);
 `
