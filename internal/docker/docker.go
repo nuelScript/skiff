@@ -165,16 +165,18 @@ func (e *Engine) ConnectNetwork(network, container string) error {
 // named volume, and deliberately unlabeled with skiff=1 so the app reaper leaves
 // it alone.
 type DBRunSpec struct {
-	Name    string
-	Image   string
-	Network string
-	Volume  string // named volume for persistence
-	MountAt string // where the volume mounts inside the container
-	Env     map[string]string
-	Cmd     []string          // optional command/args after the image
-	Labels  map[string]string // ownership + kind labels
-	Port    int               // container port (published on the host when Publish is set)
-	Publish bool              // expose Port on 0.0.0.0 for external access
+	Name       string
+	Image      string
+	Network    string
+	Volume     string   // named volume for persistence
+	MountAt    string   // where the volume mounts inside the container
+	Env        map[string]string
+	Cmd        []string          // optional command/args after the image
+	Labels     map[string]string // ownership + kind labels
+	Port       int               // container port (published on the host when Publish is set)
+	Publish    bool              // expose Port on 0.0.0.0 for external access
+	Entrypoint string            // optional --entrypoint override (e.g. "sh" to fix TLS cert perms)
+	Binds      []string          // extra bind mounts, "host:container[:ro]" (e.g. the TLS cert dir)
 }
 
 // RunDatabase (re)creates a managed database container. It returns the published
@@ -183,6 +185,9 @@ type DBRunSpec struct {
 func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	_ = e.command("rm", "-f", s.Name).Run()
 	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped"}
+	if s.Entrypoint != "" {
+		args = append(args, "--entrypoint", s.Entrypoint)
+	}
 	for _, k := range sortedKeys(s.Labels) {
 		args = append(args, "--label", k+"="+s.Labels[k])
 	}
@@ -191,6 +196,9 @@ func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	}
 	if s.Volume != "" && s.MountAt != "" {
 		args = append(args, "-v", s.Volume+":"+s.MountAt)
+	}
+	for _, b := range s.Binds {
+		args = append(args, "-v", b)
 	}
 	if s.Publish && s.Port > 0 {
 		args = append(args, "-p", fmt.Sprintf("0.0.0.0::%d", s.Port))

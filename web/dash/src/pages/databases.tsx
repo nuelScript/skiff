@@ -11,6 +11,7 @@ import {
   Link2,
   Globe,
   TriangleAlert,
+  ShieldCheck,
   Archive,
   Download,
   RotateCcw,
@@ -294,11 +295,19 @@ function DatabaseCard({
               ) : (
                 <p className="text-muted-foreground text-[11px]">Publishing… the public address will appear shortly.</p>
               )}
-              <p className="flex items-start gap-1.5 text-[11px] text-amber-300/80">
-                <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-                Anyone who can reach this address can connect with the password above, and traffic isn't
-                encrypted. Use it for trusted networks or temporary access.
-              </p>
+              {db.engine === 'redis' ? (
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-300/80">
+                  <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                  Anyone who can reach this address can connect with the password above, and Redis
+                  traffic isn't encrypted yet. Use it for trusted networks or temporary access.
+                </p>
+              ) : (
+                <p className="flex items-start gap-1.5 text-[11px] text-emerald-300/80">
+                  <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" />
+                  Connections are encrypted with TLS. Anyone who reaches this address can still connect
+                  with the password above — keep it safe.
+                </p>
+              )}
             </div>
           )}
         </div>

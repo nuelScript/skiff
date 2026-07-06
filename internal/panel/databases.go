@@ -23,13 +23,28 @@ type dbEngine struct {
 	hasDB   bool   // provisions a named database
 	// container builds the run-time env + command for a fresh instance.
 	container func(user, pass, dbname string) (map[string]string, []string)
-	url       func(host string, port int, user, pass, dbname string) string
-	shell     func(pass, dbname string) []string
+	// url builds a connection string; tls picks the encrypted variant (for the
+	// public URL) over the plaintext one used on the private network.
+	url   func(host string, port int, user, pass, dbname string, tls bool) string
+	shell func(pass, dbname string) []string
 	// backupExt is the dump file extension; "" means backups aren't supported.
 	// dumpCmd writes a backup to stdout; restoreCmd reads one from stdin.
 	backupExt  string
 	dumpCmd    func(pass, dbname string) []string
 	restoreCmd func(pass, dbname string) []string
+	// tls, when set, lets a public instance serve TLS so internet-facing
+	// connections are encrypted. nil means the engine has no public-TLS support.
+	tls *dbTLS
+}
+
+// dbTLS describes how an engine serves TLS on its public port. entrypoint/cmd
+// override the container to enable it using the shared cert mounted at
+// /skiff-certs (both empty for engines that serve TLS with no config, e.g.
+// MySQL). certs is whether that cert dir must be mounted.
+type dbTLS struct {
+	entrypoint string
+	cmd        []string
+	certs      bool
 }
 
 var dbEngines = map[string]dbEngine{
@@ -39,10 +54,14 @@ var dbEngines = map[string]dbEngine{
 		container: func(user, pass, dbname string) (map[string]string, []string) {
 			return map[string]string{"POSTGRES_USER": user, "POSTGRES_PASSWORD": pass, "POSTGRES_DB": dbname}, nil
 		},
-		url: func(host string, port int, user, pass, dbname string) string {
-			// sslmode=disable: it's a private-network hop, and some drivers (Go's
-			// lib/pq) otherwise default to requiring TLS the container doesn't serve.
-			return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", user, pass, host, port, dbname)
+		url: func(host string, port int, user, pass, dbname string, tls bool) string {
+			// Private hop → sslmode=disable (some drivers otherwise require TLS the
+			// container doesn't serve internally); public → require, so it's encrypted.
+			mode := "disable"
+			if tls {
+				mode = "require"
+			}
+			return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", user, pass, host, port, dbname, mode)
 		},
 		shell: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("PGPASSWORD=%s exec psql -U skiff -d %s", pass, dbname)}
@@ -50,6 +69,16 @@ var dbEngines = map[string]dbEngine{
 		backupExt:  ".sql",
 		dumpCmd:    func(_, dbname string) []string { return []string{"pg_dump", "-U", "skiff", "-d", dbname} },
 		restoreCmd: func(_, dbname string) []string { return []string{"psql", "-U", "skiff", "-d", dbname} },
+		// Fix key perms as root, then hand off to the normal entrypoint with ssl on.
+		tls: &dbTLS{
+			certs:      true,
+			entrypoint: "sh",
+			cmd: []string{"-c",
+				"cp /skiff-certs/server.crt /skiff-certs/server.key /tmp/ && chmod 600 /tmp/server.key && " +
+					"chown postgres:postgres /tmp/server.crt /tmp/server.key && exec docker-entrypoint.sh \"$@\"",
+				"skiff", "postgres", "-c", "ssl=on",
+				"-c", "ssl_cert_file=/tmp/server.crt", "-c", "ssl_key_file=/tmp/server.key"},
+		},
 	},
 	"mysql": {
 		image: "mysql:8", port: 3306, mountAt: "/var/lib/mysql",
@@ -60,8 +89,12 @@ var dbEngines = map[string]dbEngine{
 				"MYSQL_DATABASE": dbname, "MYSQL_ROOT_PASSWORD": pass,
 			}, nil
 		},
-		url: func(host string, port int, user, pass, dbname string) string {
-			return fmt.Sprintf("mysql://%s:%s@%s:%d/%s", user, pass, host, port, dbname)
+		url: func(host string, port int, user, pass, dbname string, tls bool) string {
+			u := fmt.Sprintf("mysql://%s:%s@%s:%d/%s", user, pass, host, port, dbname)
+			if tls {
+				u += "?ssl-mode=REQUIRED"
+			}
+			return u
 		},
 		shell: func(pass, dbname string) []string {
 			// MYSQL_PWD avoids the password-on-argv warning the -p flag prints.
@@ -74,6 +107,9 @@ var dbEngines = map[string]dbEngine{
 		restoreCmd: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s mysql -u skiff %s", pass, dbname)}
 		},
+		// MySQL 8 auto-generates certs and serves TLS with no config — the public
+		// URL just needs to ask for it.
+		tls: &dbTLS{},
 	},
 	"mongodb": {
 		image: "mongo:7", port: 27017, mountAt: "/data/db",
@@ -84,9 +120,13 @@ var dbEngines = map[string]dbEngine{
 				"MONGO_INITDB_DATABASE": dbname,
 			}, nil
 		},
-		url: func(host string, port int, user, pass, dbname string) string {
+		url: func(host string, port int, user, pass, dbname string, tls bool) string {
 			// Root user authenticates against admin, so authSource=admin is required.
-			return fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", user, pass, host, port, dbname)
+			u := fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", user, pass, host, port, dbname)
+			if tls {
+				u += "&tls=true"
+			}
+			return u
 		},
 		shell: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("exec mongosh --quiet -u skiff -p %s --authenticationDatabase admin %s", pass, dbname)}
@@ -98,6 +138,18 @@ var dbEngines = map[string]dbEngine{
 		restoreCmd: func(pass, _ string) []string {
 			return []string{"mongorestore", "-u", "skiff", "-p", pass, "--authenticationDatabase", "admin", "--archive", "--gzip", "--drop"}
 		},
+		// preferTLS lets the entrypoint's localhost init connect in the clear while
+		// offering TLS to public clients.
+		tls: &dbTLS{
+			certs:      true,
+			entrypoint: "sh",
+			cmd: []string{"-c",
+				"cp /skiff-certs/server.pem /skiff-certs/server.crt /tmp/ && chmod 600 /tmp/server.pem && " +
+					"chown mongodb:mongodb /tmp/server.pem /tmp/server.crt && exec docker-entrypoint.sh \"$@\"",
+				"skiff", "mongod", "--tlsMode", "preferTLS",
+				"--tlsCertificateKeyFile", "/tmp/server.pem", "--tlsCAFile", "/tmp/server.crt",
+				"--tlsAllowConnectionsWithoutCertificates", "--bind_ip_all"},
+		},
 	},
 	"redis": {
 		image: "redis:7-alpine", port: 6379, mountAt: "/data",
@@ -105,9 +157,10 @@ var dbEngines = map[string]dbEngine{
 		container: func(_, pass, _ string) (map[string]string, []string) {
 			return nil, []string{"redis-server", "--requirepass", pass, "--appendonly", "yes"}
 		},
-		url: func(host string, port int, _, pass, _ string) string {
+		url: func(host string, port int, _, pass, _ string, _ bool) string {
 			// The "default" ACL user is what requirepass sets the password for; the
 			// empty-username form (redis://:pass@) is rejected as WRONGPASS on Redis 7.
+			// (TLS for public Redis is a follow-up — it's gated for now.)
 			return fmt.Sprintf("redis://default:%s@%s:%d", pass, host, port)
 		},
 		shell: func(pass, _ string) []string {
@@ -231,13 +284,13 @@ func (p *Panel) toDatabase(d dbRow) Database {
 		ID: d.ID, Name: d.Name, Engine: d.Engine, Host: d.Host, Port: d.Port,
 		Created:  d.Created,
 		State:    p.eng.State(d.Container),
-		URL:      e.url(d.Host, d.Port, d.Username, d.Password, d.DBName),
+		URL:      e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false),
 		Attached: dbAttachments(d.ID),
 		Public:   d.Public,
 	}
 	if d.Public && d.PublicPort > 0 {
 		if ip := serverPublicIP(p.domain); ip != "" {
-			out.PublicURL = e.url(ip, d.PublicPort, d.Username, d.Password, d.DBName)
+			out.PublicURL = e.url(ip, d.PublicPort, d.Username, d.Password, d.DBName, e.tls != nil)
 		}
 	}
 	return out
@@ -380,7 +433,7 @@ func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	e := dbEngines[d.Engine]
 	switch r.Method {
 	case http.MethodPost:
-		url := e.url(d.Host, d.Port, d.Username, d.Password, d.DBName)
+		url := e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false)
 		if err := upsertEnvVar(app, e.envVar, url, false); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -413,13 +466,27 @@ func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 	on := r.URL.Query().Get("on") == "1"
 	e := dbEngines[d.Engine]
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
-	_ = p.eng.EnsureNetwork(teamNetwork(d.Team))
-	port, err := p.eng.RunDatabase(docker.DBRunSpec{
-		Name: d.Container, Image: e.image, Network: teamNetwork(d.Team),
+	net := teamNetwork(d.Team)
+	_ = p.eng.EnsureNetwork(net)
+	spec := docker.DBRunSpec{
+		Name: d.Container, Image: e.image, Network: net,
 		Volume: d.Container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": d.ID, "skiff.team": d.Team},
 		Port:   e.port, Publish: on,
-	})
+	}
+	// Going public: serve TLS so internet-facing connections are encrypted.
+	if on && e.tls != nil {
+		if e.tls.certs {
+			if dir, err := ensureServerCert(); err == nil {
+				spec.Binds = []string{dir + ":/skiff-certs:ro"}
+			}
+		}
+		if e.tls.entrypoint != "" {
+			spec.Entrypoint = e.tls.entrypoint
+			spec.Cmd = e.tls.cmd
+		}
+	}
+	port, err := p.eng.RunDatabase(spec)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
