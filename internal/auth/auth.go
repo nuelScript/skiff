@@ -99,6 +99,29 @@ func (s *Store) CreateUser(email, name, password string) (User, Team, error) {
 	return u, team, tx.Commit()
 }
 
+// CreateUserNoTeam adds a user with no personal team — used when accepting an
+// invite, where the user joins the inviter's team rather than getting one of
+// their own.
+func (s *Store) CreateUserNoTeam(email, name, password string) (User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || len(password) < 8 {
+		return User{}, fmt.Errorf("email and an 8+ character password are required")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+	if name == "" {
+		name = strings.SplitN(email, "@", 2)[0]
+	}
+	u := User{ID: id(), Email: email, Name: name, PasswordHash: string(hash), Created: now()}
+	if _, err := s.db.Exec(`INSERT INTO users(id,email,name,password_hash,created) VALUES(?,?,?,?,?)`,
+		u.ID, u.Email, u.Name, u.PasswordHash, u.Created); err != nil {
+		return User{}, fmt.Errorf("an account with that email already exists")
+	}
+	return u, nil
+}
+
 func (s *Store) Authenticate(email, password string) (User, bool) {
 	u, ok := s.UserByEmail(email)
 	if !ok {

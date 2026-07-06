@@ -288,7 +288,7 @@ func (p *Panel) handleAccept(w http.ResponseWriter, r *http.Request) {
 		}
 		user = u
 	} else {
-		u, _, err := p.auth.CreateUser(inv.Email, body.Name, body.Password)
+		u, err := p.auth.CreateUserNoTeam(inv.Email, body.Name, body.Password)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
