@@ -62,6 +62,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	resStats = newResStore(filepath.Join(home, ".skiff", "resources.json"))
 	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
+	go p.reconcileNetworks()     // attach existing databases to their team's private net
 	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
 	go p.backupLoop()            // daily database snapshots
 	go p.jobLoop()               // scheduled jobs (cron)

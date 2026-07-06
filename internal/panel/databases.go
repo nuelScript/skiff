@@ -312,12 +312,13 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			dbname = name
 		}
 		env, cmd := e.container(user, pass, dbname)
-		if err := p.eng.EnsureNetwork(dbNetwork); err != nil {
+		net := teamNetwork(team)
+		if err := p.eng.EnsureNetwork(net); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if _, err := p.eng.RunDatabase(docker.DBRunSpec{
-			Name: container, Image: e.image, Network: dbNetwork,
+			Name: container, Image: e.image, Network: net,
 			Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
 			Labels: map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": team},
 		}); err != nil {
@@ -412,8 +413,9 @@ func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 	on := r.URL.Query().Get("on") == "1"
 	e := dbEngines[d.Engine]
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
+	_ = p.eng.EnsureNetwork(teamNetwork(d.Team))
 	port, err := p.eng.RunDatabase(docker.DBRunSpec{
-		Name: d.Container, Image: e.image, Network: dbNetwork,
+		Name: d.Container, Image: e.image, Network: teamNetwork(d.Team),
 		Volume: d.Container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": d.ID, "skiff.team": d.Team},
 		Port:   e.port, Publish: on,

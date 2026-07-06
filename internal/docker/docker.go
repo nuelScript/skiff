@@ -151,6 +151,16 @@ func (e *Engine) EnsureNetwork(name string) error {
 	return nil
 }
 
+// ConnectNetwork attaches a running container to an additional network. It's a
+// no-op error (already connected) when the container is already a member.
+func (e *Engine) ConnectNetwork(network, container string) error {
+	out, err := e.command("network", "connect", network, container).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", firstLine(out))
+	}
+	return nil
+}
+
 // DBRunSpec runs a managed resource (a database) — network-internal, backed by a
 // named volume, and deliberately unlabeled with skiff=1 so the app reaper leaves
 // it alone.

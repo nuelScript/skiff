@@ -146,7 +146,8 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	for _, e := range deployEnv(src) {
 		env[e.Key] = e.Value
 	}
-	_ = p.eng.EnsureNetwork(dbNetwork)
+	net := teamNetwork(src.Team)
+	_ = p.eng.EnsureNetwork(net)
 
 	added := 0
 	for i := 0; i < count; i++ {
@@ -158,7 +159,7 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 			ContainerPort: app.Port,
 			Env:           env,
 			Public:        p.eng.IsRemote(),
-			Network:       dbNetwork,
+			Network:       net,
 		})
 		if err != nil {
 			break

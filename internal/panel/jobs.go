@@ -129,10 +129,11 @@ func (p *Panel) execJob(j jobRow) (string, error) {
 	for _, e := range deployEnv(src) {
 		env[e.Key] = e.Value
 	}
-	_ = p.eng.EnsureNetwork(dbNetwork)
+	net := teamNetwork(src.Team)
+	_ = p.eng.EnsureNetwork(net)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	out, err := p.eng.RunOnce(ctx, image, env, dbNetwork, j.Command)
+	out, err := p.eng.RunOnce(ctx, image, env, net, j.Command)
 	setJobRun(j.ID, time.Now().Unix(), err == nil)
 	return out, err
 }

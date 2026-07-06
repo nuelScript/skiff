@@ -143,11 +143,17 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 		runtimeEnv[k] = v
 	}
 
-	// Join the shared network so the app can reach managed databases by name.
-	// If it can't be created, fall back to no network rather than failing the deploy.
+	// Join the app's network so it can reach managed databases by name. The panel
+	// sets this to the team's private network (isolation); it defaults to the
+	// shared "skiff" net. If it can't be created, fall back to no network rather
+	// than failing the deploy.
+	netName := cfg.Deploy.Network
+	if netName == "" {
+		netName = "skiff"
+	}
 	network := ""
-	if eng.EnsureNetwork("skiff") == nil {
-		network = "skiff"
+	if eng.EnsureNetwork(netName) == nil {
+		network = netName
 	}
 	healthHost := "127.0.0.1"
 	if eng.IsRemote() {

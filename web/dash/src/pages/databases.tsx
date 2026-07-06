@@ -74,7 +74,7 @@ export default function DatabasesPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Databases</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Managed data stores your apps reach over a private network.
+            Managed data stores your apps reach over your team's own private network.
           </p>
         </div>
         {databases.length > 0 && !adding && (

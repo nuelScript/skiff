@@ -27,6 +27,7 @@ type Config struct {
 // DeployConfig holds deploy-lifecycle hooks.
 type DeployConfig struct {
 	Release string `toml:"release"` // command run once (e.g. migrations) before a new version goes live
+	Network string `toml:"network"` // docker network to join for team isolation; empty = shared "skiff"
 }
 
 type ResourcesConfig struct {
