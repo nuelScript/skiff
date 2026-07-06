@@ -1,13 +1,17 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronRight, ExternalLink, GitBranch, Play, Plus, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { useForm } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
 
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { jobSchema, type JobInput } from '@/validations/job'
+import { projectSettingsSchema, type ProjectSettingsInput } from '@/validations/project-settings'
 import { ConsoleTerminal } from '@/components/console-terminal'
 import { Drawer } from '@/components/drawer'
 import { EnvEditor } from '@/components/env-editor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsole } from '@/hooks/use-console'
 import { useProject } from '@/hooks/use-project'
@@ -385,43 +389,38 @@ function JobsPanel({ app }: { app: string }) {
     queryFn: () => projectsService.jobs(app),
   })
   const [adding, setAdding] = useState(false)
-  const [name, setName] = useState('')
-  const [schedule, setSchedule] = useState('0 3 * * *')
-  const [command, setCommand] = useState('')
-  const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const [serverError, setServerError] = useState('')
   const [output, setOutput] = useState<{ id: string; ok: boolean; text: string } | null>(null)
   const reload = () => qc.invalidateQueries({ queryKey: ['jobs', app] })
 
-  const create = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!command.trim()) return
-    setBusy('create')
+  const form = useForm<JobInput>({
+    resolver: zodResolver(jobSchema),
+    defaultValues: { name: '', schedule: '0 3 * * *', command: '' },
+  })
+
+  const create = form.handleSubmit(async (values) => {
+    setServerError('')
     try {
-      await projectsService.createJob(app, name.trim() || 'job', schedule.trim(), command.trim())
-      setName('')
-      setCommand('')
-      setSchedule('0 3 * * *')
+      await projectsService.createJob(app, values.name || 'job', values.schedule, values.command)
+      form.reset()
       setAdding(false)
       reload()
     } catch (err) {
-      setError(errText(err, 'Could not create the job.'))
-    } finally {
-      setBusy('')
+      setServerError(errText(err, 'Could not create the job.'))
     }
-  }
+  })
 
   const run = async (id: string) => {
     setBusy(id)
     setOutput(null)
-    setError('')
+    setServerError('')
     try {
       const r = await projectsService.runJob(id)
       setOutput({ id, ok: r.ok, text: r.output?.trim() || (r.ok ? 'Done.' : 'Failed.') })
       reload()
     } catch (err) {
-      setError(errText(err, 'Could not run the job.'))
+      setServerError(errText(err, 'Could not run the job.'))
     } finally {
       setBusy('')
     }
@@ -455,50 +454,51 @@ function JobsPanel({ app }: { app: string }) {
           onSubmit={create}
           className="flex flex-col gap-3 rounded-xl border border-white/10 bg-linear-to-b from-white/2 to-transparent p-4"
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-muted-foreground mb-1.5 block text-xs">Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="nightly cleanup" />
+          <FieldGroup className="gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="job-name">Name</FieldLabel>
+                <Input id="job-name" placeholder="nightly cleanup" {...form.register('name')} />
+              </Field>
+              <Field data-invalid={!!form.formState.errors.schedule}>
+                <FieldLabel htmlFor="job-schedule">Schedule (cron)</FieldLabel>
+                <Input
+                  id="job-schedule"
+                  className="font-mono"
+                  placeholder="0 3 * * *"
+                  aria-invalid={!!form.formState.errors.schedule}
+                  {...form.register('schedule')}
+                />
+                <FieldError errors={[form.formState.errors.schedule]} />
+              </Field>
             </div>
-            <div>
-              <label className="text-muted-foreground mb-1.5 block text-xs">Schedule (cron)</label>
+            <Field data-invalid={!!form.formState.errors.command}>
+              <FieldLabel htmlFor="job-command">Command</FieldLabel>
               <Input
-                value={schedule}
-                onChange={(e) => {
-                  setSchedule(e.target.value)
-                  setError('')
-                }}
+                id="job-command"
                 className="font-mono"
-                placeholder="0 3 * * *"
+                placeholder="npm run cleanup"
+                aria-invalid={!!form.formState.errors.command}
+                {...form.register('command')}
               />
-            </div>
-          </div>
-          <div>
-            <label className="text-muted-foreground mb-1.5 block text-xs">Command</label>
-            <Input
-              value={command}
-              onChange={(e) => {
-                setCommand(e.target.value)
-                setError('')
-              }}
-              className="font-mono"
-              placeholder="npm run cleanup"
-            />
-          </div>
-          {error && <p className="text-xs text-rose-300">{error}</p>}
+              <FieldError errors={[form.formState.errors.command]} />
+            </Field>
+          </FieldGroup>
+          {serverError && <p className="text-xs text-rose-300">{serverError}</p>}
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={() => {
                 setAdding(false)
-                setError('')
+                setServerError('')
+                form.reset()
               }}
               className="text-muted-foreground hover:text-foreground text-xs"
             >
               Cancel
             </button>
-            <Button size="sm" type="submit" disabled={busy === 'create' || !command.trim()}>
-              {busy === 'create' ? 'Adding…' : 'Add job'}
+            <Button size="sm" type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Adding…' : 'Add job'}
             </Button>
           </div>
         </form>
@@ -568,7 +568,7 @@ function JobsPanel({ app }: { app: string }) {
           </div>
         )
       )}
-      {error && !adding && <p className="text-xs text-rose-300">{error}</p>}
+      {serverError && !adding && <p className="text-xs text-rose-300">{serverError}</p>}
     </div>
   )
 }
@@ -598,16 +598,27 @@ function SettingsForm({
   onDeleted: () => void
   onRedeploy: () => void
 }) {
-  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto, replicas: replicas || 1, release: release || '' })
   const [saved, setSaved] = useState(false)
   const confirm = useConfirm()
-  const setReplicas = (n: number) => setForm((f) => ({ ...f, replicas: Math.min(10, Math.max(1, n)) }))
+  const form = useForm<ProjectSettingsInput>({
+    resolver: zodResolver(projectSettingsSchema),
+    defaultValues: { branch, rootDir, port, auto, previewAuto, replicas: replicas || 1, release: release || '' },
+  })
+  const { register, handleSubmit, watch, setValue, formState } = form
+  const values = watch()
+  const setReplicas = (n: number) =>
+    setValue('replicas', Math.min(10, Math.max(1, n)), { shouldDirty: true })
+  const toggleClass = (on: boolean) =>
+    'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
+    (on
+      ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+      : 'border-white/15 text-muted-foreground')
 
-  const save = async () => {
-    await projectsService.update(name, form)
+  const save = handleSubmit(async (data) => {
+    await projectsService.update(name, data)
     setSaved(true)
     onSaved()
-  }
+  })
 
   const del = async () => {
     if (
@@ -627,75 +638,65 @@ function SettingsForm({
     <div className="flex flex-col gap-6">
       <section className="rounded-xl border border-white/8 p-5">
         <h2 className="mb-4 text-sm font-semibold">Build &amp; deploy</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Branch">
-            <Input
-              value={form.branch}
-              placeholder="main"
-              onChange={(e) => setForm((f) => ({ ...f, branch: e.target.value }))}
-              className="font-mono"
-            />
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="s-branch">Branch</FieldLabel>
+            <Input id="s-branch" placeholder="main" className="font-mono" {...register('branch')} />
           </Field>
-          <Field label="Root directory">
-            <Input
-              value={form.rootDir}
-              placeholder="/"
-              onChange={(e) => setForm((f) => ({ ...f, rootDir: e.target.value }))}
-              className="font-mono"
-            />
+          <Field>
+            <FieldLabel htmlFor="s-root">Root directory</FieldLabel>
+            <Input id="s-root" placeholder="/" className="font-mono" {...register('rootDir')} />
           </Field>
-          <Field label="Port">
+          <Field data-invalid={!!formState.errors.port}>
+            <FieldLabel htmlFor="s-port">Port</FieldLabel>
             <Input
-              value={form.port}
+              id="s-port"
               placeholder="3000"
-              onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
               className="font-mono"
+              aria-invalid={!!formState.errors.port}
+              {...register('port')}
             />
+            <FieldError errors={[formState.errors.port]} />
           </Field>
-          <Field label="Auto-deploy on push">
+          <Field>
+            <FieldLabel htmlFor="s-auto">Auto-deploy on push</FieldLabel>
             <button
+              id="s-auto"
               type="button"
-              onClick={() => setForm((f) => ({ ...f, auto: !f.auto }))}
-              className={
-                'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
-                (form.auto
-                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                  : 'border-white/15 text-muted-foreground')
-              }
+              onClick={() => setValue('auto', !values.auto, { shouldDirty: true })}
+              className={toggleClass(values.auto)}
             >
-              {form.auto ? 'On' : 'Off'}
+              {values.auto ? 'On' : 'Off'}
             </button>
           </Field>
-          <Field label="Preview deployments">
+          <Field>
+            <FieldLabel htmlFor="s-preview">Preview deployments</FieldLabel>
             <button
+              id="s-preview"
               type="button"
-              onClick={() => setForm((f) => ({ ...f, previewAuto: !f.previewAuto }))}
-              className={
-                'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
-                (form.previewAuto
-                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                  : 'border-white/15 text-muted-foreground')
-              }
+              onClick={() => setValue('previewAuto', !values.previewAuto, { shouldDirty: true })}
+              className={toggleClass(values.previewAuto)}
             >
-              {form.previewAuto ? 'On' : 'Off'}
+              {values.previewAuto ? 'On' : 'Off'}
             </button>
           </Field>
-          <Field label="Replicas">
+          <Field>
+            <FieldLabel>Replicas</FieldLabel>
             <div className="flex h-9 w-28 items-center justify-between rounded-md border border-white/15 px-1">
               <button
                 type="button"
-                onClick={() => setReplicas(form.replicas - 1)}
-                disabled={form.replicas <= 1}
+                onClick={() => setReplicas(values.replicas - 1)}
+                disabled={values.replicas <= 1}
                 aria-label="Fewer replicas"
                 className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
               >
                 −
               </button>
-              <span className="font-mono text-sm tabular-nums">{form.replicas}</span>
+              <span className="font-mono text-sm tabular-nums">{values.replicas}</span>
               <button
                 type="button"
-                onClick={() => setReplicas(form.replicas + 1)}
-                disabled={form.replicas >= 10}
+                onClick={() => setReplicas(values.replicas + 1)}
+                disabled={values.replicas >= 10}
                 aria-label="More replicas"
                 className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
               >
@@ -703,25 +704,20 @@ function SettingsForm({
               </button>
             </div>
           </Field>
-        </div>
+        </FieldGroup>
         <p className="text-muted-foreground mt-3 text-xs">
           Replicas run identical copies of the app behind the router, sharing traffic. Preview
           deployments spin up an environment automatically for any push to a branch other than{' '}
-          <span className="text-foreground/70 font-mono">{form.branch || 'main'}</span>.
+          <span className="text-foreground/70 font-mono">{values.branch || 'main'}</span>.
         </p>
-        <div className="mt-4">
-          <label className="text-muted-foreground mb-1.5 block text-xs">Release command</label>
-          <Input
-            value={form.release}
-            placeholder="e.g. npm run migrate"
-            onChange={(e) => setForm((f) => ({ ...f, release: e.target.value }))}
-            className="font-mono"
-          />
-          <p className="text-muted-foreground mt-1.5 text-xs">
+        <Field className="mt-4">
+          <FieldLabel htmlFor="s-release">Release command</FieldLabel>
+          <Input id="s-release" placeholder="e.g. npm run migrate" className="font-mono" {...register('release')} />
+          <FieldDescription>
             Runs once in a one-off container before each new version goes live — a non-zero exit aborts
             the deploy, so the old version keeps serving.
-          </p>
-        </div>
+          </FieldDescription>
+        </Field>
         <div className="mt-5 flex items-center justify-end gap-3">
           {saved && <span className="text-muted-foreground text-xs">Saved.</span>}
           <Button size="sm" variant="outline" onClick={onRedeploy}>
@@ -748,15 +744,6 @@ function SettingsForm({
           Delete project
         </Button>
       </section>
-    </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <Label className="text-muted-foreground text-xs">{label}</Label>
-      {children}
     </div>
   )
 }
