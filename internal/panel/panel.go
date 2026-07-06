@@ -66,6 +66,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.backupLoop()            // daily database snapshots
 	go p.jobLoop()               // scheduled jobs (cron)
 	go p.resourceLoop()          // sample per-app CPU/memory
+	go p.autoscaleLoop()         // add/retire replicas off those metrics
 	return p, nil
 }
 
@@ -471,7 +472,12 @@ type projectView struct {
 	Auto        bool          `json:"auto"`
 	PreviewAuto bool          `json:"previewAuto"`
 	Replicas    int           `json:"replicas"`
+	Running     int           `json:"running"` // replicas currently up (autoscaling moves this)
 	Release     string        `json:"release"`
+	Autoscale   bool          `json:"autoscale"`
+	ScaleMin    int           `json:"scaleMin"`
+	ScaleMax    int           `json:"scaleMax"`
+	ScaleCPU    int           `json:"scaleCpu"`
 	Deploys     []Deploy      `json:"deploys"`
 	Previews    []previewView `json:"previews"`
 }
@@ -488,9 +494,14 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		src, _ := getSource(app)
 		state := "missing"
+		running := 0
 		if apps, err := registry.Load(); err == nil {
 			if a, ok := apps[app]; ok {
 				state = p.eng.State(a.Container)
+				running = len(a.Replicas)
+				if running == 0 {
+					running = 1
+				}
 			}
 		}
 		deploys := appDeploys(app)
@@ -499,7 +510,8 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, PreviewAuto: src.PreviewAuto, Replicas: src.Replicas, Release: src.Release,
+			Auto: src.Auto, PreviewAuto: src.PreviewAuto, Replicas: src.Replicas, Running: running,
+			Release: src.Release, Autoscale: src.Autoscale, ScaleMin: src.ScaleMin, ScaleMax: src.ScaleMax, ScaleCPU: src.ScaleCPU,
 			Deploys: deploys, Previews: p.buildPreviews(app),
 		})
 	case http.MethodPut:
@@ -511,6 +523,10 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			PreviewAuto bool   `json:"previewAuto"`
 			Replicas    int    `json:"replicas"`
 			Release     string `json:"release"`
+			Autoscale   bool   `json:"autoscale"`
+			ScaleMin    int    `json:"scaleMin"`
+			ScaleMax    int    `json:"scaleMax"`
+			ScaleCPU    int    `json:"scaleCpu"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		src, ok := getSource(app)
@@ -529,6 +545,19 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		src.Release = strings.TrimSpace(body.Release)
 		src.Auto = body.Auto
 		src.PreviewAuto = body.PreviewAuto
+		src.Autoscale = body.Autoscale
+		if body.ScaleMin >= 1 && body.ScaleMin <= 10 {
+			src.ScaleMin = body.ScaleMin
+		}
+		if body.ScaleMax >= 1 && body.ScaleMax <= 10 {
+			src.ScaleMax = body.ScaleMax
+		}
+		if src.ScaleMax < src.ScaleMin {
+			src.ScaleMax = src.ScaleMin
+		}
+		if body.ScaleCPU >= 10 && body.ScaleCPU <= 100 {
+			src.ScaleCPU = body.ScaleCPU
+		}
 		_ = putSource(src)
 		w.WriteHeader(http.StatusNoContent)
 	default:

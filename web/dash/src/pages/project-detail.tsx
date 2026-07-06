@@ -349,7 +349,12 @@ export default function ProjectDetailPage() {
             auto={project.auto}
             previewAuto={project.previewAuto}
             replicas={project.replicas}
+            running={project.running}
             release={project.release}
+            autoscale={project.autoscale}
+            scaleMin={project.scaleMin}
+            scaleMax={project.scaleMax}
+            scaleCpu={project.scaleCpu}
             onSaved={reload}
             onDeleted={() => navigate('/')}
             onRedeploy={() => term.redeploy(project.name)}
@@ -573,6 +578,44 @@ function JobsPanel({ app }: { app: string }) {
   )
 }
 
+function Stepper({
+  value,
+  onDec,
+  onInc,
+  min = 1,
+  max = 10,
+}: {
+  value: number
+  onDec: () => void
+  onInc: () => void
+  min?: number
+  max?: number
+}) {
+  return (
+    <div className="flex h-9 w-28 items-center justify-between rounded-md border border-white/15 px-1">
+      <button
+        type="button"
+        onClick={onDec}
+        disabled={value <= min}
+        aria-label="Decrease"
+        className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
+      >
+        −
+      </button>
+      <span className="font-mono text-sm tabular-nums">{value}</span>
+      <button
+        type="button"
+        onClick={onInc}
+        disabled={value >= max}
+        aria-label="Increase"
+        className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
 function SettingsForm({
   name,
   branch,
@@ -581,7 +624,12 @@ function SettingsForm({
   auto,
   previewAuto,
   replicas,
+  running,
   release,
+  autoscale,
+  scaleMin,
+  scaleMax,
+  scaleCpu,
   onSaved,
   onDeleted,
   onRedeploy,
@@ -593,7 +641,12 @@ function SettingsForm({
   auto: boolean
   previewAuto: boolean
   replicas: number
+  running: number
   release: string
+  autoscale: boolean
+  scaleMin: number
+  scaleMax: number
+  scaleCpu: number
   onSaved: () => void
   onDeleted: () => void
   onRedeploy: () => void
@@ -602,12 +655,26 @@ function SettingsForm({
   const confirm = useConfirm()
   const form = useForm<ProjectSettingsInput>({
     resolver: zodResolver(projectSettingsSchema),
-    defaultValues: { branch, rootDir, port, auto, previewAuto, replicas: replicas || 1, release: release || '' },
+    defaultValues: {
+      branch,
+      rootDir,
+      port,
+      auto,
+      previewAuto,
+      replicas: replicas || 1,
+      release: release || '',
+      autoscale,
+      scaleMin: scaleMin || 1,
+      scaleMax: scaleMax || Math.max(scaleMin || 1, replicas || 2),
+      scaleCpu: scaleCpu || 70,
+    },
   })
   const { register, handleSubmit, watch, setValue, formState } = form
   const values = watch()
   const setReplicas = (n: number) =>
     setValue('replicas', Math.min(10, Math.max(1, n)), { shouldDirty: true })
+  const setNum = (field: 'scaleMin' | 'scaleMax', n: number) =>
+    setValue(field, Math.min(10, Math.max(1, n)), { shouldDirty: true })
   const toggleClass = (on: boolean) =>
     'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
     (on
@@ -680,36 +747,82 @@ function SettingsForm({
               {values.previewAuto ? 'On' : 'Off'}
             </button>
           </Field>
-          <Field>
-            <FieldLabel>Replicas</FieldLabel>
-            <div className="flex h-9 w-28 items-center justify-between rounded-md border border-white/15 px-1">
-              <button
-                type="button"
-                onClick={() => setReplicas(values.replicas - 1)}
-                disabled={values.replicas <= 1}
-                aria-label="Fewer replicas"
-                className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
-              >
-                −
-              </button>
-              <span className="font-mono text-sm tabular-nums">{values.replicas}</span>
-              <button
-                type="button"
-                onClick={() => setReplicas(values.replicas + 1)}
-                disabled={values.replicas >= 10}
-                aria-label="More replicas"
-                className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
-              >
-                +
-              </button>
-            </div>
-          </Field>
+          {!values.autoscale && (
+            <Field>
+              <FieldLabel>Replicas</FieldLabel>
+              <Stepper
+                value={values.replicas}
+                onDec={() => setReplicas(values.replicas - 1)}
+                onInc={() => setReplicas(values.replicas + 1)}
+              />
+            </Field>
+          )}
         </FieldGroup>
         <p className="text-muted-foreground mt-3 text-xs">
           Replicas run identical copies of the app behind the router, sharing traffic. Preview
           deployments spin up an environment automatically for any push to a branch other than{' '}
           <span className="text-foreground/70 font-mono">{values.branch || 'main'}</span>.
         </p>
+
+        <div className="mt-4 rounded-lg border border-white/8 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium">Autoscaling</h3>
+                {values.autoscale && (
+                  <span className="text-muted-foreground rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                    {running} running
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                Add and retire replicas automatically to hold each one near a target CPU.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setValue('autoscale', !values.autoscale, { shouldDirty: true })}
+              className={toggleClass(values.autoscale)}
+            >
+              {values.autoscale ? 'On' : 'Off'}
+            </button>
+          </div>
+          {values.autoscale && (
+            <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-3">
+              <Field>
+                <FieldLabel>Min replicas</FieldLabel>
+                <Stepper
+                  value={values.scaleMin}
+                  onDec={() => setNum('scaleMin', values.scaleMin - 1)}
+                  onInc={() => setNum('scaleMin', values.scaleMin + 1)}
+                />
+              </Field>
+              <Field data-invalid={!!formState.errors.scaleMax}>
+                <FieldLabel>Max replicas</FieldLabel>
+                <Stepper
+                  value={values.scaleMax}
+                  onDec={() => setNum('scaleMax', values.scaleMax - 1)}
+                  onInc={() => setNum('scaleMax', values.scaleMax + 1)}
+                />
+                <FieldError errors={[formState.errors.scaleMax]} />
+              </Field>
+              <Field data-invalid={!!formState.errors.scaleCpu}>
+                <FieldLabel htmlFor="s-target">Target CPU %</FieldLabel>
+                <Input
+                  id="s-target"
+                  type="number"
+                  min={10}
+                  max={100}
+                  step={5}
+                  className="font-mono"
+                  aria-invalid={!!formState.errors.scaleCpu}
+                  {...register('scaleCpu', { valueAsNumber: true })}
+                />
+                <FieldError errors={[formState.errors.scaleCpu]} />
+              </Field>
+            </FieldGroup>
+          )}
+        </div>
         <Field className="mt-4">
           <FieldLabel htmlFor="s-release">Release command</FieldLabel>
           <Input id="s-release" placeholder="e.g. npm run migrate" className="font-mono" {...register('release')} />

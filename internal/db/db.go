@@ -45,6 +45,10 @@ var migrations = []string{
 	`ALTER TABLE databases ADD COLUMN public_port INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sources ADD COLUMN replicas INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE sources ADD COLUMN release TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN autoscale INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE sources ADD COLUMN scale_min INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE sources ADD COLUMN scale_max INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE sources ADD COLUMN scale_cpu INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `
@@ -86,7 +90,11 @@ CREATE TABLE IF NOT EXISTS sources (
   parent       TEXT NOT NULL DEFAULT '',
   preview_auto INTEGER NOT NULL DEFAULT 0,
   replicas     INTEGER NOT NULL DEFAULT 1,
-  release      TEXT NOT NULL DEFAULT ''
+  release      TEXT NOT NULL DEFAULT '',
+  autoscale    INTEGER NOT NULL DEFAULT 0,
+  scale_min    INTEGER NOT NULL DEFAULT 1,
+  scale_max    INTEGER NOT NULL DEFAULT 1,
+  scale_cpu    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

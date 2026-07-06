@@ -24,7 +24,12 @@ export type ProjectDetail = {
   auto: boolean
   previewAuto: boolean
   replicas: number
+  running: number
   release: string
+  autoscale: boolean
+  scaleMin: number
+  scaleMax: number
+  scaleCpu: number
   deploys: Deploy[]
   previews: Preview[]
 }
@@ -58,6 +63,10 @@ export type ProjectSettings = {
   previewAuto: boolean
   replicas: number
   release: string
+  autoscale: boolean
+  scaleMin: number
+  scaleMax: number
+  scaleCpu: number
 }
 
 class ProjectsService extends BaseService {
