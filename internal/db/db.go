@@ -43,6 +43,7 @@ var migrations = []string{
 	`ALTER TABLE sources ADD COLUMN preview_auto INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE databases ADD COLUMN public INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE databases ADD COLUMN public_port INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE sources ADD COLUMN replicas INTEGER NOT NULL DEFAULT 1`,
 }
 
 const schema = `
@@ -82,7 +83,8 @@ CREATE TABLE IF NOT EXISTS sources (
   clone_url    TEXT NOT NULL DEFAULT '',
   auto         INTEGER NOT NULL DEFAULT 0,
   parent       TEXT NOT NULL DEFAULT '',
-  preview_auto INTEGER NOT NULL DEFAULT 0
+  preview_auto INTEGER NOT NULL DEFAULT 0,
+  replicas     INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

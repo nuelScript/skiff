@@ -23,6 +23,7 @@ export type ProjectDetail = {
   port: string
   auto: boolean
   previewAuto: boolean
+  replicas: number
   deploys: Deploy[]
   previews: Preview[]
 }
@@ -42,6 +43,7 @@ export type ProjectSettings = {
   port: string
   auto: boolean
   previewAuto: boolean
+  replicas: number
 }
 
 class ProjectsService extends BaseService {

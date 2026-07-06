@@ -331,6 +331,7 @@ export default function ProjectDetailPage() {
             port={project.port}
             auto={project.auto}
             previewAuto={project.previewAuto}
+            replicas={project.replicas}
             onSaved={reload}
             onDeleted={() => navigate('/')}
             onRedeploy={() => term.redeploy(project.name)}
@@ -359,6 +360,7 @@ function SettingsForm({
   port,
   auto,
   previewAuto,
+  replicas,
   onSaved,
   onDeleted,
   onRedeploy,
@@ -369,12 +371,14 @@ function SettingsForm({
   port: string
   auto: boolean
   previewAuto: boolean
+  replicas: number
   onSaved: () => void
   onDeleted: () => void
   onRedeploy: () => void
 }) {
-  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto })
+  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto, replicas: replicas || 1 })
   const [saved, setSaved] = useState(false)
+  const setReplicas = (n: number) => setForm((f) => ({ ...f, replicas: Math.min(10, Math.max(1, n)) }))
 
   const save = async () => {
     await projectsService.update(name, form)
@@ -445,11 +449,34 @@ function SettingsForm({
               {form.previewAuto ? 'On' : 'Off'}
             </button>
           </Field>
+          <Field label="Replicas">
+            <div className="flex h-9 w-28 items-center justify-between rounded-md border border-white/15 px-1">
+              <button
+                type="button"
+                onClick={() => setReplicas(form.replicas - 1)}
+                disabled={form.replicas <= 1}
+                aria-label="Fewer replicas"
+                className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
+              >
+                −
+              </button>
+              <span className="font-mono text-sm tabular-nums">{form.replicas}</span>
+              <button
+                type="button"
+                onClick={() => setReplicas(form.replicas + 1)}
+                disabled={form.replicas >= 10}
+                aria-label="More replicas"
+                className="text-muted-foreground hover:text-foreground grid h-7 w-7 place-items-center rounded text-base disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
+          </Field>
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
-          With preview deployments on, a push to any branch other than{' '}
-          <span className="text-foreground/70 font-mono">{form.branch || 'main'}</span> spins up its
-          own preview environment automatically.
+          Replicas run identical copies of the app behind the router, sharing traffic. Preview
+          deployments spin up an environment automatically for any push to a branch other than{' '}
+          <span className="text-foreground/70 font-mono">{form.branch || 'main'}</span>.
         </p>
         <div className="mt-5 flex items-center justify-end gap-3">
           {saved && <span className="text-muted-foreground text-xs">Saved.</span>}

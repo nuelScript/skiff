@@ -7,11 +7,30 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
 const DefaultAddr = ":8080"
+
+var (
+	rrMu  sync.Mutex
+	rrIdx = map[string]uint64{}
+)
+
+// pickPort round-robins across an app's replicas (falling back to the single
+// representative port when none are recorded).
+func pickPort(app registry.App) int {
+	if len(app.Replicas) == 0 {
+		return app.HostPort
+	}
+	rrMu.Lock()
+	i := rrIdx[app.Name] % uint64(len(app.Replicas))
+	rrIdx[app.Name]++
+	rrMu.Unlock()
+	return app.Replicas[i].HostPort
+}
 
 func URL(name string) string {
 	return fmt.Sprintf("http://%s.localhost%s", name, portSuffix(DefaultAddr))
@@ -47,7 +66,7 @@ func route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", app.HostPort))
+	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", pickPort(app)))
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)

@@ -13,7 +13,8 @@ import (
 const DefaultFile = "skiff.toml"
 
 type Config struct {
-	Name string `toml:"name"`
+	Name     string `toml:"name"`
+	Replicas int    `toml:"replicas"` // how many identical containers to run behind the router
 
 	Server    ServerConfig      `toml:"server"`
 	Build     BuildConfig       `toml:"build"`
@@ -69,6 +70,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Build.Port == 0 {
 		c.Build.Port = 8080
+	}
+	if c.Replicas < 1 {
+		c.Replicas = 1
 	}
 }
 

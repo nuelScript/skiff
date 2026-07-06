@@ -315,7 +315,11 @@ func orRoot(d string) string {
 // project's env vars split into [env] (build+runtime) and [secrets] (runtime).
 func projectToml(src Source, env []EnvVar) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "name = %q\n\n[build]\nport = %s\n", src.App, src.Port)
+	fmt.Fprintf(&b, "name = %q\n", src.App)
+	if src.Replicas > 1 {
+		fmt.Fprintf(&b, "replicas = %d\n", src.Replicas)
+	}
+	fmt.Fprintf(&b, "\n[build]\nport = %s\n", src.Port)
 	var buildVars, secretVars []EnvVar
 	for _, e := range env {
 		if e.Build {

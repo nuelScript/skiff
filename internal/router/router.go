@@ -44,6 +44,7 @@ type Router struct {
 	cachedAt      time.Time
 	cachedDomains map[string]string
 	cachedDomAt   time.Time
+	rr            map[string]uint64 // per-app round-robin cursor across replicas
 }
 
 // startMetrics begins request accounting if a metrics file is configured.
@@ -149,20 +150,32 @@ func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	return app
 }
 
-// proxyToApp forwards the request to the named app's live container.
+// proxyToApp forwards the request to one of the named app's live containers,
+// round-robining across its replicas.
 func (rt *Router) proxyToApp(w http.ResponseWriter, r *http.Request, app string) {
 	routes, err := rt.Engine.Routes()
 	if err != nil {
 		http.Error(w, "skiff: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var ports []int
 	for _, rr := range routes {
 		if rr.App == app {
-			proxyTo(w, r, fmt.Sprintf("127.0.0.1:%d", rr.HostPort))
-			return
+			ports = append(ports, rr.HostPort)
 		}
 	}
-	http.Error(w, "skiff: no app named "+app, http.StatusNotFound)
+	if len(ports) == 0 {
+		http.Error(w, "skiff: no app named "+app, http.StatusNotFound)
+		return
+	}
+	rt.mu.Lock()
+	if rt.rr == nil {
+		rt.rr = map[string]uint64{}
+	}
+	port := ports[rt.rr[app]%uint64(len(ports))]
+	rt.rr[app]++
+	rt.mu.Unlock()
+	proxyTo(w, r, fmt.Sprintf("127.0.0.1:%d", port))
 }
 
 func proxyTo(w http.ResponseWriter, r *http.Request, hostport string) {

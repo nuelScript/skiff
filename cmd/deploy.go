@@ -142,60 +142,86 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 		runtimeEnv[k] = v
 	}
 
-	container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 	// Join the shared network so the app can reach managed databases by name.
 	// If it can't be created, fall back to no network rather than failing the deploy.
 	network := ""
 	if eng.EnsureNetwork("skiff") == nil {
 		network = "skiff"
 	}
-	ui.Step("Starting new version")
-	hostPort, err := eng.Run(docker.RunSpec{
-		Name:          container,
-		App:           cfg.Name,
-		Image:         image,
-		ContainerPort: cfg.Build.Port,
-		Memory:        cfg.Resources.Memory,
-		CPU:           cfg.Resources.CPU,
-		Env:           runtimeEnv,
-		Public:        eng.IsRemote(),
-		Network:       network,
-	})
-	if err != nil {
-		ui.Fail("Couldn't start container")
-		return err
-	}
-
 	healthHost := "127.0.0.1"
 	if eng.IsRemote() {
 		healthHost = docker.SSHHostname(cfg.Server.Host)
 	}
-	ui.Step("Waiting for it to be healthy")
-	if err := waitHealthy(healthHost, hostPort, timeout); err != nil {
-		_ = eng.Remove(container) // roll back; the old version keeps serving
-		ui.Fail("New version never became healthy — rolled back")
-		ui.Note(fmt.Sprintf("the app must listen on 0.0.0.0:%d (the `port` in skiff.toml) and answer HTTP", cfg.Build.Port))
-		return err
+
+	replicas := cfg.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
+	if replicas > 1 {
+		ui.Step(fmt.Sprintf("Starting new version · %d replicas", replicas))
+	} else {
+		ui.Step("Starting new version")
+	}
+
+	// Bring the whole new set up and healthy before touching the old one. If any
+	// replica fails, roll back everything we started — the old version keeps serving.
+	var reps []registry.Replica
+	rollback := func() {
+		for _, rp := range reps {
+			_ = eng.Remove(rp.Container)
+		}
+	}
+	for i := 0; i < replicas; i++ {
+		container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
+		hostPort, err := eng.Run(docker.RunSpec{
+			Name:          container,
+			App:           cfg.Name,
+			Image:         image,
+			ContainerPort: cfg.Build.Port,
+			Memory:        cfg.Resources.Memory,
+			CPU:           cfg.Resources.CPU,
+			Env:           runtimeEnv,
+			Public:        eng.IsRemote(),
+			Network:       network,
+		})
+		if err != nil {
+			rollback()
+			ui.Fail("Couldn't start container")
+			return err
+		}
+		if err := waitHealthy(healthHost, hostPort, timeout); err != nil {
+			_ = eng.Remove(container)
+			rollback()
+			ui.Fail("New version never became healthy — rolled back")
+			ui.Note(fmt.Sprintf("the app must listen on 0.0.0.0:%d (the `port` in skiff.toml) and answer HTTP", cfg.Build.Port))
+			return err
+		}
+		reps = append(reps, registry.Replica{Container: container, HostPort: hostPort})
 	}
 	ui.Done("Healthy")
 
-	// Point the router at the new version (atomic), then retire the old one.
+	// Point the router at the new set (atomic), then retire the old one.
 	if err := registry.Put(registry.App{
 		Name:      cfg.Name,
-		Container: container,
+		Container: reps[0].Container,
 		Port:      cfg.Build.Port,
-		HostPort:  hostPort,
+		HostPort:  reps[0].HostPort,
 		Host:      cfg.RemoteHost(),
+		Replicas:  reps,
 	}); err != nil {
 		ui.Fail("Couldn't update the registry")
 		return err
 	}
 
-	// Retire every other container for this app — the previous version plus any
-	// left over from a failed swap or a canceled build.
+	// Retire every container for this app that isn't in the new set — the previous
+	// version plus any left over from a failed swap or a canceled build.
+	newSet := map[string]bool{}
+	for _, rp := range reps {
+		newSet[rp.Container] = true
+	}
 	retired := 0
 	for _, name := range eng.AppContainers(cfg.Name) {
-		if name != container {
+		if !newSet[name] {
 			_ = eng.Stop(name) // graceful drain (SIGTERM) before removal
 			_ = eng.Remove(name)
 			retired++
@@ -207,10 +233,10 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 
 	fmt.Println()
 	if eng.IsRemote() {
-		ui.Live(fmt.Sprintf("http://%s:%d", healthHost, hostPort), time.Since(start))
+		ui.Live(fmt.Sprintf("http://%s:%d", healthHost, reps[0].HostPort), time.Since(start))
 	} else {
 		ui.Live(proxy.URL(cfg.Name), time.Since(start))
-		ui.Field("direct", fmt.Sprintf("http://localhost:%d", hostPort))
+		ui.Field("direct", fmt.Sprintf("http://localhost:%d", reps[0].HostPort))
 	}
 	return nil
 }

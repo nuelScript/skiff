@@ -77,6 +77,9 @@ func (p *Panel) reapOrphanContainers() {
 	current := make(map[string]bool, len(apps))
 	for _, a := range apps {
 		current[a.Container] = true
+		for _, rp := range a.Replicas {
+			current[rp.Container] = true
+		}
 	}
 	cutoff := time.Now().Add(-10 * time.Minute)
 	for _, c := range p.eng.SkiffContainers() {
@@ -461,6 +464,7 @@ type projectView struct {
 	Port    string   `json:"port"`
 	Auto        bool          `json:"auto"`
 	PreviewAuto bool          `json:"previewAuto"`
+	Replicas    int           `json:"replicas"`
 	Deploys     []Deploy      `json:"deploys"`
 	Previews    []previewView `json:"previews"`
 }
@@ -488,7 +492,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, PreviewAuto: src.PreviewAuto,
+			Auto: src.Auto, PreviewAuto: src.PreviewAuto, Replicas: src.Replicas,
 			Deploys: deploys, Previews: p.buildPreviews(app),
 		})
 	case http.MethodPut:
@@ -498,6 +502,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			Port        string `json:"port"`
 			Auto        bool   `json:"auto"`
 			PreviewAuto bool   `json:"previewAuto"`
+			Replicas    int    `json:"replicas"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		src, ok := getSource(app)
@@ -509,6 +514,9 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		src.RootDir = strings.TrimSpace(body.RootDir)
 		if port := strings.TrimSpace(body.Port); port != "" {
 			src.Port = port
+		}
+		if body.Replicas >= 1 && body.Replicas <= 10 {
+			src.Replicas = body.Replicas
 		}
 		src.Auto = body.Auto
 		src.PreviewAuto = body.PreviewAuto

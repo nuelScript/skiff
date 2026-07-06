@@ -9,11 +9,18 @@ import (
 )
 
 type App struct {
-	Name      string `json:"name"`
+	Name      string    `json:"name"`
+	Container string    `json:"container"`        // representative replica (Replicas[0]), for status + back-compat
+	Port      int       `json:"port"`             // port the app listens on inside the container
+	HostPort  int       `json:"hostPort"`         // representative replica's published host port
+	Host      string    `json:"host,omitempty"`   // remote ssh target ("" = local docker)
+	Replicas  []Replica `json:"replicas,omitempty"` // every running container for the app
+}
+
+// Replica is one running container of an app.
+type Replica struct {
 	Container string `json:"container"`
-	Port      int    `json:"port"`           // port the app listens on inside the container
-	HostPort  int    `json:"hostPort"`       // host port the container is published on
-	Host      string `json:"host,omitempty"` // remote ssh target ("" = local docker)
+	HostPort  int    `json:"hostPort"`
 }
 
 func dir() (string, error) {
