@@ -42,8 +42,8 @@ export function Hero() {
         </h1>
 
         <p className="hero-item text-muted mt-6 max-w-md text-lg leading-relaxed">
-          Push-to-deploy, automatic HTTPS, and preview environments — on
-          infrastructure you control, not rented.
+          Push-to-deploy with automatic HTTPS, managed databases, and preview
+          environments — on infrastructure you control, not rented.
         </p>
 
         <div className="hero-item mt-8 flex flex-wrap items-center gap-3">

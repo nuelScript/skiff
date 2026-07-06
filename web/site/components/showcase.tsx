@@ -44,8 +44,9 @@ export function Showcase() {
           Your server gets a console.
         </h2>
         <p className="text-muted mt-4 text-balance">
-          Deploy, watch live build logs, roll back, and manage every app from
-          one place — the same box, a browser away.
+          Deploy, watch live logs, roll back, open a shell, and manage every
+          app, database, and domain from one place — the same box, a browser
+          away.
         </p>
       </div>
 

@@ -14,7 +14,7 @@ const mono = Geist_Mono({
 
 const title = "Skiff — Ship it to a server you own";
 const description =
-  "Push-to-deploy, automatic HTTPS, and preview environments — running on infrastructure you control, not rented.";
+  "Push-to-deploy with automatic HTTPS, managed databases, and preview environments — running on infrastructure you control, not rented.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://useskiff.xyz"),

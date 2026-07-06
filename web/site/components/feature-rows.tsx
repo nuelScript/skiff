@@ -51,6 +51,62 @@ function RolloutVisual() {
   );
 }
 
+function DatabaseVisual() {
+  const engines = ["postgres", "mysql", "mongodb", "redis"];
+  return (
+    <div className="border-line bg-surface/70 glow-amber space-y-3 rounded-2xl border p-5">
+      <div className="grid grid-cols-2 gap-2.5">
+        {engines.map((e) => (
+          <div
+            key={e}
+            className="border-line bg-bg/50 flex items-center justify-between rounded-lg border px-3.5 py-2.5"
+          >
+            <span className="text-fg font-mono text-xs">{e}</span>
+            <span className="bg-signal h-1.5 w-1.5 rounded-full shadow-[0_0_8px_var(--color-signal)]" />
+          </div>
+        ))}
+      </div>
+      <div className="border-line bg-bg/50 flex items-center gap-2.5 overflow-hidden rounded-lg border px-3.5 py-2.5">
+        <span className="text-brand shrink-0 font-mono text-[11px]">DATABASE_URL</span>
+        <span className="text-subtle truncate font-mono text-[11px]">
+          postgres://app@db:5432/app
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsVisual() {
+  const bars = [38, 55, 48, 66, 80, 62, 74, 52, 68, 88, 60, 78, 46, 70];
+  return (
+    <div className="border-line bg-surface/70 glow-amber rounded-2xl border p-6">
+      <div className="flex items-baseline justify-between">
+        <span className="font-display text-fg text-2xl font-semibold tracking-tight">
+          9,143
+        </span>
+        <span className="text-subtle font-mono text-[11px]">edge requests · 1h</span>
+      </div>
+      <div className="mt-5 flex h-24 items-end gap-1.5">
+        {bars.map((h, i) => (
+          <div
+            key={i}
+            className="flex-1 rounded-sm"
+            style={{
+              height: `${h}%`,
+              background: "linear-gradient(to top, var(--muted), var(--fg))",
+            }}
+          />
+        ))}
+      </div>
+      <div className="border-line text-subtle mt-4 grid grid-cols-3 gap-2 border-t pt-3 font-mono text-[11px]">
+        <span>2XX · 98.6%</span>
+        <span className="text-center">p50 · 41ms</span>
+        <span className="text-right">32.7MB out</span>
+      </div>
+    </div>
+  );
+}
+
 function Row({
   eyebrow,
   title,
@@ -107,6 +163,17 @@ export function FeatureRows() {
         />
         <Row
           flip
+          eyebrow="Databases"
+          title="A database, one click away."
+          body="Provision Postgres, MySQL, MongoDB, or Redis right beside your app. Skiff runs it on a private network, injects the connection URL, and gives you a shell — no separate provider, no egress bill."
+          points={[
+            "Postgres, MySQL, MongoDB, and Redis",
+            "Attach to an app and the connection URL is injected",
+            "A browser shell into every database",
+          ]}
+          visual={<DatabaseVisual />}
+        />
+        <Row
           eyebrow="Previews"
           title="Every branch gets a URL."
           body="Open a branch and Skiff spins up an isolated environment at its own address, so you can review real changes before they reach production."
@@ -116,6 +183,18 @@ export function FeatureRows() {
             "Torn down when the branch is gone",
           ]}
           visual={<PreviewVisual />}
+        />
+        <Row
+          flip
+          eyebrow="Observability"
+          title="See every request."
+          body="The edge router meters everything it serves — status codes, data transfer, latency — and charts it live, per app. No agent, no extra service."
+          points={[
+            "Requests, latency, and transfer over time",
+            "Filter by app and time range",
+            "Live from the edge — nothing to install",
+          ]}
+          visual={<AnalyticsVisual />}
         />
         <Row
           eyebrow="Reliability"
