@@ -115,6 +115,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/exec", p.protected(p.handleExec))
 	mux.HandleFunc("/api/databases", p.protected(p.handleDatabases))
 	mux.HandleFunc("/api/databases/attach", p.protected(p.handleDatabaseAttach))
+	mux.HandleFunc("/api/databases/public", p.protected(p.handleDatabasePublic))
 	mux.HandleFunc("/api/db/exec", p.protected(p.handleDBShell))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))

@@ -162,9 +162,14 @@ type DBRunSpec struct {
 	Env     map[string]string
 	Cmd     []string          // optional command/args after the image
 	Labels  map[string]string // ownership + kind labels
+	Port    int               // container port (published on the host when Publish is set)
+	Publish bool              // expose Port on 0.0.0.0 for external access
 }
 
-func (e *Engine) RunDatabase(s DBRunSpec) error {
+// RunDatabase (re)creates a managed database container. It returns the published
+// host port when Publish is set (0 otherwise). Recreating with the same name +
+// volume preserves the data.
+func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	_ = e.command("rm", "-f", s.Name).Run()
 	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped"}
 	for _, k := range sortedKeys(s.Labels) {
@@ -176,15 +181,21 @@ func (e *Engine) RunDatabase(s DBRunSpec) error {
 	if s.Volume != "" && s.MountAt != "" {
 		args = append(args, "-v", s.Volume+":"+s.MountAt)
 	}
+	if s.Publish && s.Port > 0 {
+		args = append(args, "-p", fmt.Sprintf("0.0.0.0::%d", s.Port))
+	}
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
 	}
 	args = append(args, s.Image)
 	args = append(args, s.Cmd...)
 	if out, err := e.command(args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("docker run failed: %s", firstLine(out))
+		return 0, fmt.Errorf("docker run failed: %s", firstLine(out))
 	}
-	return nil
+	if s.Publish && s.Port > 0 {
+		return e.HostPort(s.Name, s.Port)
+	}
+	return 0, nil
 }
 
 // RemoveVolume deletes a named volume (used when tearing down a database).

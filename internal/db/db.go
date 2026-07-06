@@ -41,6 +41,8 @@ var migrations = []string{
 	`ALTER TABLE deploys ADD COLUMN message TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN parent TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN preview_auto INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE databases ADD COLUMN public INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE databases ADD COLUMN public_port INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `
@@ -129,7 +131,9 @@ CREATE TABLE IF NOT EXISTS databases (
   username  TEXT NOT NULL DEFAULT '',
   password  TEXT NOT NULL DEFAULT '',
   dbname    TEXT NOT NULL DEFAULT '',
-  created   INTEGER NOT NULL
+  created   INTEGER NOT NULL,
+  public      INTEGER NOT NULL DEFAULT 0,
+  public_port INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS db_attachments (
   db_id TEXT NOT NULL,

@@ -96,15 +96,17 @@ var dbEngines = map[string]dbEngine{
 
 // Database is a managed data store, plus computed fields the dashboard needs.
 type Database struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Engine   string   `json:"engine"`
-	Host     string   `json:"host"`
-	Port     int      `json:"port"`
-	Created  int64    `json:"created"`
-	State    string   `json:"state"`    // computed: running / exited / missing
-	URL      string   `json:"url"`      // computed: connection string
-	Attached []string `json:"attached"` // computed: apps it's wired into
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Engine    string   `json:"engine"`
+	Host      string   `json:"host"`
+	Port      int      `json:"port"`
+	Created   int64    `json:"created"`
+	State     string   `json:"state"`               // computed: running / exited / missing
+	URL       string   `json:"url"`                 // computed: private connection string
+	Attached  []string `json:"attached"`            // computed: apps it's wired into
+	Public    bool     `json:"public"`              // reachable from outside the box
+	PublicURL string   `json:"publicUrl,omitempty"` // computed: external connection string
 }
 
 type dbRow struct {
@@ -112,15 +114,20 @@ type dbRow struct {
 	Port                                    int
 	Username, Password, DBName              string
 	Created                                 int64
+	Public                                  bool
+	PublicPort                              int
 }
 
-const dbCols = `id,team,name,engine,container,host,port,username,password,dbname,created`
+const dbCols = `id,team,name,engine,container,host,port,username,password,dbname,created,public,public_port`
 
 func scanDB(row interface{ Scan(...any) error }) (dbRow, bool) {
 	var d dbRow
-	if row.Scan(&d.ID, &d.Team, &d.Name, &d.Engine, &d.Container, &d.Host, &d.Port, &d.Username, &d.Password, &d.DBName, &d.Created) != nil {
+	var public int
+	if row.Scan(&d.ID, &d.Team, &d.Name, &d.Engine, &d.Container, &d.Host, &d.Port,
+		&d.Username, &d.Password, &d.DBName, &d.Created, &public, &d.PublicPort) != nil {
 		return dbRow{}, false
 	}
+	d.Public = public != 0
 	return d, true
 }
 
@@ -144,8 +151,9 @@ func listDBs(team string) []dbRow {
 }
 
 func putDB(d dbRow) error {
-	_, err := sqlDB.Exec(`INSERT INTO databases(`+dbCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		d.ID, d.Team, d.Name, d.Engine, d.Container, d.Host, d.Port, d.Username, d.Password, d.DBName, d.Created)
+	_, err := sqlDB.Exec(`INSERT INTO databases(`+dbCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Team, d.Name, d.Engine, d.Container, d.Host, d.Port, d.Username, d.Password,
+		d.DBName, d.Created, b2i(d.Public), d.PublicPort)
 	return err
 }
 
@@ -197,13 +205,20 @@ func deleteEnvVar(app, key string) {
 
 func (p *Panel) toDatabase(d dbRow) Database {
 	e := dbEngines[d.Engine]
-	return Database{
+	out := Database{
 		ID: d.ID, Name: d.Name, Engine: d.Engine, Host: d.Host, Port: d.Port,
 		Created:  d.Created,
 		State:    p.eng.State(d.Container),
 		URL:      e.url(d.Host, d.Port, d.Username, d.Password, d.DBName),
 		Attached: dbAttachments(d.ID),
+		Public:   d.Public,
 	}
+	if d.Public && d.PublicPort > 0 {
+		if ip := serverPublicIP(p.domain); ip != "" {
+			out.PublicURL = e.url(ip, d.PublicPort, d.Username, d.Password, d.DBName)
+		}
+	}
+	return out
 }
 
 func (p *Panel) canAccessDB(r *http.Request, id string) (dbRow, bool) {
@@ -279,7 +294,7 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if err := p.eng.RunDatabase(docker.DBRunSpec{
+		if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 			Name: container, Image: e.image, Network: dbNetwork,
 			Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
 			Labels: map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": team},
@@ -355,6 +370,41 @@ func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleDatabasePublic toggles external access by recreating the container with
+// or without a published host port. Data survives (same name + volume).
+func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := sanitizeID(r.URL.Query().Get("id"))
+	d, ok := p.canAccessDB(r, id)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	on := r.URL.Query().Get("on") == "1"
+	e := dbEngines[d.Engine]
+	env, cmd := e.container(d.Username, d.Password, d.DBName)
+	port, err := p.eng.RunDatabase(docker.DBRunSpec{
+		Name: d.Container, Image: e.image, Network: dbNetwork,
+		Volume: d.Container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
+		Labels: map[string]string{"skiff.kind": "database", "skiff.db": d.ID, "skiff.team": d.Team},
+		Port:   e.port, Publish: on,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := sqlDB.Exec(`UPDATE databases SET public = ?, public_port = ? WHERE id = ?`,
+		b2i(on), port, d.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	d.Public, d.PublicPort = on, port
+	writeJSON(w, p.toDatabase(d))
 }
 
 func (p *Panel) handleDBShell(w http.ResponseWriter, r *http.Request) {

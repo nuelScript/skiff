@@ -1,5 +1,16 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Database, Plus, Trash2, X, Copy, Check, TerminalSquare, Link2 } from 'lucide-react'
+import {
+  Database,
+  Plus,
+  Trash2,
+  X,
+  Copy,
+  Check,
+  TerminalSquare,
+  Link2,
+  Globe,
+  TriangleAlert,
+} from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useDatabases } from '@/hooks/use-databases'
 import { ConsoleTerminal } from '@/components/console-terminal'
@@ -25,7 +36,7 @@ const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[
 
 export default function DatabasesPage() {
   const { apps } = useApps()
-  const { databases, create, remove, attach, detach } = useDatabases()
+  const { databases, create, remove, attach, detach, setPublic } = useDatabases()
 
   const [adding, setAdding] = useState(false)
   const [engine, setEngine] = useState<DbEngine>('postgres')
@@ -137,6 +148,7 @@ export default function DatabasesPage() {
               apps={apps.map((a) => a.name)}
               onAttach={(app) => attach(db.id, app)}
               onDetach={(app) => detach(db.id, app)}
+              onSetPublic={setPublic}
               onRemove={() => {
                 if (confirm(`Delete ${db.name}? This destroys its data.`)) remove(db.id)
               }}
@@ -154,6 +166,7 @@ function DatabaseCard({
   apps,
   onAttach,
   onDetach,
+  onSetPublic,
   onRemove,
   delay,
 }: {
@@ -161,13 +174,24 @@ function DatabaseCard({
   apps: string[]
   onAttach: (app: string) => void
   onDetach: (app: string) => void
+  onSetPublic: (id: string, on: boolean) => Promise<void>
   onRemove: () => void
   delay: number
 }) {
   const [shell, setShell] = useState(false)
+  const [pubBusy, setPubBusy] = useState(false)
   const meta = engineMeta(db.engine)
   const running = db.state === 'running'
   const unattached = useMemo(() => apps.filter((a) => !db.attached.includes(a)), [apps, db.attached])
+
+  const togglePublic = async () => {
+    setPubBusy(true)
+    try {
+      await onSetPublic(db.id, !db.public)
+    } finally {
+      setPubBusy(false)
+    }
+  }
 
   return (
     <div
@@ -225,6 +249,33 @@ function DatabaseCard({
             Connection URL
           </p>
           <Copyable text={db.url} />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Globe className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium">Public access</p>
+                <p className="text-muted-foreground text-[11px]">Let external clients connect over the internet.</p>
+              </div>
+            </div>
+            <Toggle on={db.public} busy={pubBusy} onClick={togglePublic} />
+          </div>
+          {db.public && (
+            <div className="mt-2 space-y-1.5">
+              {db.publicUrl ? (
+                <Copyable text={db.publicUrl} />
+              ) : (
+                <p className="text-muted-foreground text-[11px]">Publishing… the public address will appear shortly.</p>
+              )}
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-300/80">
+                <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                Anyone who can reach this address can connect with the password above, and traffic isn't
+                encrypted. Use it for trusted networks or temporary access.
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
@@ -290,6 +341,29 @@ function DatabaseCard({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function Toggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={busy}
+      onClick={onClick}
+      className={
+        'relative h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-50 ' +
+        (on ? 'border-emerald-400/30 bg-emerald-400/25' : 'border-white/15 bg-white/8')
+      }
+    >
+      <span
+        className={
+          'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all ' +
+          (on ? 'left-4' : 'left-0.5')
+        }
+      />
+    </button>
   )
 }
 

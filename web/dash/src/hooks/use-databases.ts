@@ -48,5 +48,13 @@ export function useDatabases() {
     [reload],
   )
 
-  return { databases, isLoading, create, remove, attach, detach }
+  const setPublic = useCallback(
+    async (id: string, on: boolean) => {
+      await databasesService.setPublic(id, on)
+      reload()
+    },
+    [reload],
+  )
+
+  return { databases, isLoading, create, remove, attach, detach, setPublic }
 }
