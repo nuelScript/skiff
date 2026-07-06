@@ -233,6 +233,7 @@ func (p *Panel) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	p.audit(r, "backup.restore", d.Name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

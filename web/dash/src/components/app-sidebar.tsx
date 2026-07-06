@@ -6,6 +6,7 @@ import {
   Rocket,
   ScrollText,
   Activity,
+  History,
   Server,
   Globe,
   Database,
@@ -43,6 +44,7 @@ const SECTIONS: NavItem[][] = [
     { to: '/deployments', label: 'Deployments', icon: Rocket },
     { to: '/logs', label: 'Logs', icon: ScrollText },
     { to: '/analytics', label: 'Analytics', icon: Activity },
+    { to: '/activity', label: 'Activity', icon: History },
   ],
   [
     { to: '/server', label: 'Server', icon: Server },

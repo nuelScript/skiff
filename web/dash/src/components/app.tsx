@@ -8,6 +8,7 @@ import Shell from '@/components/shell'
 import ProjectsPage from '@/pages/projects'
 import ProjectDetailPage from '@/pages/project-detail'
 import DeploymentsPage from '@/pages/deployments'
+import ActivityPage from '@/pages/activity'
 import LogsPage from '@/pages/logs'
 import ServerPage from '@/pages/server'
 import DomainsPage from '@/pages/domains'
@@ -47,6 +48,7 @@ export default function App() {
               <Route index element={<ProjectsPage />} />
               <Route path="projects/:name" element={<ProjectDetailPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
+              <Route path="activity" element={<ActivityPage />} />
               <Route path="logs" element={<LogsPage />} />
               <Route
                 path="analytics"

@@ -141,6 +141,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/resources", p.protected(p.handleResources))
 	mux.HandleFunc("/api/alerts", p.protected(p.handleAlerts))
 	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
+	mux.HandleFunc("/api/audit", p.protected(p.handleAudit))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
@@ -373,10 +374,15 @@ func (p *Panel) handleMembers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "you can't remove yourself", http.StatusBadRequest)
 			return
 		}
+		who := uid
+		if u, ok := p.auth.User(uid); ok {
+			who = u.Email
+		}
 		if err := p.auth.RemoveMember(s.teamID, uid); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		p.audit(r, "member.remove", who, "")
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.Header().Set("Content-Type", "application/json")
@@ -397,6 +403,7 @@ func (p *Panel) handleInvite(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	p.audit(r, "member.invite", strings.TrimSpace(body.Email), body.Role)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"link": baseURL(r) + "/invite/" + inv.Token,
@@ -562,6 +569,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			src.ScaleCPU = body.ScaleCPU
 		}
 		_ = putSource(src)
+		p.audit(r, "settings.update", app, "")
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -582,6 +590,7 @@ func (p *Panel) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := newDeployID()
+	p.audit(r, "deploy", app, "redeploy")
 	go p.runDeploy(src, "", "", "", "redeploy", id)
 	p.tailLog(w, r, app, id)
 }
@@ -627,6 +636,11 @@ func (p *Panel) handleRollback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	id := newDeployID()
+	detail := ""
+	if commit != "" {
+		detail = "to " + commit
+	}
+	p.audit(r, "rollback", app, detail)
 	go p.runRollback(src, target, commit, message, id)
 	p.tailLog(w, r, app, id)
 }
@@ -678,6 +692,7 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		auth = injectToken(git, token)
 	}
 	id := newDeployID()
+	p.audit(r, "deploy", name, "new app from git")
 	go p.runDeploy(src, auth, "", "", "manual", id)
 	p.tailLog(w, r, name, id)
 }
@@ -725,6 +740,7 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 	_, _ = registry.Delete(name)
 	deleteSource(name)
 	p.removeAppImages(name) // free the build layers; nothing left to roll back to
+	p.audit(r, "project.delete", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -749,6 +765,7 @@ func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		p.audit(r, "env.update", app, "")
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

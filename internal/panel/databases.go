@@ -333,6 +333,7 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		p.audit(r, "database.create", name, body.Engine)
 		writeJSON(w, p.toDatabase(d))
 
 	case http.MethodDelete:
@@ -351,6 +352,7 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 		_ = p.eng.Remove(d.Container)
 		_ = p.eng.RemoveVolume(d.Container + "-data")
 		deleteDBRow(id)
+		p.audit(r, "database.delete", d.Name, d.Engine)
 		w.WriteHeader(http.StatusNoContent)
 
 	default:

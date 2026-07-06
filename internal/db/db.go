@@ -182,4 +182,14 @@ CREATE TABLE IF NOT EXISTS alerts (
   slack_url   TEXT NOT NULL DEFAULT '',
   webhook_url TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS audit (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  team    TEXT NOT NULL,
+  actor   TEXT NOT NULL,
+  action  TEXT NOT NULL,
+  target  TEXT NOT NULL DEFAULT '',
+  detail  TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_team ON audit(team, id DESC);
 `

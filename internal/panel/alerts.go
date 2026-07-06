@@ -192,6 +192,7 @@ func (p *Panel) handleAlerts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "couldn't save", http.StatusInternalServerError)
 			return
 		}
+		p.audit(r, "alerts.update", "", "")
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

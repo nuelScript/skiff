@@ -152,6 +152,7 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			id := newDeployID()
+			recordAudit(src.Team, "push", "deploy", src.App, shortCommit(push.Commit))
 			go p.runDeploy(src, "", push.Commit, push.Message, "push", id)
 		}
 		// Auto-create a preview for a push to a branch that isn't a project's

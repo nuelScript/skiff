@@ -137,6 +137,7 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeDomainsFile()
+		p.audit(r, "domain.add", host, app)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Domain{Host: host, App: app, Created: time.Now().Unix()})
 
@@ -157,6 +158,7 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = sqlDB.Exec(`DELETE FROM domains WHERE host=?`, host)
 		writeDomainsFile()
+		p.audit(r, "domain.remove", host, owner.App)
 		w.WriteHeader(http.StatusNoContent)
 
 	default:
