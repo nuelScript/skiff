@@ -246,6 +246,22 @@ func (e *Engine) RunOnce(ctx context.Context, image string, env map[string]strin
 	return string(out), err
 }
 
+// RunTool runs a throwaway container passing args straight to the image's
+// entrypoint (no shell), used for CLI images like minio/mc that have no shell.
+func (e *Engine) RunTool(network string, env map[string]string, image string, args ...string) (string, error) {
+	full := []string{"run", "--rm"}
+	if network != "" {
+		full = append(full, "--network", network)
+	}
+	for _, k := range sortedKeys(env) {
+		full = append(full, "-e", fmt.Sprintf("%s=%s", k, env[k]))
+	}
+	full = append(full, image)
+	full = append(full, args...)
+	out, err := e.command(full...).CombinedOutput()
+	return string(out), err
+}
+
 // Exec runs a command inside a container, wiring stdin/stdout to the given
 // streams — used to dump a database to a file and pipe a dump back in.
 func (e *Engine) Exec(ctx context.Context, container string, cmd []string, stdin io.Reader, stdout io.Writer) error {

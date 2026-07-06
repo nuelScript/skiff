@@ -64,6 +64,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
 	go p.reconcileNetworks()     // attach existing databases to their team's private net
 	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
+	go p.prewarmStorageImages()  // fetch MinIO images ahead of first bucket
 	go p.backupLoop()            // daily database snapshots
 	go p.jobLoop()               // scheduled jobs (cron)
 	go p.resourceLoop()          // sample per-app CPU/memory
@@ -129,6 +130,8 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/databases", p.protected(p.handleDatabases))
 	mux.HandleFunc("/api/databases/attach", p.protected(p.handleDatabaseAttach))
 	mux.HandleFunc("/api/databases/public", p.protected(p.handleDatabasePublic))
+	mux.HandleFunc("/api/storage", p.protected(p.handleStorage))
+	mux.HandleFunc("/api/storage/attach", p.protected(p.handleStorageAttach))
 	mux.HandleFunc("/api/backups", p.protected(p.handleBackups))
 	mux.HandleFunc("/api/backups/restore", p.protected(p.handleBackupRestore))
 	mux.HandleFunc("/api/backups/download", p.protected(p.handleBackupDownload))

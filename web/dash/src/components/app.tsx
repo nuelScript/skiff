@@ -13,6 +13,7 @@ import LogsPage from '@/pages/logs'
 import ServerPage from '@/pages/server'
 import DomainsPage from '@/pages/domains'
 import DatabasesPage from '@/pages/databases'
+import StoragePage from '@/pages/storage'
 import EnvPage from '@/pages/env'
 import SettingsPage from '@/pages/settings'
 
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="server" element={<ServerPage />} />
               <Route path="domains" element={<DomainsPage />} />
               <Route path="databases" element={<DatabasesPage />} />
+              <Route path="storage" element={<StoragePage />} />
               <Route path="env" element={<EnvPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>

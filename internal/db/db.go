@@ -201,4 +201,18 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   last_used  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_api_tokens_team ON api_tokens(team, created DESC);
+CREATE TABLE IF NOT EXISTS buckets (
+  id         TEXT PRIMARY KEY,
+  team       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  container  TEXT NOT NULL,
+  access_key TEXT NOT NULL,
+  secret_key TEXT NOT NULL,
+  created    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bucket_attachments (
+  bucket_id TEXT NOT NULL,
+  app       TEXT NOT NULL,
+  PRIMARY KEY (bucket_id, app)
+);
 `
