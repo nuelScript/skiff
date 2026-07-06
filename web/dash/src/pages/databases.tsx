@@ -19,6 +19,7 @@ import { useApps } from '@/hooks/use-apps'
 import { useDatabases } from '@/hooks/use-databases'
 import { ConsoleTerminal } from '@/components/console-terminal'
 import { databasesService, type Backup } from '@/services/api.service'
+import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -42,6 +43,7 @@ const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[
 export default function DatabasesPage() {
   const { apps } = useApps()
   const { databases, create, remove, attach, detach, setPublic } = useDatabases()
+  const confirm = useConfirm()
 
   const [adding, setAdding] = useState(false)
   const [engine, setEngine] = useState<DbEngine>('postgres')
@@ -154,8 +156,16 @@ export default function DatabasesPage() {
               onAttach={(app) => attach(db.id, app)}
               onDetach={(app) => detach(db.id, app)}
               onSetPublic={setPublic}
-              onRemove={() => {
-                if (confirm(`Delete ${db.name}? This destroys its data.`)) remove(db.id)
+              onRemove={async () => {
+                if (
+                  await confirm({
+                    title: `Delete ${db.name}?`,
+                    description: 'This destroys its data.',
+                    confirmText: 'Delete',
+                    destructive: true,
+                  })
+                )
+                  remove(db.id)
               }}
               delay={i * 40}
             />
@@ -388,6 +398,7 @@ function BackupsDialog({
   const qc = useQueryClient()
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const confirm = useConfirm()
   const { data: backups = [], isLoading } = useQuery<Backup[]>({
     queryKey: ['backups', db.id],
     queryFn: () => databasesService.listBackups(db.id),
@@ -454,8 +465,15 @@ function BackupsDialog({
                   <Download className="h-3.5 w-3.5" />
                 </a>
                 <button
-                  onClick={() => {
-                    if (confirm(`Restore ${db.name} from ${fmtDate(b.created)}? This replaces its current contents.`))
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Restore ${db.name}?`,
+                        description: `This replaces its current contents with the ${fmtDate(b.created)} backup.`,
+                        confirmText: 'Restore',
+                        destructive: true,
+                      })
+                    )
                       run('restore-' + b.id, () => databasesService.restoreBackup(b.id))
                   }}
                   disabled={busy === 'restore-' + b.id}

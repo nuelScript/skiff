@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useDomains } from '@/hooks/use-domains'
+import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -39,6 +40,7 @@ function dnsRecord(host: string, serverIp: string, appHost: string) {
 export default function DomainsPage() {
   const { apps } = useApps()
   const { domains, serverIp, add, remove } = useDomains()
+  const confirm = useConfirm()
 
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -142,8 +144,9 @@ export default function DomainsPage() {
                   domain={d}
                   serverIp={serverIp}
                   appHost={targetHost(apps, d.app)}
-                  onRemove={() => {
-                    if (confirm(`Remove ${d.host}?`)) remove(d.host)
+                  onRemove={async () => {
+                    if (await confirm({ title: `Remove ${d.host}?`, confirmText: 'Remove', destructive: true }))
+                      remove(d.host)
                   }}
                   delay={i * 40}
                 />

@@ -1,18 +1,20 @@
-import { useState, type ReactNode, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams, useNavigate, Link } from 'react-router'
-import { ChevronRight, ExternalLink, RotateCw, RotateCcw, GitBranch, Plus, Trash2, Play } from 'lucide-react'
-import { useProject } from '@/hooks/use-project'
-import { useConsole } from '@/hooks/use-console'
-import { projectsService, type Preview, type Job } from '@/services/api.service'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ChevronRight, ExternalLink, GitBranch, Play, Plus, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
+
+import { ConsoleTerminal } from '@/components/console-terminal'
+import { Drawer } from '@/components/drawer'
+import { EnvEditor } from '@/components/env-editor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { EnvEditor } from '@/components/env-editor'
-import { ConsoleTerminal } from '@/components/console-terminal'
-import { Drawer } from '@/components/drawer'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useConsole } from '@/hooks/use-console'
+import { useProject } from '@/hooks/use-project'
 import { errText } from '@/lib/errors'
+import { useConfirm } from '@/providers/confirm-provider'
+import { projectsService, type Job, type Preview } from '@/services/api.service'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 function rel(unix: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
@@ -43,6 +45,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate()
   const { project, reload } = useProject(name)
   const term = useConsole(reload)
+  const confirm = useConfirm()
 
   if (!project) {
     return (
@@ -267,11 +270,13 @@ export default function ProjectDetailPage() {
                   </button>
                   {d.rollbackable && (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (
-                          confirm(
-                            `Roll back ${project.name} to this build? It re-runs instantly — no rebuild.`,
-                          )
+                          await confirm({
+                            title: `Roll back ${project.name}?`,
+                            description: 'It re-runs this build instantly — no rebuild.',
+                            confirmText: 'Roll back',
+                          })
                         )
                           term.rollback(project.name, d.id)
                       }}
@@ -374,6 +379,7 @@ function fmtWhen(unix: number): string {
 
 function JobsPanel({ app }: { app: string }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: jobs = [] } = useQuery<Job[]>({
     queryKey: ['jobs', app],
     queryFn: () => projectsService.jobs(app),
@@ -422,7 +428,7 @@ function JobsPanel({ app }: { app: string }) {
   }
 
   const del = async (id: string) => {
-    if (!confirm('Delete this job?')) return
+    if (!(await confirm({ title: 'Delete this job?', confirmText: 'Delete', destructive: true }))) return
     await projectsService.deleteJob(id)
     reload()
   }
@@ -594,6 +600,7 @@ function SettingsForm({
 }) {
   const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto, replicas: replicas || 1, release: release || '' })
   const [saved, setSaved] = useState(false)
+  const confirm = useConfirm()
   const setReplicas = (n: number) => setForm((f) => ({ ...f, replicas: Math.min(10, Math.max(1, n)) }))
 
   const save = async () => {
@@ -603,7 +610,15 @@ function SettingsForm({
   }
 
   const del = async () => {
-    if (!confirm('Delete ' + name + '? This stops the app and removes its config.')) return
+    if (
+      !(await confirm({
+        title: `Delete ${name}?`,
+        description: 'This stops the app and removes its config.',
+        confirmText: 'Delete',
+        destructive: true,
+      }))
+    )
+      return
     await projectsService.stop(name)
     onDeleted()
   }
@@ -810,6 +825,7 @@ function PreviewsPanel({
 }
 
 function PreviewRow({ pv, onTeardown }: { pv: Preview; onTeardown: () => void }) {
+  const confirm = useConfirm()
   const host = pv.url.replace(/^https?:\/\//, '')
   const label = pv.state === 'running' ? 'Ready' : pv.status || pv.state
   return (
@@ -831,8 +847,16 @@ function PreviewRow({ pv, onTeardown }: { pv: Preview; onTeardown: () => void })
       </div>
       <span className="text-muted-foreground shrink-0 text-[11px] capitalize">{label}</span>
       <button
-        onClick={() => {
-          if (confirm(`Tear down ${host}? This removes the preview and its build.`)) onTeardown()
+        onClick={async () => {
+          if (
+            await confirm({
+              title: `Tear down ${host}?`,
+              description: 'This removes the preview and its build.',
+              confirmText: 'Tear down',
+              destructive: true,
+            })
+          )
+            onTeardown()
         }}
         title="Tear down preview"
         className="text-muted-foreground shrink-0 p-1 opacity-0 transition hover:text-rose-300 group-hover:opacity-100"

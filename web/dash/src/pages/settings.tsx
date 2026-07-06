@@ -12,6 +12,7 @@ import {
 } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/providers/confirm-provider'
 import { errText } from '@/lib/errors'
 
 const inputCls =
@@ -235,6 +236,7 @@ function TeamSection({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [dangerBusy, setDangerBusy] = useState(false)
+  const confirm = useConfirm()
   const dirty = name.trim() !== '' && name.trim() !== (team?.name ?? '')
 
   const submit = async (e: FormEvent) => {
@@ -255,7 +257,15 @@ function TeamSection({
 
   const leaveOrDelete = async () => {
     const verb = isOwner ? 'Delete' : 'Leave'
-    if (!confirm(`${verb} ${team?.name ?? 'this team'}? This can't be undone.`)) return
+    if (
+      !(await confirm({
+        title: `${verb} ${team?.name ?? 'this team'}?`,
+        description: "This can't be undone.",
+        confirmText: verb,
+        destructive: true,
+      }))
+    )
+      return
     setError('')
     setDangerBusy(true)
     try {
@@ -325,6 +335,7 @@ function MembersSection({
   const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const confirm = useConfirm()
 
   const invite = async (e: FormEvent) => {
     e.preventDefault()
@@ -344,7 +355,15 @@ function MembersSection({
   }
 
   const remove = async (m: Member) => {
-    if (!confirm(`Remove ${m.user.name} from the team?`)) return
+    if (
+      !(await confirm({
+        title: `Remove ${m.user.name}?`,
+        description: 'They lose access to this team.',
+        confirmText: 'Remove',
+        destructive: true,
+      }))
+    )
+      return
     try {
       await authService.removeMember(m.user.id)
       onChange()
