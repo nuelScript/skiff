@@ -1,6 +1,6 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ComponentProps, type FormEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, GitBranch, Trash2, X } from 'lucide-react'
+import { Check, Eye, EyeOff, GitBranch, Trash2, X } from 'lucide-react'
 import { useAuthContext } from '@/context/auth-context'
 import {
   authService,
@@ -16,6 +16,24 @@ import { errText } from '@/lib/errors'
 
 const inputCls =
   'h-9 w-full rounded-[6px] border border-white/12 bg-black/30 px-3 text-sm outline-none placeholder:text-white/25 focus-visible:border-white/30 disabled:opacity-50'
+
+function RevealInput(props: ComponentProps<'input'>) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative">
+      <input {...props} type={show ? 'text' : 'password'} className={inputCls + ' pr-9'} />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        onClick={() => setShow((s) => !s)}
+        className="text-muted-foreground hover:text-foreground absolute inset-y-0 right-0 flex items-center px-2.5 transition-colors"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const { me, refresh } = useAuthContext()
@@ -170,17 +188,13 @@ function PasswordSection() {
   return (
     <Section title="Password" description="Use at least 8 characters.">
       <form onSubmit={submit} className="space-y-3">
-        <input
-          className={inputCls}
-          type="password"
+        <RevealInput
           placeholder="Current password"
           autoComplete="current-password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
         />
-        <input
-          className={inputCls}
-          type="password"
+        <RevealInput
           placeholder="New password"
           autoComplete="new-password"
           value={next}

@@ -3,8 +3,6 @@ import { Eye, EyeOff } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-// A password field with a reveal toggle, so a mistyped password can be checked
-// instead of cleared and retyped.
 export function PasswordInput({ className, ...props }: ComponentProps<'input'>) {
   const [show, setShow] = useState(false)
   return (
