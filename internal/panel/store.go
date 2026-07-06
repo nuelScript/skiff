@@ -22,6 +22,7 @@ type Source struct {
 	Parent   string `json:"parent,omitempty"`      // set on preview environments: the production app they branch from
 	PreviewAuto bool `json:"previewAuto,omitempty"` // auto-create a preview for pushes to other branches
 	Replicas int    `json:"replicas,omitempty"`    // identical containers to run behind the router (default 1)
+	Release  string `json:"release,omitempty"`     // command run once (e.g. migrations) before each release goes live
 }
 
 // Deploy is one build/release, with a persisted log the dashboard can replay.
@@ -58,28 +59,28 @@ func logPath(app, id string) string {
 	return filepath.Join(skiffDir(), "deploys", sanitizeName(app), sanitizeID(id)+".log")
 }
 
-const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas`
+const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas,release`
 
 func putSource(s Source) error {
 	if s.Replicas < 1 {
 		s.Replicas = 1
 	}
 	_, err := sqlDB.Exec(`
-		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO sources(app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas,release)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(app) DO UPDATE SET
 			team=excluded.team, repo=excluded.repo, branch=excluded.branch,
 			root_dir=excluded.root_dir, port=excluded.port,
 			clone_url=excluded.clone_url, auto=excluded.auto, parent=excluded.parent,
-			preview_auto=excluded.preview_auto, replicas=excluded.replicas`,
-		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent, b2i(s.PreviewAuto), s.Replicas)
+			preview_auto=excluded.preview_auto, replicas=excluded.replicas, release=excluded.release`,
+		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent, b2i(s.PreviewAuto), s.Replicas, s.Release)
 	return err
 }
 
 func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	var s Source
 	var auto, previewAuto int
-	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent, &previewAuto, &s.Replicas) != nil {
+	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent, &previewAuto, &s.Replicas, &s.Release) != nil {
 		return Source{}, false
 	}
 	s.Auto = auto != 0

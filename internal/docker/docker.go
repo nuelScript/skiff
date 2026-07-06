@@ -212,6 +212,22 @@ func (e *Engine) PullImage(image string) error {
 	return nil
 }
 
+// RunOnce runs a throwaway container from an image with the given env on a
+// network, executing a shell command. Returns combined output and the exit
+// error — used for release commands (migrations) and scheduled jobs.
+func (e *Engine) RunOnce(ctx context.Context, image string, env map[string]string, network, cmd string) (string, error) {
+	args := []string{"run", "--rm"}
+	if network != "" {
+		args = append(args, "--network", network)
+	}
+	for _, k := range sortedKeys(env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, env[k]))
+	}
+	args = append(args, image, "sh", "-c", cmd)
+	out, err := e.contextCommand(ctx, args...).CombinedOutput()
+	return string(out), err
+}
+
 // Exec runs a command inside a container, wiring stdin/stdout to the given
 // streams — used to dump a database to a file and pipe a dump back in.
 func (e *Engine) Exec(ctx context.Context, container string, cmd []string, stdin io.Reader, stdout io.Writer) error {

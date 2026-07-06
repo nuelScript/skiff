@@ -320,6 +320,9 @@ func projectToml(src Source, env []EnvVar) string {
 		fmt.Fprintf(&b, "replicas = %d\n", src.Replicas)
 	}
 	fmt.Fprintf(&b, "\n[build]\nport = %s\n", src.Port)
+	if strings.TrimSpace(src.Release) != "" {
+		fmt.Fprintf(&b, "\n[deploy]\nrelease = %q\n", src.Release)
+	}
 	var buildVars, secretVars []EnvVar
 	for _, e := range env {
 		if e.Build {

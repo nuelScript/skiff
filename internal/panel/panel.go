@@ -63,6 +63,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
 	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
 	go p.backupLoop()            // daily database snapshots
+	go p.jobLoop()               // scheduled jobs (cron)
 	return p, nil
 }
 
@@ -126,6 +127,8 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/backups", p.protected(p.handleBackups))
 	mux.HandleFunc("/api/backups/restore", p.protected(p.handleBackupRestore))
 	mux.HandleFunc("/api/backups/download", p.protected(p.handleBackupDownload))
+	mux.HandleFunc("/api/jobs", p.protected(p.handleJobs))
+	mux.HandleFunc("/api/jobs/run", p.protected(p.handleJobRun))
 	mux.HandleFunc("/api/db/exec", p.protected(p.handleDBShell))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
@@ -465,6 +468,7 @@ type projectView struct {
 	Auto        bool          `json:"auto"`
 	PreviewAuto bool          `json:"previewAuto"`
 	Replicas    int           `json:"replicas"`
+	Release     string        `json:"release"`
 	Deploys     []Deploy      `json:"deploys"`
 	Previews    []previewView `json:"previews"`
 }
@@ -492,7 +496,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(projectView{
 			Name: app, State: state, URL: "https://" + app + "." + p.domain,
 			Repo: src.Repo, Branch: src.Branch, RootDir: src.RootDir, Port: src.Port,
-			Auto: src.Auto, PreviewAuto: src.PreviewAuto, Replicas: src.Replicas,
+			Auto: src.Auto, PreviewAuto: src.PreviewAuto, Replicas: src.Replicas, Release: src.Release,
 			Deploys: deploys, Previews: p.buildPreviews(app),
 		})
 	case http.MethodPut:
@@ -503,6 +507,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			Auto        bool   `json:"auto"`
 			PreviewAuto bool   `json:"previewAuto"`
 			Replicas    int    `json:"replicas"`
+			Release     string `json:"release"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		src, ok := getSource(app)
@@ -518,6 +523,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		if body.Replicas >= 1 && body.Replicas <= 10 {
 			src.Replicas = body.Replicas
 		}
+		src.Release = strings.TrimSpace(body.Release)
 		src.Auto = body.Auto
 		src.PreviewAuto = body.PreviewAuto
 		_ = putSource(src)

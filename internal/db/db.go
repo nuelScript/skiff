@@ -44,6 +44,7 @@ var migrations = []string{
 	`ALTER TABLE databases ADD COLUMN public INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE databases ADD COLUMN public_port INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sources ADD COLUMN replicas INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE sources ADD COLUMN release TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -84,7 +85,8 @@ CREATE TABLE IF NOT EXISTS sources (
   auto         INTEGER NOT NULL DEFAULT 0,
   parent       TEXT NOT NULL DEFAULT '',
   preview_auto INTEGER NOT NULL DEFAULT 0,
-  replicas     INTEGER NOT NULL DEFAULT 1
+  replicas     INTEGER NOT NULL DEFAULT 1,
+  release      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,
@@ -154,4 +156,16 @@ CREATE TABLE IF NOT EXISTS backups (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_backups_db ON backups(db_id, created DESC);
+CREATE TABLE IF NOT EXISTS jobs (
+  id       TEXT PRIMARY KEY,
+  app      TEXT NOT NULL,
+  team     TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  schedule TEXT NOT NULL,
+  command  TEXT NOT NULL,
+  last_run INTEGER NOT NULL DEFAULT 0,
+  last_ok  INTEGER NOT NULL DEFAULT 1,
+  created  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_app ON jobs(app);
 `

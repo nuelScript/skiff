@@ -24,8 +24,21 @@ export type ProjectDetail = {
   auto: boolean
   previewAuto: boolean
   replicas: number
+  release: string
   deploys: Deploy[]
   previews: Preview[]
+}
+
+export type Job = {
+  id: string
+  app: string
+  name: string
+  schedule: string
+  command: string
+  lastRun: number
+  lastOk: boolean
+  next: number
+  created: number
 }
 
 export type Preview = {
@@ -44,6 +57,7 @@ export type ProjectSettings = {
   auto: boolean
   previewAuto: boolean
   replicas: number
+  release: string
 }
 
 class ProjectsService extends BaseService {
@@ -61,6 +75,22 @@ class ProjectsService extends BaseService {
 
   stop(name: string) {
     return this.post('/down', null, { params: { app: name } })
+  }
+
+  jobs(app: string) {
+    return this.get<Job[]>('/jobs', { params: { app } })
+  }
+
+  createJob(app: string, name: string, schedule: string, command: string) {
+    return this.post<Job>('/jobs', { name, schedule, command }, { params: { app } })
+  }
+
+  deleteJob(id: string) {
+    return this.delete('/jobs', { params: { id } })
+  }
+
+  runJob(id: string) {
+    return this.post<{ ok: boolean; output: string }>('/jobs/run', null, { params: { id } })
   }
 }
 

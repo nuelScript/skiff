@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/builder"
@@ -151,6 +152,23 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 	healthHost := "127.0.0.1"
 	if eng.IsRemote() {
 		healthHost = docker.SSHHostname(cfg.Server.Host)
+	}
+
+	// Release command (e.g. migrations): run it once against the runtime env before
+	// the new version goes live. If it fails, abort — the old version keeps serving.
+	if rel := strings.TrimSpace(cfg.Deploy.Release); rel != "" {
+		ui.Step("Running release command")
+		rctx, cancel := context.WithTimeout(context.Background(), timeout)
+		out, err := eng.RunOnce(rctx, image, runtimeEnv, network, rel)
+		cancel()
+		if err != nil {
+			ui.Fail("Release command failed — deploy aborted, old version still serving")
+			if s := strings.TrimSpace(out); s != "" {
+				fmt.Println(s)
+			}
+			return fmt.Errorf("release command failed: %w", err)
+		}
+		ui.Done("Release command ran")
 	}
 
 	replicas := cfg.Replicas

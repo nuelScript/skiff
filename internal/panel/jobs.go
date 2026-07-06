@@ -1,0 +1,248 @@
+package panel
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/robfig/cron/v3"
+)
+
+// Job is a command run on a cron schedule in a one-off container from the app's
+// image, with the app's runtime env on the shared network.
+type Job struct {
+	ID       string `json:"id"`
+	App      string `json:"app"`
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"`
+	Command  string `json:"command"`
+	LastRun  int64  `json:"lastRun"`
+	LastOk   bool   `json:"lastOk"`
+	Next     int64  `json:"next"` // computed: next scheduled run
+	Created  int64  `json:"created"`
+}
+
+type jobRow struct {
+	ID, App, Team, Name, Schedule, Command string
+	LastRun                                int64
+	LastOk                                 int
+	Created                                int64
+}
+
+const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created`
+
+var (
+	jobMu      sync.Mutex
+	jobRunning = map[string]bool{}
+)
+
+func claimJob(id string) bool {
+	jobMu.Lock()
+	defer jobMu.Unlock()
+	if jobRunning[id] {
+		return false
+	}
+	jobRunning[id] = true
+	return true
+}
+
+func releaseJob(id string) {
+	jobMu.Lock()
+	delete(jobRunning, id)
+	jobMu.Unlock()
+}
+
+func scanJob(row interface{ Scan(...any) error }) (jobRow, bool) {
+	var j jobRow
+	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created) != nil {
+		return jobRow{}, false
+	}
+	return j, true
+}
+
+func getJob(id string) (jobRow, bool) {
+	return scanJob(sqlDB.QueryRow(`SELECT `+jobCols+` FROM jobs WHERE id=?`, id))
+}
+
+func queryJobs(q string, args ...any) []jobRow {
+	rows, err := sqlDB.Query(q, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []jobRow
+	for rows.Next() {
+		if j, ok := scanJob(rows); ok {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+func listJobRows(app string) []jobRow {
+	return queryJobs(`SELECT `+jobCols+` FROM jobs WHERE app=? ORDER BY created`, app)
+}
+
+func allJobRows() []jobRow { return queryJobs(`SELECT ` + jobCols + ` FROM jobs`) }
+
+func putJob(j jobRow) error {
+	_, err := sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?)`,
+		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created)
+	return err
+}
+
+func setJobRun(id string, when int64, ok bool) {
+	_, _ = sqlDB.Exec(`UPDATE jobs SET last_run=?, last_ok=? WHERE id=?`, when, b2i(ok), id)
+}
+
+func toJob(j jobRow) Job {
+	var next int64
+	if s, err := cron.ParseStandard(j.Schedule); err == nil {
+		base := time.Now()
+		if j.LastRun > 0 {
+			base = time.Unix(j.LastRun, 0)
+		}
+		next = s.Next(base).Unix()
+	}
+	return Job{
+		ID: j.ID, App: j.App, Name: j.Name, Schedule: j.Schedule, Command: j.Command,
+		LastRun: j.LastRun, LastOk: j.LastOk != 0, Next: next, Created: j.Created,
+	}
+}
+
+// execJob runs a job in a one-off container from the app's current image and
+// records the outcome. Returns the combined output.
+func (p *Panel) execJob(j jobRow) (string, error) {
+	src, ok := getSource(j.App)
+	if !ok {
+		return "", fmt.Errorf("unknown app")
+	}
+	image := "skiff-" + j.App + ":latest"
+	if !p.eng.ImageExists(image) {
+		return "", fmt.Errorf("deploy the app before running jobs")
+	}
+	env := map[string]string{}
+	for _, e := range deployEnv(src) {
+		env[e.Key] = e.Value
+	}
+	_ = p.eng.EnsureNetwork(dbNetwork)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	out, err := p.eng.RunOnce(ctx, image, env, dbNetwork, j.Command)
+	setJobRun(j.ID, time.Now().Unix(), err == nil)
+	return out, err
+}
+
+// jobLoop runs due scheduled jobs, checking once a minute.
+func (p *Panel) jobLoop() {
+	time.Sleep(90 * time.Second) // settle after startup
+	for {
+		now := time.Now()
+		for _, j := range allJobRows() {
+			sched, err := cron.ParseStandard(j.Schedule)
+			if err != nil {
+				continue
+			}
+			base := time.Unix(j.Created, 0)
+			if j.LastRun > 0 {
+				base = time.Unix(j.LastRun, 0)
+			}
+			if sched.Next(base).After(now) {
+				continue // not due yet
+			}
+			if !claimJob(j.ID) {
+				continue // already running
+			}
+			go func(j jobRow) {
+				defer releaseJob(j.ID)
+				_, _ = p.execJob(j)
+			}(j)
+		}
+		time.Sleep(time.Minute)
+	}
+}
+
+func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		app := sanitizeName(r.URL.Query().Get("app"))
+		if !p.canAccess(r, app) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		out := []Job{}
+		for _, j := range listJobRows(app) {
+			out = append(out, toJob(j))
+		}
+		writeJSON(w, out)
+
+	case http.MethodPost:
+		app := sanitizeName(r.URL.Query().Get("app"))
+		if !p.canAccess(r, app) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var body struct{ Name, Schedule, Command string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		body.Schedule = strings.TrimSpace(body.Schedule)
+		body.Command = strings.TrimSpace(body.Command)
+		if body.Command == "" {
+			http.Error(w, "a command is required", http.StatusBadRequest)
+			return
+		}
+		if _, err := cron.ParseStandard(body.Schedule); err != nil {
+			http.Error(w, "invalid schedule — use cron syntax like \"0 3 * * *\"", http.StatusBadRequest)
+			return
+		}
+		src, _ := getSource(app)
+		name := strings.TrimSpace(body.Name)
+		if name == "" {
+			name = "job"
+		}
+		j := jobRow{
+			ID: randToken()[:12], App: app, Team: src.Team, Name: name,
+			Schedule: body.Schedule, Command: body.Command, LastOk: 1, Created: time.Now().Unix(),
+		}
+		if err := putJob(j); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, toJob(j))
+
+	case http.MethodDelete:
+		j, ok := getJob(sanitizeID(r.URL.Query().Get("id")))
+		if !ok || !p.canAccess(r, j.App) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, j.ID)
+		w.WriteHeader(http.StatusNoContent)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleJobRun triggers a job immediately and returns its output.
+func (p *Panel) handleJobRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	j, ok := getJob(sanitizeID(r.URL.Query().Get("id")))
+	if !ok || !p.canAccess(r, j.App) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !claimJob(j.ID) {
+		http.Error(w, "this job is already running", http.StatusConflict)
+		return
+	}
+	defer releaseJob(j.ID)
+	out, err := p.execJob(j)
+	writeJSON(w, map[string]any{"ok": err == nil, "output": out})
+}

@@ -18,9 +18,15 @@ type Config struct {
 
 	Server    ServerConfig      `toml:"server"`
 	Build     BuildConfig       `toml:"build"`
+	Deploy    DeployConfig      `toml:"deploy"`
 	Resources ResourcesConfig   `toml:"resources"`
 	Env       map[string]string `toml:"env"`     // available at build + runtime
 	Secrets   map[string]string `toml:"secrets"` // runtime only (never baked into the image)
+}
+
+// DeployConfig holds deploy-lifecycle hooks.
+type DeployConfig struct {
+	Release string `toml:"release"` // command run once (e.g. migrations) before a new version goes live
 }
 
 type ResourcesConfig struct {

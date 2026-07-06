@@ -1,9 +1,10 @@
 import { useState, type ReactNode, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router'
-import { ChevronRight, ExternalLink, RotateCw, RotateCcw, GitBranch, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, ExternalLink, RotateCw, RotateCcw, GitBranch, Plus, Trash2, Play } from 'lucide-react'
 import { useProject } from '@/hooks/use-project'
 import { useConsole } from '@/hooks/use-console'
-import { projectsService, type Preview } from '@/services/api.service'
+import { projectsService, type Preview, type Job } from '@/services/api.service'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { EnvEditor } from '@/components/env-editor'
 import { ConsoleTerminal } from '@/components/console-terminal'
 import { Drawer } from '@/components/drawer'
+import { errText } from '@/lib/errors'
 
 function rel(unix: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
@@ -120,6 +122,7 @@ export default function ProjectDetailPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="console">Console</TabsTrigger>
+          <TabsTrigger value="jobs">Jobs</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -322,6 +325,11 @@ export default function ProjectDetailPage() {
           <EnvEditor app={project.name} />
         </TabsContent>
 
+        {/* Jobs */}
+        <TabsContent value="jobs" className="max-w-3xl pb-[46vh]">
+          <JobsPanel app={project.name} />
+        </TabsContent>
+
         {/* Settings */}
         <TabsContent value="settings" className="max-w-2xl pb-[46vh]">
           <SettingsForm
@@ -332,6 +340,7 @@ export default function ProjectDetailPage() {
             auto={project.auto}
             previewAuto={project.previewAuto}
             replicas={project.replicas}
+            release={project.release}
             onSaved={reload}
             onDeleted={() => navigate('/')}
             onRedeploy={() => term.redeploy(project.name)}
@@ -353,6 +362,211 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+function fmtWhen(unix: number): string {
+  if (!unix) return '—'
+  return new Date(unix * 1000).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function JobsPanel({ app }: { app: string }) {
+  const qc = useQueryClient()
+  const { data: jobs = [] } = useQuery<Job[]>({
+    queryKey: ['jobs', app],
+    queryFn: () => projectsService.jobs(app),
+  })
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [schedule, setSchedule] = useState('0 3 * * *')
+  const [command, setCommand] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+  const [output, setOutput] = useState<{ id: string; ok: boolean; text: string } | null>(null)
+  const reload = () => qc.invalidateQueries({ queryKey: ['jobs', app] })
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!command.trim()) return
+    setBusy('create')
+    try {
+      await projectsService.createJob(app, name.trim() || 'job', schedule.trim(), command.trim())
+      setName('')
+      setCommand('')
+      setSchedule('0 3 * * *')
+      setAdding(false)
+      reload()
+    } catch (err) {
+      setError(errText(err, 'Could not create the job.'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const run = async (id: string) => {
+    setBusy(id)
+    setOutput(null)
+    setError('')
+    try {
+      const r = await projectsService.runJob(id)
+      setOutput({ id, ok: r.ok, text: r.output?.trim() || (r.ok ? 'Done.' : 'Failed.') })
+      reload()
+    } catch (err) {
+      setError(errText(err, 'Could not run the job.'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const del = async (id: string) => {
+    if (!confirm('Delete this job?')) return
+    await projectsService.deleteJob(id)
+    reload()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Scheduled jobs</h2>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Run a command on a cron schedule in a one-off container, with this app's environment.
+          </p>
+        </div>
+        {!adding && (
+          <Button size="sm" onClick={() => setAdding(true)} className="shrink-0">
+            <Plus />
+            New job
+          </Button>
+        )}
+      </div>
+
+      {adding && (
+        <form
+          onSubmit={create}
+          className="flex flex-col gap-3 rounded-xl border border-white/10 bg-linear-to-b from-white/2 to-transparent p-4"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-muted-foreground mb-1.5 block text-xs">Name</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="nightly cleanup" />
+            </div>
+            <div>
+              <label className="text-muted-foreground mb-1.5 block text-xs">Schedule (cron)</label>
+              <Input
+                value={schedule}
+                onChange={(e) => {
+                  setSchedule(e.target.value)
+                  setError('')
+                }}
+                className="font-mono"
+                placeholder="0 3 * * *"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-muted-foreground mb-1.5 block text-xs">Command</label>
+            <Input
+              value={command}
+              onChange={(e) => {
+                setCommand(e.target.value)
+                setError('')
+              }}
+              className="font-mono"
+              placeholder="npm run cleanup"
+            />
+          </div>
+          {error && <p className="text-xs text-rose-300">{error}</p>}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false)
+                setError('')
+              }}
+              className="text-muted-foreground hover:text-foreground text-xs"
+            >
+              Cancel
+            </button>
+            <Button size="sm" type="submit" disabled={busy === 'create' || !command.trim()}>
+              {busy === 'create' ? 'Adding…' : 'Add job'}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {jobs.length === 0 && !adding ? (
+        <div className="text-muted-foreground rounded-xl border border-white/8 py-14 text-center text-sm">
+          No scheduled jobs yet.
+        </div>
+      ) : (
+        jobs.length > 0 && (
+          <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/8">
+            {jobs.map((j) => (
+              <div key={j.id} className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{j.name}</p>
+                    <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">{j.command}</p>
+                  </div>
+                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">{j.schedule}</span>
+                  <button
+                    onClick={() => run(j.id)}
+                    disabled={busy === j.id}
+                    title="Run now"
+                    className="text-muted-foreground hover:text-foreground p-1.5 disabled:opacity-40"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => del(j.id)}
+                    title="Delete"
+                    className="text-muted-foreground p-1.5 transition hover:text-rose-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                  <span>next {fmtWhen(j.next)}</span>
+                  <span>
+                    last run{' '}
+                    {j.lastRun ? (
+                      <>
+                        {rel(j.lastRun)} ·{' '}
+                        <span className={j.lastOk ? 'text-emerald-300' : 'text-rose-300'}>
+                          {j.lastOk ? 'ok' : 'failed'}
+                        </span>
+                      </>
+                    ) : (
+                      'never'
+                    )}
+                  </span>
+                </div>
+                {output?.id === j.id && (
+                  <pre
+                    className={
+                      'mt-2 max-h-40 overflow-auto rounded-md border p-2.5 font-mono text-[11px] whitespace-pre-wrap ' +
+                      (output.ok
+                        ? 'border-white/8 bg-black/30'
+                        : 'border-rose-500/25 bg-rose-500/5 text-rose-200')
+                    }
+                  >
+                    {output.text}
+                  </pre>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+      {error && !adding && <p className="text-xs text-rose-300">{error}</p>}
+    </div>
+  )
+}
+
 function SettingsForm({
   name,
   branch,
@@ -361,6 +575,7 @@ function SettingsForm({
   auto,
   previewAuto,
   replicas,
+  release,
   onSaved,
   onDeleted,
   onRedeploy,
@@ -372,11 +587,12 @@ function SettingsForm({
   auto: boolean
   previewAuto: boolean
   replicas: number
+  release: string
   onSaved: () => void
   onDeleted: () => void
   onRedeploy: () => void
 }) {
-  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto, replicas: replicas || 1 })
+  const [form, setForm] = useState({ branch, rootDir, port, auto, previewAuto, replicas: replicas || 1, release: release || '' })
   const [saved, setSaved] = useState(false)
   const setReplicas = (n: number) => setForm((f) => ({ ...f, replicas: Math.min(10, Math.max(1, n)) }))
 
@@ -478,6 +694,19 @@ function SettingsForm({
           deployments spin up an environment automatically for any push to a branch other than{' '}
           <span className="text-foreground/70 font-mono">{form.branch || 'main'}</span>.
         </p>
+        <div className="mt-4">
+          <label className="text-muted-foreground mb-1.5 block text-xs">Release command</label>
+          <Input
+            value={form.release}
+            placeholder="e.g. npm run migrate"
+            onChange={(e) => setForm((f) => ({ ...f, release: e.target.value }))}
+            className="font-mono"
+          />
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            Runs once in a one-off container before each new version goes live — a non-zero exit aborts
+            the deploy, so the old version keeps serving.
+          </p>
+        </div>
         <div className="mt-5 flex items-center justify-end gap-3">
           {saved && <span className="text-muted-foreground text-xs">Saved.</span>}
           <Button size="sm" variant="outline" onClick={onRedeploy}>
