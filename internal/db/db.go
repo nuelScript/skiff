@@ -176,4 +176,10 @@ CREATE TABLE IF NOT EXISTS jobs (
   created  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_app ON jobs(app);
+CREATE TABLE IF NOT EXISTS alerts (
+  team        TEXT PRIMARY KEY,
+  email       TEXT NOT NULL DEFAULT '',
+  slack_url   TEXT NOT NULL DEFAULT '',
+  webhook_url TEXT NOT NULL DEFAULT ''
+);
 `

@@ -91,6 +91,11 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		}
 		logln(failMsg)
 		setDeployStatus(src.App, id, "failed")
+		go dispatchAlert(alertEvent{
+			Team: src.Team, Kind: "deploy.failed", App: src.App,
+			Title:  "Deploy failed: " + src.App,
+			Detail: strings.TrimPrefix(strings.TrimSpace(failMsg), "✗ "),
+		})
 	}
 
 	clone := authURL
@@ -129,8 +134,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	// so a "../.." can't escape the clone.
 	ctxDir := filepath.Join(work, filepath.Clean("/"+src.RootDir))
 	if fi, err := os.Stat(ctxDir); err != nil || !fi.IsDir() {
-		logln("✗ root directory not found in the repo: " + orRoot(src.RootDir))
-		setDeployStatus(src.App, id, "failed")
+		finish("✗ root directory not found in the repo: " + orRoot(src.RootDir))
 		return
 	}
 	tomlPath := filepath.Join(ctxDir, "skiff.toml")

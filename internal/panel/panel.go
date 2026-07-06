@@ -67,6 +67,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.jobLoop()               // scheduled jobs (cron)
 	go p.resourceLoop()          // sample per-app CPU/memory
 	go p.autoscaleLoop()         // add/retire replicas off those metrics
+	go p.alertLoop()             // health + error-rate alerts
 	return p, nil
 }
 
@@ -138,6 +139,8 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/shared-env", p.protected(p.handleSharedEnv))
 	mux.HandleFunc("/api/analytics", p.protected(p.handleAnalytics))
 	mux.HandleFunc("/api/resources", p.protected(p.handleResources))
+	mux.HandleFunc("/api/alerts", p.protected(p.handleAlerts))
+	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
 	mux.HandleFunc("/api/deploy", p.protected(p.handleDeploy))
 	mux.HandleFunc("/api/logs", p.protected(p.handleLogs))
 	mux.HandleFunc("/api/down", p.protected(p.handleDown))
