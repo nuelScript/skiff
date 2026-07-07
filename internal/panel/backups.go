@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -285,7 +286,9 @@ func (p *Panel) backupLoop() {
 				if p.eng.State(d.Container) != "running" {
 					continue
 				}
-				_, _ = p.runBackup(d, "scheduled")
+				if _, err := p.runBackup(d, "scheduled"); err != nil {
+					log.Printf("skiff: scheduled backup of %s failed: %v", d.Name, err)
+				}
 			}
 		})
 		time.Sleep(time.Hour)

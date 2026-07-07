@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -37,8 +38,10 @@ func Done(msg string) {
 	fmt.Println("  " + green.Render("✓") + " " + msg)
 }
 
+// Fail writes an error to stderr (not stdout) so it's captured by `2>` and never
+// corrupts the data stream of a command being piped.
 func Fail(msg string) {
-	fmt.Println("  " + red.Render("✗") + " " + msg)
+	fmt.Fprintln(os.Stderr, "  "+red.Render("✗")+" "+msg)
 }
 
 func Note(s string) {

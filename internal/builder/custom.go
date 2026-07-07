@@ -9,7 +9,7 @@ type customBuilder struct {
 // Custom builds an app from an explicit recipe in skiff.toml instead of
 // auto-detection — the escape hatch short of a full Dockerfile.
 func Custom(base, install, build, start, static string) Builder {
-	return &customBuilder{base, install, build, start, static}
+	return &customBuilder{base: base, install: install, build: build, start: start, static: static}
 }
 
 func (c *customBuilder) Name() string { return "custom" }

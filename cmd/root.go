@@ -4,7 +4,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.1.0"
+// version is overridden at build time via -ldflags "-X .../cmd.version=<tag>";
+// the default is the fallback for `go install`/dev builds.
+var version = "0.1.0"
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
@@ -12,6 +14,7 @@ func newRootCmd() *cobra.Command {
 		Short: "Effortless deploys on your own server",
 		Long: `Skiff deploys your apps to your own server with a single command:
 build it, run it, and get an HTTPS URL. No cloud bill.`,
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

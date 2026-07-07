@@ -40,8 +40,9 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: linux
         run: |
-          GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o skiff-linux-amd64 .
-          GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o skiff-linux-arm64 .
+          LDFLAGS="-s -w -X 'github.com/nuelScript/skiff/cmd.version=${{ github.ref_name }}'"
+          GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o skiff-linux-amd64 .
+          GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o skiff-linux-arm64 .
 
       - name: Publish release
         env:
