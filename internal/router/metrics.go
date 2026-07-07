@@ -88,7 +88,9 @@ func (m *Metrics) Record(app string, status int, bytesIn, bytesOut int64, dur ti
 // Run prunes the window and snapshots to disk on a fixed cadence, for the life
 // of the process.
 func (m *Metrics) Run() {
-	for range time.Tick(10 * time.Second) {
+	tick := time.NewTicker(10 * time.Second)
+	defer tick.Stop()
+	for range tick.C {
 		m.mu.Lock()
 		m.prune(time.Now().Unix())
 		snap := m.buildSnapshot()

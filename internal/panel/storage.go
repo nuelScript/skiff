@@ -193,7 +193,7 @@ func (p *Panel) createBucket(team, name string) (bucketRow, error) {
 func (p *Panel) makeBucket(net, container, key, secret, bucket string) error {
 	env := map[string]string{"MC_HOST_skiff": fmt.Sprintf("http://%s:%s@%s:9000", key, secret, container)}
 	var last string
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		out, err := p.eng.RunTool(net, env, mcImage, "mb", "--ignore-existing", "skiff/"+bucket)
 		if err == nil {
 			return nil

@@ -96,7 +96,9 @@ func (p *Panel) serveContainerShell(w http.ResponseWriter, r *http.Request, cont
 		case "in":
 			_, _ = ptmx.WriteString(msg.D)
 		case "resize":
-			if msg.C > 0 && msg.R > 0 {
+			// Clamp the browser-supplied dimensions before the uint16 conversion so a
+			// bogus value can't silently wrap to a tiny terminal size.
+			if msg.C > 0 && msg.R > 0 && msg.C <= 1000 && msg.R <= 1000 {
 				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(msg.R), Cols: uint16(msg.C)})
 			}
 		}

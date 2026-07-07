@@ -113,7 +113,7 @@ func (p *Panel) reconcileWorkers(app string) {
 		if reps < 1 {
 			reps = 1
 		}
-		for i := 0; i < reps; i++ {
+		for range reps {
 			name := workerPrefix(app, w.Name) + replicaSuffix()
 			_ = p.eng.RunWorker(docker.WorkerSpec{
 				Name: name, App: app, Image: image, Command: w.Command, Env: env, Network: net,

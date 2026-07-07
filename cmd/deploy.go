@@ -195,7 +195,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir stri
 			_ = eng.Remove(rp.Container)
 		}
 	}
-	for i := 0; i < replicas; i++ {
+	for range replicas {
 		container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 		hostPort, err := eng.Run(docker.RunSpec{
 			Name:          container,

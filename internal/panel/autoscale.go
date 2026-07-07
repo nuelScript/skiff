@@ -57,7 +57,9 @@ func (s *resStore) recentCPU(app string, mins int) (float64, bool) {
 
 func (p *Panel) autoscaleLoop() {
 	time.Sleep(autoscaleSettle)
-	for range time.Tick(autoscaleEvery) {
+	tick := time.NewTicker(autoscaleEvery)
+	defer tick.Stop()
+	for range tick.C {
 		guard("autoscaleLoop", p.autoscaleTick)
 	}
 }
@@ -156,7 +158,7 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	_ = p.eng.EnsureNetwork(net)
 
 	added := 0
-	for i := 0; i < count; i++ {
+	for range count {
 		container := fmt.Sprintf("%s-%s", app.Name, replicaSuffix())
 		hostPort, err := p.eng.Run(docker.RunSpec{
 			Name:          container,

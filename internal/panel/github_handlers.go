@@ -128,10 +128,12 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	team := p.teamID(r)
-	if existing, ok := getSource(name); ok && existing.Team != team {
+	existing, ok := getSource(name)
+	if ok && existing.Team != team {
 		http.Error(w, "an app with that name exists in another team", http.StatusConflict)
 		return
-	} else if !ok && envStage.heldByOther(name, team, time.Now()) {
+	}
+	if !ok && envStage.heldByOther(name, team, time.Now()) {
 		// Another team staged env under this unused name — discard it so this deploy
 		// can't inherit foreign vars.
 		_ = setEnv(name, nil)

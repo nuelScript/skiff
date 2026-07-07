@@ -177,7 +177,7 @@ func postJSON(url string, payload any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return fmt.Errorf("http status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -259,7 +259,9 @@ func isInflight(app string) bool {
 
 func (p *Panel) alertLoop() {
 	time.Sleep(60 * time.Second) // let apps settle after a restart
-	for range time.Tick(60 * time.Second) {
+	tick := time.NewTicker(60 * time.Second)
+	defer tick.Stop()
+	for range tick.C {
 		guard("alertLoop", func() {
 			p.checkHealth()
 			p.checkErrorSpikes()

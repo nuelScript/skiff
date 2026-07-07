@@ -238,17 +238,36 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 	appOptions := []string{}
 	var resp resourcesResponse
 
+	// Snapshot the sampler's buckets under the lock (a fast in-memory copy), then
+	// do the per-app team filtering — which hits the DB via getSource — with the
+	// lock released, so a dashboard request never stalls the sampler and
+	// autoscaler that share this mutex.
+	type appSnap struct {
+		app string
+		bs  map[int64]resBucket
+	}
+	var snaps []appSnap
 	resStats.mu.Lock()
 	for app, bs := range resStats.apps {
-		src, ok := getSource(app)
+		cp := make(map[int64]resBucket, len(bs))
+		for t, b := range bs {
+			cp[t] = *b
+		}
+		snaps = append(snaps, appSnap{app: app, bs: cp})
+	}
+	resp.Updated = resStats.updated
+	resStats.mu.Unlock()
+
+	for _, sn := range snaps {
+		src, ok := getSource(sn.app)
 		if !ok || src.Team != team {
 			continue // this team's apps only
 		}
-		appOptions = append(appOptions, app)
-		if only != "" && app != only {
+		appOptions = append(appOptions, sn.app)
+		if only != "" && sn.app != only {
 			continue
 		}
-		for t, b := range bs {
+		for t, b := range sn.bs {
 			if t < startT {
 				continue
 			}
@@ -266,14 +285,12 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 			if b.MemLimit > resp.MemLimit {
 				resp.MemLimit = b.MemLimit
 			}
-			if b.N > 0 && t >= appLatestT[app] {
-				appLatestT[app] = t
-				appCur[app] = &resourcesApp{Name: app, CPU: b.CPUSum / float64(b.N), Mem: b.MemSum / int64(b.N)}
+			if b.N > 0 && t >= appLatestT[sn.app] {
+				appLatestT[sn.app] = t
+				appCur[sn.app] = &resourcesApp{Name: sn.app, CPU: b.CPUSum / float64(b.N), Mem: b.MemSum / int64(b.N)}
 			}
 		}
 	}
-	resp.Updated = resStats.updated
-	resStats.mu.Unlock()
 
 	resp.Series = make([]resourcesSeries, 0, rangeMins)
 	for t := startT; t <= nowT; t += bucketSecs {
