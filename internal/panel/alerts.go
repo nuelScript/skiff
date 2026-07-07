@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/smtp"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/registry"
@@ -136,10 +138,40 @@ func postWebhook(url string, ev alertEvent) error {
 	})
 }
 
+// alertHTTPClient delivers alerts to user-supplied Slack/webhook URLs but refuses
+// to connect to private, loopback, or link-local addresses. The check runs at
+// dial time on the resolved IP, so it also stops DNS-rebinding and internal
+// redirects from turning an alert webhook into an SSRF against the box's own
+// metadata endpoint or internal services.
+var alertHTTPClient = &http.Client{
+	Timeout: 8 * time.Second,
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+			Control: func(_, address string, _ syscall.RawConn) error {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					return err
+				}
+				if ip := net.ParseIP(host); isBlockedDialIP(ip) {
+					return fmt.Errorf("refusing to connect to non-public address %s", host)
+				}
+				return nil
+			},
+		}).DialContext,
+	},
+}
+
+// isBlockedDialIP is true for addresses an outbound alert must never reach.
+func isBlockedDialIP(ip net.IP) bool {
+	return ip == nil || ip.IsLoopback() || ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast()
+}
+
 func postJSON(url string, payload any) error {
 	body, _ := json.Marshal(payload)
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewReader(body))
+	resp, err := alertHTTPClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
