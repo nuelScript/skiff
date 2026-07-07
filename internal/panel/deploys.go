@@ -163,6 +163,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	logln("✓ live")
 	setDeployStatus(src.App, id, "live")
+	p.reconcileWorkers(src.App) // (re)start declared workers from the new image
 }
 
 // runRollback re-runs a retained build image (skiff-<app>:<targetID>) with no
@@ -216,6 +217,7 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	}
 	logln("✓ live")
 	setDeployStatus(src.App, id, "live")
+	p.reconcileWorkers(src.App)
 }
 
 // tailLog streams a deploy's persisted log over SSE, following it live until the

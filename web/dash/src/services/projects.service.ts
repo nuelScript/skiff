@@ -46,6 +46,16 @@ export type Job = {
   created: number
 }
 
+export type Worker = {
+  id: string
+  app: string
+  name: string
+  command: string
+  replicas: number
+  running: number
+  created: number
+}
+
 export type Preview = {
   name: string
   branch: string
@@ -100,6 +110,18 @@ class ProjectsService extends BaseService {
 
   runJob(id: string) {
     return this.post<{ ok: boolean; output: string }>('/jobs/run', null, { params: { id } })
+  }
+
+  workers(app: string) {
+    return this.get<Worker[]>('/workers', { params: { app } })
+  }
+
+  setWorker(app: string, name: string, command: string, replicas: number) {
+    return this.post<Worker>('/workers', { name, command, replicas }, { params: { app } })
+  }
+
+  deleteWorker(id: string) {
+    return this.delete('/workers', { params: { id } })
   }
 }
 

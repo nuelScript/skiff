@@ -137,6 +137,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/backups/download", p.protected(p.handleBackupDownload))
 	mux.HandleFunc("/api/jobs", p.protected(p.handleJobs))
 	mux.HandleFunc("/api/jobs/run", p.protected(p.handleJobRun))
+	mux.HandleFunc("/api/workers", p.protected(p.handleWorkers))
 	mux.HandleFunc("/api/db/exec", p.protected(p.handleDBShell))
 	mux.HandleFunc("/api/domains", p.protected(p.handleDomains))
 	mux.HandleFunc("/api/preview", p.protected(p.handleCreatePreview))
@@ -750,6 +751,10 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 	if app, ok := apps[name]; ok {
 		_ = p.eng.Remove(app.Container)
 	}
+	for _, c := range p.eng.WorkerContainers(name) {
+		_ = p.eng.Remove(c)
+	}
+	_, _ = sqlDB.Exec(`DELETE FROM workers WHERE app=?`, name)
 	_, _ = registry.Delete(name)
 	deleteSource(name)
 	p.removeAppImages(name) // free the build layers; nothing left to roll back to

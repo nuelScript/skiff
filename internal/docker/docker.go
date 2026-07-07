@@ -140,6 +140,54 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 	return e.HostPort(s.Name, s.ContainerPort)
 }
 
+// WorkerSpec runs a long-lived background process from an app's image with no
+// published port and no routing labels, so the edge router never targets it.
+type WorkerSpec struct {
+	Name    string
+	App     string
+	Image   string
+	Command string // run via sh -c
+	Env     map[string]string
+	Network string
+}
+
+func (e *Engine) RunWorker(s WorkerSpec) error {
+	_ = e.command("rm", "-f", s.Name).Run()
+	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped",
+		"--label", "skiff.kind=worker", "--label", "skiff.worker.app=" + s.App}
+	if s.Network != "" {
+		args = append(args, "--network", s.Network)
+	}
+	for _, k := range sortedKeys(s.Env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
+	}
+	args = append(args, s.Image, "sh", "-c", s.Command)
+	if out, err := e.command(args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("%s", firstLine(out))
+	}
+	return nil
+}
+
+// WorkerContainers lists an app's worker containers (running or not); all worker
+// containers when app is "".
+func (e *Engine) WorkerContainers(app string) []string {
+	filter := "label=skiff.kind=worker"
+	if app != "" {
+		filter = "label=skiff.worker.app=" + app
+	}
+	out, err := e.command("ps", "-a", "--filter", filter, "--format", "{{.Names}}").Output()
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	return names
+}
+
 // EnsureNetwork creates a docker network if it doesn't already exist.
 func (e *Engine) EnsureNetwork(name string) error {
 	if e.command("network", "inspect", name).Run() == nil {

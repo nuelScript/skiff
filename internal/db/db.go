@@ -215,4 +215,15 @@ CREATE TABLE IF NOT EXISTS bucket_attachments (
   app       TEXT NOT NULL,
   PRIMARY KEY (bucket_id, app)
 );
+CREATE TABLE IF NOT EXISTS workers (
+  id       TEXT PRIMARY KEY,
+  app      TEXT NOT NULL,
+  team     TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  command  TEXT NOT NULL,
+  replicas INTEGER NOT NULL DEFAULT 1,
+  created  INTEGER NOT NULL,
+  UNIQUE (app, name)
+);
+CREATE INDEX IF NOT EXISTS idx_workers_app ON workers(app);
 `
