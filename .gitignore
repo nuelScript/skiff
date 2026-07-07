@@ -21,3 +21,7 @@ web/dash/dist/
 
 # OS
 .DS_Store
+
+# Local Go skills tooling
+.agents/
+skills-lock.json
