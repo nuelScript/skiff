@@ -89,3 +89,7 @@ A `.env` file next to `skiff.toml` is loaded too.
 ## Zero-downtime
 
 Every deploy builds the new version, health-checks it, atomically cuts traffic over, then drains and retires the old one. If the new version never becomes healthy, it rolls back and the old one keeps serving.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and please follow our [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue? Report it privately per [SECURITY.md](SECURITY.md) — not in a public issue.
