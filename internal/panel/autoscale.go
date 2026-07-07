@@ -83,13 +83,7 @@ func (p *Panel) autoscaleTick() {
 		if current < 1 {
 			current = 1
 		}
-		desired := int(math.Ceil(cpu / target))
-		if desired < min {
-			desired = min
-		}
-		if desired > max {
-			desired = max
-		}
+		desired := desiredReplicas(cpu, target, min, max)
 		if desired == current {
 			continue
 		}
@@ -113,6 +107,20 @@ func (p *Panel) autoscaleTick() {
 			}
 		}
 	}
+}
+
+// desiredReplicas is the replica count that keeps each replica near target CPU%
+// (total app CPU is measured across the current replicas), clamped to [min,max].
+// Pure, so the scaling decision is unit-testable.
+func desiredReplicas(cpu, target float64, min, max int) int {
+	d := int(math.Ceil(cpu / target))
+	if d < min {
+		d = min
+	}
+	if d > max {
+		d = max
+	}
+	return d
 }
 
 // scaleBounds normalizes an app's autoscale settings to sane values.

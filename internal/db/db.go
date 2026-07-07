@@ -11,13 +11,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Open opens the panel's database at the default location (~/.skiff/skiff.db).
 func Open() (*sql.DB, error) {
 	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".skiff")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	return OpenAt(filepath.Join(home, ".skiff", "skiff.db"))
+}
+
+// OpenAt opens (creating if needed) a database at path with the schema and
+// migrations applied — so tests can stand up a real schema in a temp file.
+func OpenAt(path string) (*sql.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + filepath.Join(dir, "skiff.db") +
+	dsn := "file:" + path +
 		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
 	d, err := sql.Open("sqlite", dsn)
 	if err != nil {

@@ -1,0 +1,25 @@
+name: test
+
+# Vet and test on every push to main and every pull request. The dashboard is
+# already embedded (internal/panel/dist is committed), so no Node build is needed
+# to compile the Go packages.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - run: go vet ./...
+
+      - run: go test ./...
