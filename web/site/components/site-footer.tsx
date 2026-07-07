@@ -1,5 +1,5 @@
 import { Logo } from "@/components/logo";
-import { DASHBOARD_URL } from "@/lib/site";
+import { DASHBOARD_URL, GITHUB_URL } from "@/lib/site";
 
 export function SiteFooter() {
   return (
@@ -17,6 +17,14 @@ export function SiteFooter() {
           </a>
           <a href="#features" className="hover:text-fg transition-colors">
             FEATURES
+          </a>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-fg transition-colors"
+          >
+            GITHUB
           </a>
           <span className="text-subtle/70">&copy; {new Date().getFullYear()} SKIFF</span>
         </div>
