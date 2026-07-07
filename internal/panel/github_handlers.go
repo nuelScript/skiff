@@ -123,6 +123,10 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repo, clone and name are required", http.StatusBadRequest)
 		return
 	}
+	if !cloneURLAllowed(clone) {
+		http.Error(w, "clone url must be an http(s) URL", http.StatusBadRequest)
+		return
+	}
 	team := p.teamID(r)
 	if existing, ok := getSource(name); ok && existing.Team != team {
 		http.Error(w, "an app with that name exists in another team", http.StatusConflict)

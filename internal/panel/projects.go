@@ -3,11 +3,24 @@ package panel
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/registry"
 )
+
+// cloneURLAllowed reports whether a user-supplied clone URL uses an http(s)
+// scheme. Git's other transports (ext::, file::, ssh) can execute arbitrary
+// commands during `git clone`, so anything but http/https is rejected — with
+// GIT_ALLOW_PROTOCOL on the clone itself as the second line of defense.
+func cloneURLAllowed(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "https" || u.Scheme == "http"
+}
 
 type appView struct {
 	Name    string `json:"name"`
@@ -272,6 +285,10 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	rootDir := strings.TrimSpace(r.URL.Query().Get("rootdir"))
 	if git == "" || name == "" {
 		http.Error(w, "git url and name are required", http.StatusBadRequest)
+		return
+	}
+	if !cloneURLAllowed(git) {
+		http.Error(w, "git url must be an http(s) URL", http.StatusBadRequest)
 		return
 	}
 	team := p.teamID(r)

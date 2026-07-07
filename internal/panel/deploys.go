@@ -139,7 +139,10 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	args = append(args, clone, work)
 	cl := exec.CommandContext(ctx, "git", args...)
-	cl.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// GIT_ALLOW_PROTOCOL restricts clone to http(s) so a crafted URL can't reach
+	// git's command-executing transports (ext::, file::) even if it slips past the
+	// handler's scheme check.
+	cl.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=https:http")
 	if out, e := cl.CombinedOutput(); e != nil {
 		finish("✗ clone failed: " + cloneError(out))
 		return

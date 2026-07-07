@@ -281,13 +281,13 @@ func healthy(port string, timeout time.Duration) bool {
 
 func run(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=https:http")
 	return cmd.CombinedOutput()
 }
 
 func runLogged(f *os.File, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=https:http")
 	if f != nil {
 		cmd.Stdout, cmd.Stderr = f, f
 	}
