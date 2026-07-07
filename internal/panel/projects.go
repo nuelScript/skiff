@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/registry"
 )
@@ -273,15 +274,21 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "git url and name are required", http.StatusBadRequest)
 		return
 	}
-	if existing, ok := getSource(name); ok && existing.Team != p.teamID(r) {
+	team := p.teamID(r)
+	if existing, ok := getSource(name); ok && existing.Team != team {
 		http.Error(w, "an app with that name exists in another team", http.StatusConflict)
 		return
+	} else if !ok && envStage.heldByOther(name, team, time.Now()) {
+		// Another team staged env under this unused name — discard it so this deploy
+		// can't inherit foreign vars, then start clean.
+		_ = setEnv(name, nil)
 	}
 	if port == "" {
 		port = "3000"
 	}
-	src := Source{App: name, Port: port, CloneURL: git, RootDir: rootDir, Team: p.teamID(r)}
+	src := Source{App: name, Port: port, CloneURL: git, RootDir: rootDir, Team: team}
 	_ = putSource(src)
+	envStage.release(name)
 
 	auth := ""
 	if token != "" {
@@ -348,11 +355,21 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
-	// A not-yet-deployed app has no source; allow staging env for it so it can be
-	// set from the deploy dialog. Once it exists, require team access.
-	if _, exists := getSource(app); exists && !p.canAccess(r, app) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+	if _, exists := getSource(app); exists {
+		// A deployed app: require access to its owning team.
+		if !p.canAccess(r, app) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	} else {
+		// Not deployed yet — staged from the deploy dialog. Reserve the pending name
+		// for the caller's team so another team can't read, overwrite, or hijack the
+		// env it will inherit on first deploy.
+		team := p.teamID(r)
+		if team == "" || !envStage.reserve(app, team, time.Now()) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 	}
 	switch r.Method {
 	case http.MethodGet:
