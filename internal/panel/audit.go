@@ -61,6 +61,9 @@ func teamAudit(team string, limit int) []AuditEntry {
 			out = append(out, e)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 

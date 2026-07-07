@@ -51,6 +51,9 @@ func previewSources(parent string) []Source {
 			out = append(out, s)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 

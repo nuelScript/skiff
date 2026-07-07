@@ -168,6 +168,9 @@ func (s *Store) TeamsForUser(userID string) []Team {
 			out = append(out, t)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -214,6 +217,9 @@ func (s *Store) Members(teamID string) []Member {
 		if rows.Scan(&m.User.ID, &m.User.Email, &m.User.Name, &m.User.Created, &m.Role) == nil {
 			out = append(out, m)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

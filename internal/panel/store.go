@@ -114,6 +114,9 @@ func productionAppsForRepo(repo string) []Source {
 			out = append(out, s)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -121,11 +124,22 @@ func getSource(app string) (Source, bool) {
 	return scanSource(sqlDB.QueryRow(`SELECT `+sourceCols+` FROM sources WHERE app=?`, app))
 }
 
+// deleteSource removes a project and everything keyed to its name in one
+// transaction — the app-code stand-in for the FK cascade we deliberately don't
+// declare, so a mid-delete failure can't leave half the rows orphaned.
 func deleteSource(app string) {
-	_, _ = sqlDB.Exec(`DELETE FROM sources WHERE app=?`, app)
-	_, _ = sqlDB.Exec(`DELETE FROM deploys WHERE app=?`, app)
-	_, _ = sqlDB.Exec(`DELETE FROM env_vars WHERE app=?`, app)
-	_, _ = sqlDB.Exec(`DELETE FROM db_attachments WHERE app=?`, app)
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	del := func(q string) bool { _, err := tx.Exec(q, app); return err == nil }
+	if del(`DELETE FROM sources WHERE app=?`) &&
+		del(`DELETE FROM deploys WHERE app=?`) &&
+		del(`DELETE FROM env_vars WHERE app=?`) &&
+		del(`DELETE FROM db_attachments WHERE app=?`) {
+		_ = tx.Commit()
+	}
 }
 
 // sourcesForRepo returns auto-deploy sources matching a pushed repo + branch.
@@ -141,6 +155,9 @@ func sourcesForRepo(repo, branch string) []Source {
 		if s, ok := scanSource(rows); ok {
 			out = append(out, s)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }
@@ -169,6 +186,9 @@ func appDeploys(app string) []Deploy {
 			out = append(out, d)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -186,6 +206,9 @@ func allDeploys() []Deploy {
 		if rows.Scan(&d.ID, &d.App, &d.Commit, &d.Message, &d.Trigger, &d.Status, &d.Started) == nil {
 			out = append(out, d)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }
@@ -228,6 +251,9 @@ func getEnv(app string) []EnvVar {
 			out = append(out, e)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -269,6 +295,9 @@ func sharedEnv(team string) []EnvVar {
 			e.Build = build != 0
 			out = append(out, e)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

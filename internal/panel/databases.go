@@ -222,6 +222,9 @@ func listDBs(team string) []dbRow {
 			out = append(out, d)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -233,8 +236,16 @@ func putDB(d dbRow) error {
 }
 
 func deleteDBRow(id string) {
-	_, _ = sqlDB.Exec(`DELETE FROM databases WHERE id=?`, id)
-	_, _ = sqlDB.Exec(`DELETE FROM db_attachments WHERE db_id=?`, id)
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	_, e1 := tx.Exec(`DELETE FROM databases WHERE id=?`, id)
+	_, e2 := tx.Exec(`DELETE FROM db_attachments WHERE db_id=?`, id)
+	if e1 == nil && e2 == nil {
+		_ = tx.Commit()
+	}
 }
 
 func dbAttachments(id string) []string {
@@ -249,6 +260,9 @@ func dbAttachments(id string) []string {
 		if rows.Scan(&app) == nil {
 			out = append(out, app)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

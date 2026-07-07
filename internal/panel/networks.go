@@ -32,7 +32,11 @@ func (p *Panel) reconcileNetworks() {
 			dbs = append(dbs, d)
 		}
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	if rowsErr != nil {
+		return
+	}
 
 	for _, d := range dbs {
 		if d.team == "" || d.container == "" {

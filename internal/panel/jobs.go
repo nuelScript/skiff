@@ -80,6 +80,9 @@ func queryJobs(q string, args ...any) []jobRow {
 			out = append(out, j)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 

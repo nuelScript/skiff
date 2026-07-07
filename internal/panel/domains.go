@@ -71,6 +71,9 @@ func writeDomainsFile() {
 			m[host] = app
 		}
 	}
+	if rows.Err() != nil {
+		return // don't mirror a truncated map to the router
+	}
 	if b, err := json.Marshal(m); err == nil {
 		_ = os.WriteFile(domainsFilePath(), b, 0o644)
 	}
@@ -89,6 +92,9 @@ func teamDomains(team string) []Domain {
 		if rows.Scan(&d.Host, &d.App, &d.Created) == nil {
 			out = append(out, d)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

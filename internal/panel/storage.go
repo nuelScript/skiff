@@ -68,6 +68,9 @@ func listBuckets(team string) []bucketRow {
 			out = append(out, b)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -79,8 +82,16 @@ func putBucket(b bucketRow) error {
 }
 
 func deleteBucketRow(id string) {
-	_, _ = sqlDB.Exec(`DELETE FROM buckets WHERE id=?`, id)
-	_, _ = sqlDB.Exec(`DELETE FROM bucket_attachments WHERE bucket_id=?`, id)
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	_, e1 := tx.Exec(`DELETE FROM buckets WHERE id=?`, id)
+	_, e2 := tx.Exec(`DELETE FROM bucket_attachments WHERE bucket_id=?`, id)
+	if e1 == nil && e2 == nil {
+		_ = tx.Commit()
+	}
 }
 
 func bucketAttachments(id string) []string {
@@ -95,6 +106,9 @@ func bucketAttachments(id string) []string {
 		if rows.Scan(&app) == nil {
 			out = append(out, app)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

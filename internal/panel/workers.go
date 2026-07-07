@@ -57,6 +57,9 @@ func listWorkers(app string) []workerRow {
 			out = append(out, w)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 

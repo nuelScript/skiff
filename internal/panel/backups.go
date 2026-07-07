@@ -58,6 +58,9 @@ func listBackupRows(dbID string) []backupRow {
 			out = append(out, b)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
@@ -99,6 +102,9 @@ func allDatabases() []dbRow {
 		if d, ok := scanDB(rows); ok {
 			out = append(out, d)
 		}
+	}
+	if rows.Err() != nil {
+		return nil
 	}
 	return out
 }

@@ -58,6 +58,9 @@ func listTokens(team string) []APIToken {
 			out = append(out, t)
 		}
 	}
+	if rows.Err() != nil {
+		return nil
+	}
 	return out
 }
 
