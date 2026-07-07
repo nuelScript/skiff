@@ -1,0 +1,36 @@
+class Skiff < Formula
+  desc "Ship it to a server you own — push-to-deploy with automatic HTTPS"
+  homepage "https://useskiff.xyz"
+  version "__VERSION__"
+  license any_of: ["MIT", "Apache-2.0"]
+
+  on_macos do
+    on_arm do
+      url "https://github.com/nuelScript/skiff/releases/download/__TAG__/skiff-darwin-arm64"
+      sha256 "__SHA_DARWIN_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/nuelScript/skiff/releases/download/__TAG__/skiff-darwin-amd64"
+      sha256 "__SHA_DARWIN_AMD64__"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/nuelScript/skiff/releases/download/__TAG__/skiff-linux-arm64"
+      sha256 "__SHA_LINUX_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/nuelScript/skiff/releases/download/__TAG__/skiff-linux-amd64"
+      sha256 "__SHA_LINUX_AMD64__"
+    end
+  end
+
+  def install
+    bin.install Dir["skiff-*"].first => "skiff"
+  end
+
+  test do
+    assert_match(/skiff version/, shell_output("#{bin}/skiff version"))
+  end
+end

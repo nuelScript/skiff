@@ -28,6 +28,7 @@ macOS / Linux:
 curl -fsSL https://useskiff.xyz/cli | sh
 ```
 
+Or with Homebrew: `brew install nuelScript/tap/skiff`.
 Or with Go (any platform): `go install github.com/nuelScript/skiff@latest`.
 
 You'll need Docker running to build and deploy apps.
