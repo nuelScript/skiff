@@ -46,6 +46,14 @@ type Router struct {
 	cachedDomains map[string]string
 	cachedDomAt   time.Time
 	rr            map[string]uint64 // per-app round-robin cursor across replicas
+
+	// routesMu guards the discovered-routes cache. It's separate from mu so the
+	// (slow) Docker fetch never blocks round-robin/domain lookups, and concurrent
+	// cache misses coalesce behind it into a single `docker ps` instead of one per
+	// in-flight request.
+	routesMu      sync.Mutex
+	cachedRoutes  []docker.Route
+	cachedRouteAt time.Time
 }
 
 // startMetrics begins request accounting if a metrics file is configured.
@@ -153,8 +161,25 @@ func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 
 // proxyToApp forwards the request to one of the named app's live containers,
 // round-robining across its replicas.
-func (rt *Router) proxyToApp(w http.ResponseWriter, r *http.Request, app string) {
+// routes returns the current app→hostport mappings, cached for a short window so
+// a burst of requests to a deployed app doesn't fork `docker ps` (plus a `docker
+// port` per replica) on every single request.
+func (rt *Router) routes() ([]docker.Route, error) {
+	rt.routesMu.Lock()
+	defer rt.routesMu.Unlock()
+	if rt.cachedRoutes != nil && time.Since(rt.cachedRouteAt) < 2*time.Second {
+		return rt.cachedRoutes, nil
+	}
 	routes, err := rt.Engine.Routes()
+	if err != nil {
+		return nil, err
+	}
+	rt.cachedRoutes, rt.cachedRouteAt = routes, time.Now()
+	return routes, nil
+}
+
+func (rt *Router) proxyToApp(w http.ResponseWriter, r *http.Request, app string) {
+	routes, err := rt.routes()
 	if err != nil {
 		http.Error(w, "skiff: "+err.Error(), http.StatusInternalServerError)
 		return
