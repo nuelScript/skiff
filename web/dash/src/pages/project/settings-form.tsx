@@ -1,0 +1,257 @@
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { RotateCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { useConfirm } from '@/providers/confirm-provider'
+import { projectsService } from '@/services/api.service'
+import { projectSettingsSchema, type ProjectSettingsInput } from '@/validations/project-settings'
+import { Stepper } from './stepper'
+
+export function SettingsForm({
+  name,
+  branch,
+  rootDir,
+  port,
+  auto,
+  previewAuto,
+  replicas,
+  running,
+  release,
+  autoscale,
+  scaleMin,
+  scaleMax,
+  scaleCpu,
+  onSaved,
+  onDeleted,
+  onRedeploy,
+}: {
+  name: string
+  branch: string
+  rootDir: string
+  port: string
+  auto: boolean
+  previewAuto: boolean
+  replicas: number
+  running: number
+  release: string
+  autoscale: boolean
+  scaleMin: number
+  scaleMax: number
+  scaleCpu: number
+  onSaved: () => void
+  onDeleted: () => void
+  onRedeploy: () => void
+}) {
+  const [saved, setSaved] = useState(false)
+  const confirm = useConfirm()
+  const form = useForm<ProjectSettingsInput>({
+    resolver: zodResolver(projectSettingsSchema),
+    defaultValues: {
+      branch,
+      rootDir,
+      port,
+      auto,
+      previewAuto,
+      replicas: replicas || 1,
+      release: release || '',
+      autoscale,
+      scaleMin: scaleMin || 1,
+      scaleMax: scaleMax || Math.max(scaleMin || 1, replicas || 2),
+      scaleCpu: scaleCpu || 70,
+    },
+  })
+  const { register, handleSubmit, watch, setValue, formState } = form
+  const values = watch()
+  const setReplicas = (n: number) =>
+    setValue('replicas', Math.min(10, Math.max(1, n)), { shouldDirty: true })
+  const setNum = (field: 'scaleMin' | 'scaleMax', n: number) =>
+    setValue(field, Math.min(10, Math.max(1, n)), { shouldDirty: true })
+  const toggleClass = (on: boolean) =>
+    'h-9 rounded-md border px-3 font-mono text-xs uppercase transition-colors ' +
+    (on
+      ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+      : 'border-white/15 text-muted-foreground')
+
+  const save = handleSubmit(async (data) => {
+    await projectsService.update(name, data)
+    setSaved(true)
+    onSaved()
+  })
+
+  const del = async () => {
+    if (
+      !(await confirm({
+        title: `Delete ${name}?`,
+        description: 'This stops the app and removes its config.',
+        confirmText: 'Delete',
+        destructive: true,
+      }))
+    )
+      return
+    await projectsService.stop(name)
+    onDeleted()
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-xl border border-white/8 p-5">
+        <h2 className="mb-4 text-sm font-semibold">Build &amp; deploy</h2>
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="s-branch">Branch</FieldLabel>
+            <Input id="s-branch" placeholder="main" className="font-mono" {...register('branch')} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="s-root">Root directory</FieldLabel>
+            <Input id="s-root" placeholder="/" className="font-mono" {...register('rootDir')} />
+          </Field>
+          <Field data-invalid={!!formState.errors.port}>
+            <FieldLabel htmlFor="s-port">Port</FieldLabel>
+            <Input
+              id="s-port"
+              placeholder="3000"
+              className="font-mono"
+              aria-invalid={!!formState.errors.port}
+              {...register('port')}
+            />
+            <FieldError errors={[formState.errors.port]} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="s-auto">Auto-deploy on push</FieldLabel>
+            <button
+              id="s-auto"
+              type="button"
+              onClick={() => setValue('auto', !values.auto, { shouldDirty: true })}
+              className={toggleClass(values.auto)}
+            >
+              {values.auto ? 'On' : 'Off'}
+            </button>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="s-preview">Preview deployments</FieldLabel>
+            <button
+              id="s-preview"
+              type="button"
+              onClick={() => setValue('previewAuto', !values.previewAuto, { shouldDirty: true })}
+              className={toggleClass(values.previewAuto)}
+            >
+              {values.previewAuto ? 'On' : 'Off'}
+            </button>
+          </Field>
+          {!values.autoscale && (
+            <Field>
+              <FieldLabel>Replicas</FieldLabel>
+              <Stepper
+                value={values.replicas}
+                onDec={() => setReplicas(values.replicas - 1)}
+                onInc={() => setReplicas(values.replicas + 1)}
+              />
+            </Field>
+          )}
+        </FieldGroup>
+        <p className="text-muted-foreground mt-3 text-xs">
+          Replicas run identical copies of the app behind the router, sharing traffic. Preview
+          deployments spin up an environment automatically for any push to a branch other than{' '}
+          <span className="text-foreground/70 font-mono">{values.branch || 'main'}</span>.
+        </p>
+
+        <div className="mt-4 rounded-lg border border-white/8 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium">Autoscaling</h3>
+                {values.autoscale && (
+                  <span className="text-muted-foreground rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                    {running} running
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                Add and retire replicas automatically to hold each one near a target CPU.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setValue('autoscale', !values.autoscale, { shouldDirty: true })}
+              className={toggleClass(values.autoscale)}
+            >
+              {values.autoscale ? 'On' : 'Off'}
+            </button>
+          </div>
+          {values.autoscale && (
+            <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-3">
+              <Field>
+                <FieldLabel>Min replicas</FieldLabel>
+                <Stepper
+                  value={values.scaleMin}
+                  onDec={() => setNum('scaleMin', values.scaleMin - 1)}
+                  onInc={() => setNum('scaleMin', values.scaleMin + 1)}
+                />
+              </Field>
+              <Field data-invalid={!!formState.errors.scaleMax}>
+                <FieldLabel>Max replicas</FieldLabel>
+                <Stepper
+                  value={values.scaleMax}
+                  onDec={() => setNum('scaleMax', values.scaleMax - 1)}
+                  onInc={() => setNum('scaleMax', values.scaleMax + 1)}
+                />
+                <FieldError errors={[formState.errors.scaleMax]} />
+              </Field>
+              <Field data-invalid={!!formState.errors.scaleCpu}>
+                <FieldLabel htmlFor="s-target">Target CPU %</FieldLabel>
+                <Input
+                  id="s-target"
+                  type="number"
+                  min={10}
+                  max={100}
+                  step={5}
+                  className="font-mono"
+                  aria-invalid={!!formState.errors.scaleCpu}
+                  {...register('scaleCpu', { valueAsNumber: true })}
+                />
+                <FieldError errors={[formState.errors.scaleCpu]} />
+              </Field>
+            </FieldGroup>
+          )}
+        </div>
+        <Field className="mt-4">
+          <FieldLabel htmlFor="s-release">Release command</FieldLabel>
+          <Input id="s-release" placeholder="e.g. npm run migrate" className="font-mono" {...register('release')} />
+          <FieldDescription>
+            Runs once in a one-off container before each new version goes live — a non-zero exit aborts
+            the deploy, so the old version keeps serving.
+          </FieldDescription>
+        </Field>
+        <div className="mt-5 flex items-center justify-end gap-3">
+          {saved && <span className="text-muted-foreground text-xs">Saved.</span>}
+          <Button size="sm" variant="outline" onClick={onRedeploy}>
+            <RotateCw />
+            Redeploy
+          </Button>
+          <Button size="sm" onClick={save}>
+            Save changes
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-5">
+        <h2 className="mb-1 text-sm font-semibold text-rose-300">Danger zone</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          Stop this app and remove its configuration. This cannot be undone.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={del}
+          className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
+        >
+          Delete project
+        </Button>
+      </section>
+    </div>
+  )
+}
+
