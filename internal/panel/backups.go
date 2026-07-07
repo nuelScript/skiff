@@ -267,19 +267,21 @@ func (p *Panel) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
 func (p *Panel) backupLoop() {
 	time.Sleep(2 * time.Minute) // let startup settle before the first pass
 	for {
-		now := time.Now().Unix()
-		for _, d := range allDatabases() {
-			if dbEngines[d.Engine].backupExt == "" {
-				continue
+		guard("backupLoop", func() {
+			now := time.Now().Unix()
+			for _, d := range allDatabases() {
+				if dbEngines[d.Engine].backupExt == "" {
+					continue
+				}
+				if now-lastBackupAt(d.ID) < 24*3600 {
+					continue
+				}
+				if p.eng.State(d.Container) != "running" {
+					continue
+				}
+				_, _ = p.runBackup(d, "scheduled")
 			}
-			if now-lastBackupAt(d.ID) < 24*3600 {
-				continue
-			}
-			if p.eng.State(d.Container) != "running" {
-				continue
-			}
-			_, _ = p.runBackup(d, "scheduled")
-		}
+		})
 		time.Sleep(time.Hour)
 	}
 }

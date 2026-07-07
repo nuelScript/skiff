@@ -177,10 +177,12 @@ func (p *Panel) resourceLoop() {
 	tick := time.NewTicker(resSampleEvery)
 	defer tick.Stop()
 	for {
-		if samples, err := p.eng.AppResourceStats(); err == nil && len(samples) > 0 {
-			resStats.record(samples)
-		}
-		resStats.snapshot()
+		guard("resourceLoop", func() {
+			if samples, err := p.eng.AppResourceStats(); err == nil && len(samples) > 0 {
+				resStats.record(samples)
+			}
+			resStats.snapshot()
+		})
 		<-tick.C
 	}
 }

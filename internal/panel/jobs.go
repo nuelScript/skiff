@@ -142,27 +142,29 @@ func (p *Panel) execJob(j jobRow) (string, error) {
 func (p *Panel) jobLoop() {
 	time.Sleep(90 * time.Second) // settle after startup
 	for {
-		now := time.Now()
-		for _, j := range allJobRows() {
-			sched, err := cron.ParseStandard(j.Schedule)
-			if err != nil {
-				continue
+		guard("jobLoop", func() {
+			now := time.Now()
+			for _, j := range allJobRows() {
+				sched, err := cron.ParseStandard(j.Schedule)
+				if err != nil {
+					continue
+				}
+				base := time.Unix(j.Created, 0)
+				if j.LastRun > 0 {
+					base = time.Unix(j.LastRun, 0)
+				}
+				if sched.Next(base).After(now) {
+					continue // not due yet
+				}
+				if !claimJob(j.ID) {
+					continue // already running
+				}
+				go func(j jobRow) {
+					defer releaseJob(j.ID)
+					guard("job:"+j.ID, func() { _, _ = p.execJob(j) })
+				}(j)
 			}
-			base := time.Unix(j.Created, 0)
-			if j.LastRun > 0 {
-				base = time.Unix(j.LastRun, 0)
-			}
-			if sched.Next(base).After(now) {
-				continue // not due yet
-			}
-			if !claimJob(j.ID) {
-				continue // already running
-			}
-			go func(j jobRow) {
-				defer releaseJob(j.ID)
-				_, _ = p.execJob(j)
-			}(j)
-		}
+		})
 		time.Sleep(time.Minute)
 	}
 }

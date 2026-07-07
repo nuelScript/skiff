@@ -228,8 +228,10 @@ func isInflight(app string) bool {
 func (p *Panel) alertLoop() {
 	time.Sleep(60 * time.Second) // let apps settle after a restart
 	for range time.Tick(60 * time.Second) {
-		p.checkHealth()
-		p.checkErrorSpikes()
+		guard("alertLoop", func() {
+			p.checkHealth()
+			p.checkErrorSpikes()
+		})
 	}
 }
 

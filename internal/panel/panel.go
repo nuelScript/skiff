@@ -6,6 +6,7 @@ package panel
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,16 +59,17 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		selfBranch:  branch,
 	}
 	resStats = newResStore(filepath.Join(home, ".skiff", "resources.json"))
-	go p.reapOrphanContainers() // clean up containers from deleted apps / failed swaps
+	// one-shot startup tasks — each guarded so a panic in one can't abort boot
+	go guard("reapOrphanContainers", p.reapOrphanContainers) // clean up containers from deleted apps / failed swaps
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
-	go p.reconcileNetworks()     // attach existing databases to their team's private net
-	go p.prewarmDatabaseImages() // fetch DB images ahead of first provision
-	go p.prewarmStorageImages()  // fetch MinIO images ahead of first bucket
-	go p.backupLoop()            // daily database snapshots
-	go p.jobLoop()               // scheduled jobs (cron)
-	go p.resourceLoop()          // sample per-app CPU/memory
-	go p.autoscaleLoop()         // add/retire replicas off those metrics
-	go p.alertLoop()             // health + error-rate alerts
+	go guard("reconcileNetworks", p.reconcileNetworks)         // attach existing databases to their team's private net
+	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages) // fetch DB images ahead of first provision
+	go guard("prewarmStorageImages", p.prewarmStorageImages)   // fetch MinIO images ahead of first bucket
+	go p.backupLoop()                                          // daily database snapshots
+	go p.jobLoop()                                             // scheduled jobs (cron)
+	go p.resourceLoop()                                        // sample per-app CPU/memory
+	go p.autoscaleLoop()                                       // add/retire replicas off those metrics
+	go p.alertLoop()                                           // health + error-rate alerts
 	return p, nil
 }
 
@@ -267,6 +269,18 @@ func cloneError(b []byte) string {
 		return "repository is private or not found — connect GitHub, add a token, or make it public"
 	}
 	return msg
+}
+
+// guard runs one iteration of a background loop, recovering from and logging any
+// panic so a single bad tick (a malformed record, a nil deref) can't take down
+// the whole control plane.
+func guard(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("skiff: %s panicked, continuing: %v", name, r)
+		}
+	}()
+	fn()
 }
 
 // prewarmImages pulls any of the given images that aren't present yet, so the

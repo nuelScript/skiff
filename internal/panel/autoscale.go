@@ -58,7 +58,7 @@ func (s *resStore) recentCPU(app string, mins int) (float64, bool) {
 func (p *Panel) autoscaleLoop() {
 	time.Sleep(autoscaleSettle)
 	for range time.Tick(autoscaleEvery) {
-		p.autoscaleTick()
+		guard("autoscaleLoop", p.autoscaleTick)
 	}
 }
 
