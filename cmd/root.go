@@ -41,7 +41,17 @@ build it, run it, and get an HTTPS URL. No cloud bill.`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// After a successful command, hint (quietly, on stderr) if a newer release
+		// is out. Skipped for the internal refresh, completion, and help.
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			switch cmd.Name() {
+			case updateCheckCmd, "completion", "help":
+				return
+			}
+			notifyUpdate(version)
+		},
 	}
+	root.AddCommand(newUpdateCheckCmd())
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newDeployCmd())
 	root.AddCommand(newRollbackCmd())
