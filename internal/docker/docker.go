@@ -84,6 +84,18 @@ func firstLine(b []byte) string {
 	return strings.TrimSpace(string(b))
 }
 
+// splitLines turns command output into its non-empty, trimmed lines — the shared
+// shape behind every `docker ps --format …` reader.
+func splitLines(b []byte) []string {
+	var out []string
+	for _, ln := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			out = append(out, ln)
+		}
+	}
+	return out
+}
+
 func lastLine(b []byte) string {
 	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {

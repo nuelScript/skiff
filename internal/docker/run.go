@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"strings"
 )
 
 type RunSpec struct {
@@ -100,13 +99,7 @@ func (e *Engine) WorkerContainers(app string) []string {
 	if err != nil {
 		return nil
 	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			names = append(names, line)
-		}
-	}
-	return names
+	return splitLines(out)
 }
 
 // EnsureNetwork creates a docker network if it doesn't already exist.

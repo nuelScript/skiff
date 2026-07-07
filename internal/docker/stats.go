@@ -26,7 +26,7 @@ func (e *Engine) AppResourceStats() ([]ContainerResource, error) {
 	}
 	appOf := map[string]string{}
 	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range splitLines(out) {
 		f := strings.Fields(line)
 		if len(f) < 2 {
 			continue
@@ -45,7 +45,7 @@ func (e *Engine) AppResourceStats() ([]ContainerResource, error) {
 	restarts := e.restartCounts(names)
 
 	var res []ContainerResource
-	for _, line := range strings.Split(strings.TrimSpace(string(stats)), "\n") {
+	for _, line := range splitLines(stats) {
 		f := strings.Split(line, "\t")
 		if len(f) < 3 {
 			continue
@@ -78,7 +78,7 @@ func (e *Engine) restartCounts(names []string) map[string]int {
 	if err != nil {
 		return counts
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range splitLines(out) {
 		name, n, ok := strings.Cut(line, "\t")
 		if !ok {
 			continue

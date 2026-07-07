@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"strings"
 )
 
 func (e *Engine) Stop(container string) error {
@@ -40,9 +39,8 @@ func (e *Engine) AppImageTags(app string) []string {
 		return nil
 	}
 	var tags []string
-	for _, t := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		t = strings.TrimSpace(t)
-		if t == "" || t == "latest" || t == "<none>" {
+	for _, t := range splitLines(out) {
+		if t == "latest" || t == "<none>" {
 			continue
 		}
 		tags = append(tags, t)

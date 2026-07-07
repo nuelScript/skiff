@@ -33,13 +33,7 @@ func (e *Engine) Containers() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			names = append(names, line)
-		}
-	}
-	return names, nil
+	return splitLines(out), nil
 }
 
 // AppContainers lists every container (running or not) for an app, so all stale
@@ -49,13 +43,7 @@ func (e *Engine) AppContainers(app string) []string {
 	if err != nil {
 		return nil
 	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			names = append(names, line)
-		}
-	}
-	return names
+	return splitLines(out)
 }
 
 // ContainerInfo is a skiff-managed container's name and creation time.
@@ -72,7 +60,7 @@ func (e *Engine) SkiffContainers() []ContainerInfo {
 		return nil
 	}
 	var cs []ContainerInfo
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range splitLines(out) {
 		name, created, ok := strings.Cut(line, "|")
 		if !ok || name == "" {
 			continue
@@ -90,7 +78,7 @@ func (e *Engine) Routes() ([]Route, error) {
 		return nil, err
 	}
 	var routes []Route
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range splitLines(out) {
 		f := strings.Fields(line)
 		if len(f) < 3 {
 			continue
@@ -116,7 +104,7 @@ func (e *Engine) AppStates() (map[string]string, error) {
 		return nil, err
 	}
 	states := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range splitLines(out) {
 		app, state, ok := strings.Cut(line, "|")
 		if !ok || app == "" {
 			continue
