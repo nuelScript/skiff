@@ -1,6 +1,59 @@
 package panel
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/nuelScript/skiff/internal/config"
+)
+
+func TestProjectToml(t *testing.T) {
+	src := Source{App: "api", Team: "t1", Port: "3000", Replicas: 2, Release: "npm run migrate"}
+	env := []EnvVar{
+		{Key: "API_URL", Value: "https://x", Build: true}, // build + runtime
+		{Key: "SECRET_TOKEN", Value: "shh", Build: false}, // runtime-only secret
+	}
+	out := projectToml(src, env)
+
+	// It must round-trip through the real config loader.
+	path := filepath.Join(t.TempDir(), "skiff.toml")
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("generated toml doesn't parse: %v\n%s", err, out)
+	}
+
+	if cfg.Name != "api" || cfg.Replicas != 2 || cfg.Build.Port != 3000 {
+		t.Fatalf("basics wrong: %+v", cfg)
+	}
+	if cfg.Deploy.Network != teamNetwork("t1") {
+		t.Fatalf("network = %q, want %q", cfg.Deploy.Network, teamNetwork("t1"))
+	}
+	if cfg.Deploy.Release != "npm run migrate" {
+		t.Fatalf("release = %q", cfg.Deploy.Release)
+	}
+	// The build var belongs in [env]; the secret belongs in [secrets] and must
+	// NOT leak into [env] (where it would bake into the image).
+	if cfg.Env["API_URL"] != "https://x" {
+		t.Errorf("build var missing from [env]: %v", cfg.Env)
+	}
+	if _, leaked := cfg.Env["SECRET_TOKEN"]; leaked {
+		t.Errorf("secret leaked into [env]: %v", cfg.Env)
+	}
+	if cfg.Secrets["SECRET_TOKEN"] != "shh" {
+		t.Errorf("secret missing from [secrets]: %v", cfg.Secrets)
+	}
+
+	// replicas=1 and a blank release omit those lines.
+	bare := projectToml(Source{App: "web", Port: "8080"}, nil)
+	if strings.Contains(bare, "replicas") || strings.Contains(bare, "release") {
+		t.Errorf("bare config should omit replicas/release:\n%s", bare)
+	}
+}
 
 func TestInjectToken(t *testing.T) {
 	if got := injectToken("https://github.com/acme/api.git", "tok"); got != "https://tok@github.com/acme/api.git" {

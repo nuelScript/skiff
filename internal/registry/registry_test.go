@@ -33,6 +33,37 @@ func TestUpdateConcurrent(t *testing.T) {
 	}
 }
 
+func TestListSortedAndOverwrite(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := Put(App{Name: "zebra", Container: "z", Port: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Put(App{Name: "apple", Container: "a", Port: 2}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Name != "apple" || got[1].Name != "zebra" {
+		t.Fatalf("List not name-sorted: %+v", got)
+	}
+
+	// Re-Put an existing name updates it in place rather than duplicating.
+	if err := Put(App{Name: "apple", Container: "a", Port: 99}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = List()
+	if len(got) != 2 {
+		t.Fatalf("overwrite duplicated the app: %+v", got)
+	}
+	for _, a := range got {
+		if a.Name == "apple" && a.Port != 99 {
+			t.Fatalf("apple not updated in place: port=%d", a.Port)
+		}
+	}
+}
+
 func TestDelete(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	_ = Put(App{Name: "a", Container: "a-c"})
