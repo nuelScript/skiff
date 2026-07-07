@@ -36,10 +36,12 @@ func TestPortSuffix(t *testing.T) {
 }
 
 func TestPickPort(t *testing.T) {
+	px := New()
+
 	// No replicas recorded: fall back to the representative host port.
 	solo := registry.App{Name: "solo", HostPort: 5000}
 	for range 3 {
-		if p := pickPort(solo); p != 5000 {
+		if p := px.pickPort(solo); p != 5000 {
 			t.Fatalf("single-port pick = %d, want 5000", p)
 		}
 	}
@@ -50,7 +52,7 @@ func TestPickPort(t *testing.T) {
 	}}
 	var seq []int
 	for range 4 {
-		seq = append(seq, pickPort(multi))
+		seq = append(seq, px.pickPort(multi))
 	}
 	seen := map[int]bool{seq[0]: true, seq[1]: true, seq[2]: true}
 	if len(seen) != 3 {
