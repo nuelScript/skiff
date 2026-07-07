@@ -43,6 +43,30 @@ func cancelInflight(app, id string) bool {
 	return false
 }
 
+// beginBuild registers this build as the app's in-flight one, superseding
+// (canceling) any prior deploy OR rollback of the same app so the two never race
+// each other's container swap. Returns a cancelable context to hand the build
+// subprocess, a predicate that's true once this build was itself superseded, and
+// a cleanup to defer.
+func beginBuild(app, id string) (context.Context, func() bool, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	inflightMu.Lock()
+	if prev, ok := inflight[app]; ok {
+		prev.cancel()
+	}
+	inflight[app] = inflightBuild{id: id, cancel: cancel}
+	inflightMu.Unlock()
+	cleanup := func() {
+		inflightMu.Lock()
+		if b, ok := inflight[app]; ok && b.id == id {
+			delete(inflight, app)
+		}
+		inflightMu.Unlock()
+		cancel()
+	}
+	return ctx, func() bool { return ctx.Err() != nil }, cleanup
+}
+
 // runDeploy clones a source, builds, and releases it, writing a persisted log
 // and recording the deploy in history. Shared by manual deploys and webhooks.
 // authURL, when set, overrides the clone URL (e.g. a pasted token); otherwise a
@@ -64,27 +88,14 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		Trigger: trigger, Status: "building", Started: time.Now().Unix(),
 	})
 
-	// Cancel any in-flight build of the same app, and register this one as the
-	// current build so a later deploy can in turn supersede it.
-	ctx, cancel := context.WithCancel(context.Background())
-	inflightMu.Lock()
-	if prev, ok := inflight[src.App]; ok {
-		prev.cancel()
-	}
-	inflight[src.App] = inflightBuild{id: id, cancel: cancel}
-	inflightMu.Unlock()
-	defer func() {
-		inflightMu.Lock()
-		if b, ok := inflight[src.App]; ok && b.id == id {
-			delete(inflight, src.App)
-		}
-		inflightMu.Unlock()
-		cancel()
-	}()
+	// Supersede any in-flight deploy/rollback of the same app, and register this
+	// one so a later build can in turn supersede it.
+	ctx, superseded, done := beginBuild(src.App, id)
+	defer done()
 	// finish records the terminal status, mapping a cancellation (superseded by a
 	// newer deploy) to "canceled" rather than "failed".
 	finish := func(failMsg string) {
-		if ctx.Err() != nil {
+		if superseded() {
 			logln("✗ superseded by a newer deploy")
 			setDeployStatus(src.App, id, "canceled")
 			return
@@ -186,6 +197,11 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 		Trigger: "rollback", Status: "building", Started: time.Now().Unix(),
 	})
 
+	// Participate in supersede so a rollback and a deploy of the same app can't
+	// run their container swaps concurrently, and handleCancel can stop it.
+	ctx, superseded, done := beginBuild(src.App, id)
+	defer done()
+
 	// A throwaway config dir carrying the current port/env/secrets for the run.
 	work := filepath.Join(p.buildsDir, sanitizeName(src.App)+"-rollback")
 	_ = os.RemoveAll(work)
@@ -200,7 +216,9 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	image := fmt.Sprintf("skiff-%s:%s", src.App, targetID)
 	logln("→ rolling back to " + image)
 	self, _ := os.Executable()
-	cmd := exec.Command(self, "rollback", "--image", image, "-c", tomlPath)
+	cmd := exec.CommandContext(ctx, self, "rollback", "--image", image, "-c", tomlPath)
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 10 * time.Second
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	errc := make(chan error, 1)
@@ -211,6 +229,11 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 		logln(sc.Text())
 	}
 	if e := <-errc; e != nil {
+		if superseded() {
+			logln("✗ superseded by a newer deploy")
+			setDeployStatus(src.App, id, "canceled")
+			return
+		}
 		logln("✗ rollback failed")
 		setDeployStatus(src.App, id, "failed")
 		return
