@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/auth"
 )
@@ -71,13 +72,20 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	ip := clientIP(r)
+	if loginLimiter.blocked(ip, time.Now()) {
+		http.Error(w, "too many login attempts — try again later", http.StatusTooManyRequests)
+		return
+	}
 	var body struct{ Email, Password string }
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	u, ok := p.auth.Authenticate(body.Email, body.Password)
 	if !ok {
+		loginLimiter.fail(ip, time.Now())
 		http.Error(w, "wrong email or password", http.StatusUnauthorized)
 		return
 	}
+	loginLimiter.ok(ip)
 	teamID := ""
 	if teams := p.auth.TeamsForUser(u.ID); len(teams) > 0 {
 		teamID = teams[0].ID
