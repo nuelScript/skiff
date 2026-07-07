@@ -39,7 +39,7 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
-          LDFLAGS="-s -w -X 'github.com/nuelScript/skiff/cmd.version=${{ github.ref_name }}'"
+          LDFLAGS="-s -w -X 'github.com/nuelScript/skiff/cmd.buildVersion=${{ github.ref_name }}'"
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             os="${target%/*}"; arch="${target#*/}"
             echo "→ building skiff-$os-$arch"

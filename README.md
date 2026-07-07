@@ -1,5 +1,9 @@
 # Skiff
 
+[![Release](https://img.shields.io/github/v/release/nuelScript/skiff?color=black)](https://github.com/nuelScript/skiff/releases)
+[![CI](https://github.com/nuelScript/skiff/actions/workflows/test.yml/badge.svg)](https://github.com/nuelScript/skiff/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-black)](#license)
+
 **Ship it to a server you own.** Push-to-deploy with a web console, automatic HTTPS, managed databases, and preview environments — running on infrastructure you control, not rented. One small Go binary detects your stack, builds it, and runs it on Docker, local or over SSH.
 
 ```

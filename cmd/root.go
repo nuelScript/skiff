@@ -1,12 +1,36 @@
 package cmd
 
 import (
+	"runtime/debug"
+	"strings"
+
 	"github.com/spf13/cobra"
 )
 
-// version is overridden at build time via -ldflags "-X .../cmd.version=<tag>";
-// the default is the fallback for `go install`/dev builds.
-var version = "0.1.0"
+// buildVersion is injected at release time via
+// -ldflags "-X github.com/nuelScript/skiff/cmd.buildVersion=<tag>". Empty in
+// every other build.
+var buildVersion = ""
+
+// version is the resolved, display-ready version everything prints.
+var version = resolveVersion()
+
+// resolveVersion prefers the ldflags-injected release tag, then the clean module
+// version stamped into `go install …@vX` builds (that path gets no ldflags), and
+// otherwise reports "dev" — with any leading "v" trimmed for consistent output.
+func resolveVersion() string {
+	if buildVersion != "" {
+		return strings.TrimPrefix(buildVersion, "v")
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// A tagged `go install` yields e.g. "v0.1.1"; a local/dirty build yields
+		// "(devel)" or a pseudo-version with "+", which we treat as dev.
+		if v := info.Main.Version; strings.HasPrefix(v, "v") && !strings.Contains(v, "+") {
+			return strings.TrimPrefix(v, "v")
+		}
+	}
+	return "dev"
+}
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
