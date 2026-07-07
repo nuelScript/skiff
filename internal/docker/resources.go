@@ -1,0 +1,127 @@
+package docker
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+)
+
+// DBRunSpec runs a managed resource (a database) — network-internal, backed by a
+// named volume, and deliberately unlabeled with skiff=1 so the app reaper leaves
+// it alone.
+type DBRunSpec struct {
+	Name       string
+	Image      string
+	Network    string
+	Volume     string // named volume for persistence
+	MountAt    string // where the volume mounts inside the container
+	Env        map[string]string
+	Cmd        []string          // optional command/args after the image
+	Labels     map[string]string // ownership + kind labels
+	Port       int               // container port (published on the host when Publish is set)
+	Publish    bool              // expose Port on 0.0.0.0 for external access
+	Entrypoint string            // optional --entrypoint override (e.g. "sh" to fix TLS cert perms)
+	Binds      []string          // extra bind mounts, "host:container[:ro]" (e.g. the TLS cert dir)
+}
+
+// RunDatabase (re)creates a managed database container. It returns the published
+// host port when Publish is set (0 otherwise). Recreating with the same name +
+// volume preserves the data.
+func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
+	_ = e.command("rm", "-f", s.Name).Run()
+	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped"}
+	if s.Entrypoint != "" {
+		args = append(args, "--entrypoint", s.Entrypoint)
+	}
+	for _, k := range sortedKeys(s.Labels) {
+		args = append(args, "--label", k+"="+s.Labels[k])
+	}
+	if s.Network != "" {
+		args = append(args, "--network", s.Network)
+	}
+	if s.Volume != "" && s.MountAt != "" {
+		args = append(args, "-v", s.Volume+":"+s.MountAt)
+	}
+	for _, b := range s.Binds {
+		args = append(args, "-v", b)
+	}
+	if s.Publish && s.Port > 0 {
+		args = append(args, "-p", fmt.Sprintf("0.0.0.0::%d", s.Port))
+	}
+	for _, k := range sortedKeys(s.Env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
+	}
+	args = append(args, s.Image)
+	args = append(args, s.Cmd...)
+	if out, err := e.command(args...).CombinedOutput(); err != nil {
+		return 0, fmt.Errorf("docker run failed: %s", firstLine(out))
+	}
+	if s.Publish && s.Port > 0 {
+		return e.HostPort(s.Name, s.Port)
+	}
+	return 0, nil
+}
+
+// RemoveVolume deletes a named volume (used when tearing down a database).
+func (e *Engine) RemoveVolume(name string) error {
+	return e.command("volume", "rm", "-f", name).Run()
+}
+
+// PullImage fetches an image ahead of time so a later run doesn't block on it.
+func (e *Engine) PullImage(image string) error {
+	if out, err := e.command("pull", image).CombinedOutput(); err != nil {
+		return fmt.Errorf("docker pull failed: %s", firstLine(out))
+	}
+	return nil
+}
+
+// RunOnce runs a throwaway container from an image with the given env on a
+// network, executing a shell command. Returns combined output and the exit
+// error — used for release commands (migrations) and scheduled jobs.
+func (e *Engine) RunOnce(ctx context.Context, image string, env map[string]string, network, cmd string) (string, error) {
+	args := []string{"run", "--rm"}
+	if network != "" {
+		args = append(args, "--network", network)
+	}
+	for _, k := range sortedKeys(env) {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, env[k]))
+	}
+	args = append(args, image, "sh", "-c", cmd)
+	out, err := e.contextCommand(ctx, args...).CombinedOutput()
+	return string(out), err
+}
+
+// RunTool runs a throwaway container passing args straight to the image's
+// entrypoint (no shell), used for CLI images like minio/mc that have no shell.
+func (e *Engine) RunTool(network string, env map[string]string, image string, args ...string) (string, error) {
+	full := []string{"run", "--rm"}
+	if network != "" {
+		full = append(full, "--network", network)
+	}
+	for _, k := range sortedKeys(env) {
+		full = append(full, "-e", fmt.Sprintf("%s=%s", k, env[k]))
+	}
+	full = append(full, image)
+	full = append(full, args...)
+	out, err := e.command(full...).CombinedOutput()
+	return string(out), err
+}
+
+// Exec runs a command inside a container, wiring stdin/stdout to the given
+// streams — used to dump a database to a file and pipe a dump back in.
+func (e *Engine) Exec(ctx context.Context, container string, cmd []string, stdin io.Reader, stdout io.Writer) error {
+	args := append([]string{"exec", "-i", container}, cmd...)
+	c := e.contextCommand(ctx, args...)
+	c.Stdin = stdin
+	c.Stdout = stdout
+	var errb bytes.Buffer
+	c.Stderr = &errb
+	if err := c.Run(); err != nil {
+		if msg := firstLine(errb.Bytes()); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
+}
