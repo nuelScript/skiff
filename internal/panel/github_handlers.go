@@ -36,6 +36,10 @@ func (p *Panel) handleGithubStatus(w http.ResponseWriter, _ *http.Request) {
 // handleGithubCreate serves an auto-submitting form that registers a Skiff
 // GitHub App via the manifest flow.
 func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
+	if !p.isOwner(r) {
+		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+		return
+	}
 	name := "Skiff Deploys (" + p.domain + ")"
 	manifest := github.Manifest(baseURL(r), name)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -50,6 +54,10 @@ func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
 // handleGithubCreated receives the manifest code, converts it to app credentials,
 // then sends the user on to install the app.
 func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
+	if !p.isOwner(r) {
+		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+		return
+	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "missing code", http.StatusBadRequest)
@@ -57,11 +65,11 @@ func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := github.ConvertManifest(code)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "could not complete GitHub setup", http.StatusBadGateway)
 		return
 	}
 	if err := cfg.Save(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "could not save GitHub configuration", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, cfg.InstallURL(), http.StatusFound)
@@ -69,6 +77,10 @@ func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
 
 // handleGithubInstalled records the installation id (GitHub's setup redirect).
 func (p *Panel) handleGithubInstalled(w http.ResponseWriter, r *http.Request) {
+	if !p.isOwner(r) {
+		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+		return
+	}
 	cfg := github.Load()
 	if !cfg.Configured() {
 		http.Error(w, "app not configured", http.StatusBadRequest)
@@ -77,7 +89,7 @@ func (p *Panel) handleGithubInstalled(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.URL.Query().Get("installation_id"), 10, 64)
 	cfg.InstallationID = id
 	if err := cfg.Save(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "could not save GitHub configuration", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -91,7 +103,7 @@ func (p *Panel) handleGithubRepos(w http.ResponseWriter, _ *http.Request) {
 	}
 	repos, err := cfg.ListRepos()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "could not list repositories", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -212,6 +212,17 @@ func (p *Panel) teamID(r *http.Request) string {
 	return s.teamID
 }
 
+// isOwner is true when the caller owns their active team — the gate for
+// instance- or team-wide actions (connecting GitHub, destructive team changes).
+func (p *Panel) isOwner(r *http.Request) bool {
+	s, ok := p.session(r)
+	if !ok {
+		return false
+	}
+	role, ok := p.auth.Role(s.userID, s.teamID)
+	return ok && role == auth.RoleOwner
+}
+
 // canAccess is true when the caller is a member of the team that owns the app.
 func (p *Panel) canAccess(r *http.Request, app string) bool {
 	src, ok := getSource(app)
