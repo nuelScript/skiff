@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -42,7 +43,12 @@ func newPanelCmd() *cobra.Command {
 			// Graceful shutdown: on SIGTERM/SIGINT, drain in-flight requests before
 			// exiting so a control-plane swap (systemctl stop of the old panel)
 			// never severs a live deploy stream or request mid-flight.
-			srv := &http.Server{Addr: addr, Handler: pn.Handler()}
+			srv := &http.Server{
+				Addr:              addr,
+				Handler:           pn.Handler(),
+				ReadHeaderTimeout: 10 * time.Second,
+				IdleTimeout:       120 * time.Second,
+			}
 			go func() {
 				sig := make(chan os.Signal, 1)
 				signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -51,7 +57,7 @@ func newPanelCmd() *cobra.Command {
 				defer cancel()
 				_ = srv.Shutdown(ctx)
 			}()
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
 			return nil

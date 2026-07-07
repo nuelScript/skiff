@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/proxy"
@@ -37,7 +38,8 @@ func newDashboardCmd() *cobra.Command {
 			ui.Field("dashboard", "http://localhost"+addr)
 			ui.Note("live view of your apps  (ctrl-c to stop)")
 			fmt.Println()
-			return http.ListenAndServe(addr, mux)
+			server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
+			return server.ListenAndServe()
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", ":4000", "address to listen on")

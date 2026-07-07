@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -206,10 +207,24 @@ func (rt *Router) subFor(host string) (string, bool) {
 	return "", false
 }
 
+// edgeServer builds an internet-facing HTTP server with conservative limits:
+// ReadHeaderTimeout closes Slowloris slow-header attacks and IdleTimeout reaps
+// idle keep-alives, while Read/Write timeouts stay unset so proxied SSE and
+// WebSocket streams (deploy logs, the console) aren't cut off mid-stream.
+func edgeServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+}
+
 // ServeHTTPOnly runs the router over plain HTTP (for local testing, no TLS).
 func (rt *Router) ServeHTTPOnly(addr string) error {
 	rt.startMetrics()
-	return http.ListenAndServe(addr, rt)
+	return edgeServer(addr, rt).ListenAndServe()
 }
 
 // ServeTLS runs :443 with Let's Encrypt certs and :80 for ACME challenges +
@@ -231,7 +246,13 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 			return fmt.Errorf("host not allowed: %s", host)
 		},
 	}
-	go http.ListenAndServe(":80", m.HTTPHandler(nil))
-	server := &http.Server{Addr: ":443", Handler: rt, TLSConfig: m.TLSConfig()}
+	redirect := edgeServer(":80", m.HTTPHandler(nil))
+	go func() {
+		if err := redirect.ListenAndServe(); err != nil {
+			log.Printf("router :80 listener stopped: %v", err)
+		}
+	}()
+	server := edgeServer(":443", rt)
+	server.TLSConfig = m.TLSConfig()
 	return server.ListenAndServeTLS("", "")
 }

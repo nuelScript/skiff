@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/registry"
 )
@@ -45,7 +46,13 @@ func portSuffix(addr string) string {
 }
 
 func Serve(addr string) error {
-	return http.ListenAndServe(addr, http.HandlerFunc(route))
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           http.HandlerFunc(route),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 func route(w http.ResponseWriter, r *http.Request) {
