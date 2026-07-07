@@ -87,9 +87,10 @@ platform in the browser:
 | `skiff down <app>` | stop + remove |
 | `skiff sync` | prune orphans / dead entries |
 | `skiff proxy` | local `*.localhost` router |
-| `skiff panel` | run the web console |
-| `skiff server setup <user@host>` | install Docker on a fresh server over SSH |
-| `skiff router` | edge router — subdomain routing + automatic HTTPS |
+| `skiff server setup <user@host>` | bootstrap Docker on a fresh box over SSH |
+
+The control plane itself — the web console (`skiff panel`) and edge router
+(`skiff router`) — is normally run for you by the [server installer](#run-it-on-your-own-server).
 
 ## skiff.toml
 
@@ -120,13 +121,21 @@ A `.env` file next to `skiff.toml` is loaded too.
 
 Every deploy builds the new version, health-checks it, atomically cuts traffic over, then drains and retires the old one. If the new version never becomes healthy, it rolls back and the old one keeps serving.
 
-## Deploy to your own server
+## Run it on your own server
 
-`skiff server setup user@host` installs Docker on a fresh box; from there Skiff
-deploys to it over SSH, and the router serves your apps at real domains with
-automatic HTTPS. The full walkthrough — running the console, GitHub, databases,
-and domains on your server — is in the
+One command on a fresh Ubuntu/Debian box sets up the whole platform — Docker, the
+edge router (`:80`/`:443` with automatic HTTPS), and the web console:
+
+```bash
+curl -fsSL https://useskiff.xyz/install | sh -s -- --domain example.com
+```
+
+Point `*.example.com` at the box, open `https://dash.example.com`, and log in with
+the setup key it prints. The full walkthrough is in the
 [self-hosting guide](https://useskiff.xyz/docs/self-hosting).
+
+Prefer the CLI? `skiff server setup user@host` bootstraps Docker on a box so you
+can `skiff deploy` to it over SSH.
 
 ## Contributing
 
