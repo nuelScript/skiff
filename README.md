@@ -16,23 +16,35 @@ $ skiff deploy
   ✓ Live at http://myapp.localhost:8080  (2.4s)
 ```
 
-## Quickstart
+## Install
 
-You need Docker running.
+macOS / Linux:
 
 ```bash
-git clone https://github.com/nuelScript/skiff
-cd skiff
-go build -o skiff .
-
-# one terminal — the local router for *.localhost
-./skiff proxy
-
-# another — deploy the example, then open http://node-hello.localhost:8080
-./skiff deploy -c examples/node-hello/skiff.toml
+curl -fsSL https://useskiff.xyz/cli | sh
 ```
 
-To deploy your own app: `cd` into it, run `skiff init`, then `skiff deploy`.
+Or with Go (any platform): `go install github.com/nuelScript/skiff@latest`.
+
+You'll need Docker running to build and deploy apps.
+
+## Quickstart
+
+In your app's directory:
+
+```bash
+skiff proxy      # once, in its own terminal — the local *.localhost router
+skiff init       # scaffold a skiff.toml
+skiff deploy     # build + run → http://<app>.localhost:8080
+```
+
+Then `skiff open <app>` opens it. Want to try it without an app of your own? Clone
+the repo and deploy an example:
+
+```bash
+git clone https://github.com/nuelScript/skiff && cd skiff
+go build -o skiff . && ./skiff deploy -c examples/node-hello/skiff.toml
+```
 
 ## What it builds
 

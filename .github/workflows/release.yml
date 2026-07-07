@@ -35,20 +35,22 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Cross-compile Linux binaries
+      - name: Cross-compile binaries
         env:
           CGO_ENABLED: "0"
-          GOOS: linux
         run: |
           LDFLAGS="-s -w -X 'github.com/nuelScript/skiff/cmd.version=${{ github.ref_name }}'"
-          GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o skiff-linux-amd64 .
-          GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o skiff-linux-arm64 .
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            echo "→ building skiff-$os-$arch"
+            GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="$LDFLAGS" -o "skiff-$os-$arch" .
+          done
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            skiff-linux-amd64 skiff-linux-arm64 \
+            skiff-linux-amd64 skiff-linux-arm64 skiff-darwin-amd64 skiff-darwin-arm64 \
             --title "${{ github.ref_name }}" \
             --generate-notes
