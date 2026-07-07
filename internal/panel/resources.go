@@ -292,7 +292,7 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp.Series = make([]resourcesSeries, 0, rangeMins)
+	resp.Series = make([]resourcesSeries, 0, int((nowT-startT)/bucketSecs+1))
 	for t := startT; t <= nowT; t += bucketSecs {
 		s := resourcesSeries{T: t}
 		if a := buckets[t]; a != nil && a.n > 0 {

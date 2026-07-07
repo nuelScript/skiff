@@ -175,6 +175,10 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	for sc.Scan() {
 		logln(sc.Text())
 	}
+	// Drain any remainder (e.g. a log line past the scanner's 1 MB cap, which stops
+	// Scan early) so the child can't block writing to a full pipe and wedge the
+	// build until the deadline.
+	_, _ = io.Copy(io.Discard, pr)
 	if e := <-errc; e != nil {
 		finish("✗ deploy failed")
 		return
@@ -235,6 +239,10 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	for sc.Scan() {
 		logln(sc.Text())
 	}
+	// Drain any remainder (e.g. a log line past the scanner's 1 MB cap, which stops
+	// Scan early) so the child can't block writing to a full pipe and wedge the
+	// build until the deadline.
+	_, _ = io.Copy(io.Discard, pr)
 	if e := <-errc; e != nil {
 		if superseded() {
 			logln("✗ superseded by a newer deploy")

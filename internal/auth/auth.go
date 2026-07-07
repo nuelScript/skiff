@@ -54,7 +54,9 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) HasUsers() bool {
 	var n int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+		return true // fail closed: a DB error must not re-open the first-run setup path
+	}
 	return n > 0
 }
 
