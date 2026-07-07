@@ -372,10 +372,11 @@ func b2i(b bool) int {
 	return 0
 }
 
-func putSession(token, userID, teamID string) {
-	_, _ = sqlDB.Exec(
+func putSession(token, userID, teamID string) error {
+	_, err := sqlDB.Exec(
 		`INSERT INTO sessions(token,user_id,team_id,created) VALUES(?,?,?,?)`,
 		token, userID, teamID, time.Now().Unix())
+	return err
 }
 
 // sessionMaxAge bounds how long a session stays valid regardless of use, so a

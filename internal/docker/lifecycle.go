@@ -1,13 +1,9 @@
 package docker
 
-import (
-	"fmt"
-)
-
 func (e *Engine) Stop(container string) error {
 	out, err := e.command("stop", container).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", firstLine(out))
+		return cmdErr(out, err)
 	}
 	return nil
 }
@@ -15,7 +11,7 @@ func (e *Engine) Stop(container string) error {
 func (e *Engine) Remove(name string) error {
 	out, err := e.command("rm", "-f", name).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", firstLine(out))
+		return cmdErr(out, err)
 	}
 	return nil
 }
@@ -25,7 +21,7 @@ func (e *Engine) Remove(name string) error {
 func (e *Engine) Tag(src, dst string) error {
 	out, err := e.command("tag", src, dst).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", firstLine(out))
+		return cmdErr(out, err)
 	}
 	return nil
 }

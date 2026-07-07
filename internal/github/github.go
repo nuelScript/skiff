@@ -203,11 +203,18 @@ func (c *Config) ListRepos() ([]Repo, error) {
 		if err != nil {
 			return nil, err
 		}
+		if resp.StatusCode >= 300 {
+			resp.Body.Close()
+			return nil, fmt.Errorf("listing repositories: github returned %s", resp.Status)
+		}
 		var out struct {
 			Repositories []Repo `json:"repositories"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&out)
+		err = json.NewDecoder(resp.Body).Decode(&out)
 		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("listing repositories: %w", err)
+		}
 		repos = append(repos, out.Repositories...)
 		if len(out.Repositories) < 100 {
 			break

@@ -63,7 +63,10 @@ func (p *Panel) handleSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	p.setSession(w, u.ID, team.ID)
+	if err := p.setSession(w, u.ID, team.ID); err != nil {
+		http.Error(w, "could not create session", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -90,7 +93,10 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if teams := p.auth.TeamsForUser(u.ID); len(teams) > 0 {
 		teamID = teams[0].ID
 	}
-	p.setSession(w, u.ID, teamID)
+	if err := p.setSession(w, u.ID, teamID); err != nil {
+		http.Error(w, "could not create session", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -132,7 +138,10 @@ func (p *Panel) handleAccept(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	p.setSession(w, user.ID, team.ID)
+	if err := p.setSession(w, user.ID, team.ID); err != nil {
+		http.Error(w, "could not create session", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

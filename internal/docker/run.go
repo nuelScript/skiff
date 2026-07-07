@@ -83,7 +83,7 @@ func (e *Engine) RunWorker(s WorkerSpec) error {
 	}
 	args = append(args, s.Image, "sh", "-c", s.Command)
 	if out, err := e.command(args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("%s", firstLine(out))
+		return cmdErr(out, err)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (e *Engine) EnsureNetwork(name string) error {
 func (e *Engine) ConnectNetwork(network, container string) error {
 	out, err := e.command("network", "connect", network, container).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", firstLine(out))
+		return cmdErr(out, err)
 	}
 	return nil
 }

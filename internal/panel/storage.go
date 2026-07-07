@@ -177,7 +177,7 @@ func (p *Panel) createBucket(team, name string) (bucketRow, error) {
 		_ = p.eng.Stop(container)
 		_ = p.eng.Remove(container)
 		_ = p.eng.RemoveVolume(container + "-data")
-		return bucketRow{}, fmt.Errorf("bucket didn't come up: %v", err)
+		return bucketRow{}, fmt.Errorf("bucket didn't come up: %w", err)
 	}
 
 	b := bucketRow{

@@ -192,9 +192,15 @@ func (p *Panel) session(r *http.Request) (sess, bool) {
 	return getSession(c.Value)
 }
 
-func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) {
+// setSession persists a new session and sets its cookie. It returns an error
+// (and sets no cookie) if the session couldn't be stored, so a caller never hands
+// the browser a session cookie with no backing row — which would look logged-in
+// but 401 on the next request.
+func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) error {
 	tok := randToken()
-	putSession(tok, userID, teamID)
+	if err := putSession(tok, userID, teamID); err != nil {
+		return err
+	}
 	// SameSite=Strict is the CSRF defense: the browser won't attach the session
 	// to any cross-site request, so a crafted link can't trigger a deploy. The SPA
 	// is same-origin so its own API calls still carry it. Secure in production
@@ -204,6 +210,7 @@ func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) {
 		SameSite: http.SameSiteStrictMode,
 		Secure:   p.domain != "" && p.domain != "localhost",
 	})
+	return nil
 }
 
 // teamID returns the caller's active team.
