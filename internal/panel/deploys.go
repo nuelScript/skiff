@@ -285,9 +285,20 @@ func (p *Panel) tailLog(w http.ResponseWriter, r *http.Request, app, id string) 
 	}
 }
 
+// controlPlaneApp is the pseudo-app Skiff records its own self-deploys under. It
+// has no source/team, so it's box infrastructure any signed-in user may inspect.
+const controlPlaneApp = "panel"
+
+// canViewDeploys gates the deploy history/log endpoints: the control plane is
+// visible to any signed-in user (these handlers are already session-gated);
+// every real app is team-scoped.
+func (p *Panel) canViewDeploys(r *http.Request, app string) bool {
+	return app == controlPlaneApp || p.canAccess(r, app)
+}
+
 func (p *Panel) handleDeployLog(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
-	if !p.canAccess(r, app) {
+	if !p.canViewDeploys(r, app) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -300,9 +311,14 @@ func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
 	w.Header().Set("Content-Type", "application/json")
 	if app == "" {
-		// The global feed, scoped to the caller's team — never other teams' builds.
+		// The global feed: this team's builds plus the control plane's own — never
+		// another team's builds.
 		out := []Deploy{}
 		for _, d := range allDeploys() {
+			if d.App == controlPlaneApp {
+				out = append(out, d)
+				continue
+			}
 			if src, ok := getSource(d.App); ok && src.Team == team {
 				out = append(out, d)
 			}
@@ -310,7 +326,7 @@ func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(out)
 		return
 	}
-	if !p.canAccess(r, app) {
+	if !p.canViewDeploys(r, app) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

@@ -59,8 +59,9 @@ func TestDeployFeedTeamScoped(t *testing.T) {
 	}
 	putSource(Source{App: "mine", Team: team.ID, Port: "3000"})
 	putSource(Source{App: "theirs", Team: "other", Port: "3000"})
-	addDeploy(Deploy{ID: "d1", App: "mine", Status: "live", Started: 2})
-	addDeploy(Deploy{ID: "d2", App: "theirs", Status: "live", Started: 1})
+	addDeploy(Deploy{ID: "d1", App: "mine", Status: "live", Started: 3})
+	addDeploy(Deploy{ID: "d2", App: "theirs", Status: "live", Started: 2})
+	addDeploy(Deploy{ID: "d3", App: "panel", Status: "live", Started: 1})
 	putSession("s", u.ID, team.ID)
 
 	p := &Panel{auth: store}
@@ -71,6 +72,15 @@ func TestDeployFeedTeamScoped(t *testing.T) {
 
 	body := w.Body.String()
 	if !strings.Contains(body, "mine") || strings.Contains(body, "theirs") {
-		t.Fatalf("deploy feed leaked another team's builds: %s", body)
+		t.Fatalf("deploy feed leaked another team's builds or dropped ours: %s", body)
+	}
+	if !strings.Contains(body, "panel") {
+		t.Fatalf("deploy feed hid the control plane: %s", body)
+	}
+	if !p.canViewDeploys(req, "panel") {
+		t.Fatal("control plane (panel) deploys wrongly forbidden")
+	}
+	if p.canViewDeploys(req, "theirs") {
+		t.Fatal("another team's deploys wrongly allowed")
 	}
 }
