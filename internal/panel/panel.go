@@ -269,8 +269,22 @@ func cloneError(b []byte) string {
 	return msg
 }
 
-func randToken() string {
-	b := make([]byte, 18)
+// prewarmImages pulls any of the given images that aren't present yet, so the
+// first provision needing one doesn't stall on the download.
+func (p *Panel) prewarmImages(images ...string) {
+	for _, img := range images {
+		if !p.eng.ImageExists(img) {
+			_ = p.eng.PullImage(img)
+		}
+	}
+}
+
+// randHex returns n cryptographically-random bytes as a hex string — the shared
+// primitive behind session tokens, deploy IDs, API tokens, and replica suffixes.
+func randHex(n int) string {
+	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+func randToken() string { return randHex(18) }

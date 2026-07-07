@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -29,9 +28,7 @@ func hashToken(tok string) string {
 }
 
 func newAPIToken() string {
-	b := make([]byte, 24)
-	_, _ = rand.Read(b)
-	return "skiff_" + hex.EncodeToString(b)
+	return "skiff_" + randHex(24)
 }
 
 func createToken(team, name string) (APIToken, error) {
@@ -87,6 +84,10 @@ func resolveToken(tok string) (team, name string, ok bool) {
 
 func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
+	if team == "" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, listTokens(team))

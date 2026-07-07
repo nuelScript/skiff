@@ -1,8 +1,6 @@
 package panel
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"math"
@@ -261,8 +259,4 @@ func healthPoll(hostPort int, timeout time.Duration) bool {
 	return false
 }
 
-func replicaSuffix() string {
-	b := make([]byte, 3)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
+func replicaSuffix() string { return randHex(3) }

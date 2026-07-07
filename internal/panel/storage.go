@@ -192,11 +192,7 @@ func (p *Panel) makeBucket(net, container, key, secret, bucket string) error {
 
 // prewarmStorageImages pulls the MinIO images so the first bucket doesn't stall.
 func (p *Panel) prewarmStorageImages() {
-	for _, img := range []string{minioImage, mcImage} {
-		if !p.eng.ImageExists(img) {
-			_ = p.eng.PullImage(img)
-		}
-	}
+	p.prewarmImages(minioImage, mcImage)
 }
 
 func (p *Panel) handleStorage(w http.ResponseWriter, r *http.Request) {

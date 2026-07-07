@@ -319,11 +319,11 @@ func writeJSON(w http.ResponseWriter, v any) {
 // prewarmDatabaseImages pulls any missing engine images so the first provision
 // of a large image (MySQL, MongoDB) doesn't stall the create request.
 func (p *Panel) prewarmDatabaseImages() {
+	imgs := make([]string, 0, len(dbEngines))
 	for _, e := range dbEngines {
-		if !p.eng.ImageExists(e.image) {
-			_ = p.eng.PullImage(e.image)
-		}
+		imgs = append(imgs, e.image)
 	}
+	p.prewarmImages(imgs...)
 }
 
 func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {

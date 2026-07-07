@@ -3,8 +3,6 @@ package panel
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -346,9 +344,7 @@ func readLogLines(path string) []string {
 }
 
 func newDeployID() string {
-	b := make([]byte, 3)
-	_, _ = rand.Read(b)
-	return fmt.Sprintf("%d-%s", time.Now().Unix(), hex.EncodeToString(b))
+	return fmt.Sprintf("%d-%s", time.Now().Unix(), randHex(3))
 }
 
 func shortCommit(c string) string {
