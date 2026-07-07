@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
+	"syscall"
 )
 
 type App struct {
@@ -81,25 +83,54 @@ func save(apps map[string]App) error {
 	return os.Rename(tmp, f)
 }
 
-func Put(a App) error {
+// mu serializes registry mutations across in-process goroutines; the file lock
+// (below) additionally serializes against the `skiff deploy`/`rollback`
+// subprocesses that write the same apps.json.
+var mu sync.Mutex
+
+// Update runs fn against the current registry under an exclusive lock (process
+// mutex + an flock on apps.lock) and persists the result — the only safe way to
+// read-modify-write, since deploy, autoscale, and teardown mutate concurrently
+// from several goroutines and separate OS processes.
+func Update(fn func(apps map[string]App)) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	d, err := dir()
+	if err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(d, "apps.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
 	apps, err := Load()
 	if err != nil {
 		return err
 	}
-	apps[a.Name] = a
+	fn(apps)
 	return save(apps)
 }
 
+func Put(a App) error {
+	return Update(func(apps map[string]App) { apps[a.Name] = a })
+}
+
 func Delete(name string) (bool, error) {
-	apps, err := Load()
-	if err != nil {
-		return false, err
-	}
-	if _, ok := apps[name]; !ok {
-		return false, nil
-	}
-	delete(apps, name)
-	return true, save(apps)
+	existed := false
+	err := Update(func(apps map[string]App) {
+		if _, ok := apps[name]; ok {
+			existed = true
+			delete(apps, name)
+		}
+	})
+	return existed, err
 }
 
 func List() ([]App, error) {

@@ -168,22 +168,22 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 			_ = p.eng.Remove(container)
 			break
 		}
-		// Re-load per replica so a concurrent deploy's write isn't clobbered.
-		fresh, err := registry.Load()
-		if err != nil {
-			_ = p.eng.Remove(container)
-			break
-		}
-		a, ok := fresh[app.Name]
-		if !ok {
-			_ = p.eng.Remove(container) // app was torn down mid-scale
-			break
-		}
-		a.Replicas = append(a.Replicas, registry.Replica{Container: container, HostPort: hostPort})
-		if a.Container == "" {
-			a.Container, a.HostPort, a.Port = container, hostPort, app.Port
-		}
-		if registry.Put(a) != nil {
+		// Register the new replica atomically so a concurrent deploy's write isn't
+		// clobbered (the app may have been torn down mid-scale).
+		gone := false
+		regErr := registry.Update(func(apps map[string]registry.App) {
+			a, ok := apps[app.Name]
+			if !ok {
+				gone = true
+				return
+			}
+			a.Replicas = append(a.Replicas, registry.Replica{Container: container, HostPort: hostPort})
+			if a.Container == "" {
+				a.Container, a.HostPort, a.Port = container, hostPort, app.Port
+			}
+			apps[app.Name] = a
+		})
+		if gone || regErr != nil {
 			_ = p.eng.Remove(container)
 			break
 		}
@@ -193,7 +193,8 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 }
 
 // scaleDown retires up to count replicas (never the last one), draining each
-// gracefully and dropping it from the registry.
+// gracefully and dropping exactly those from the registry — re-read under the
+// lock so a deploy that lands during the (seconds-long) drain isn't clobbered.
 func (p *Panel) scaleDown(app string, count int) int {
 	fresh, err := registry.Load()
 	if err != nil {
@@ -203,20 +204,37 @@ func (p *Panel) scaleDown(app string, count int) int {
 	if !ok {
 		return 0
 	}
-	removed := 0
-	for i := 0; i < count && len(a.Replicas) > 1; i++ {
-		last := a.Replicas[len(a.Replicas)-1]
+	retire := map[string]bool{}
+	reps := a.Replicas
+	for i := 0; i < count && len(reps) > 1; i++ {
+		last := reps[len(reps)-1]
 		_ = p.eng.Stop(last.Container) // SIGTERM drains in-flight before removal
 		_ = p.eng.Remove(last.Container)
-		a.Replicas = a.Replicas[:len(a.Replicas)-1]
-		removed++
+		retire[last.Container] = true
+		reps = reps[:len(reps)-1]
 	}
-	if removed == 0 {
+	if len(retire) == 0 {
 		return 0
 	}
-	a.Container, a.HostPort = a.Replicas[0].Container, a.Replicas[0].HostPort
-	_ = registry.Put(a)
-	return removed
+	_ = registry.Update(func(apps map[string]registry.App) {
+		b, ok := apps[app]
+		if !ok {
+			return
+		}
+		kept := b.Replicas[:0]
+		for _, rp := range b.Replicas {
+			if !retire[rp.Container] {
+				kept = append(kept, rp)
+			}
+		}
+		if len(kept) == 0 {
+			return // nothing left to represent; leave the registry as-is
+		}
+		b.Replicas = kept
+		b.Container, b.HostPort = kept[0].Container, kept[0].HostPort
+		apps[app] = b
+	})
+	return len(retire)
 }
 
 // healthPoll returns true once the container answers HTTP on its host port (any

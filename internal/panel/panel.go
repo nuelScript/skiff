@@ -747,9 +747,11 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	apps, _ := registry.Load()
-	if app, ok := apps[name]; ok {
-		_ = p.eng.Remove(app.Container)
+	// Remove every container for the app — all replicas, not just the
+	// representative — or the leftovers keep serving at the app's URL (the router
+	// discovers backends by label) and hold their host ports.
+	for _, c := range p.eng.AppContainers(name) {
+		_ = p.eng.Remove(c)
 	}
 	for _, c := range p.eng.WorkerContainers(name) {
 		_ = p.eng.Remove(c)
