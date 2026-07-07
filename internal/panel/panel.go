@@ -171,7 +171,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/github/deploy", p.protected(p.handleGithubDeploy))
 	mux.HandleFunc("/api/github/hook", p.handleHook)
 	mux.Handle("/", p.spa())
-	return mux
+	return logRequests(mux)
 }
 
 func (p *Panel) protected(h http.HandlerFunc) http.HandlerFunc {
