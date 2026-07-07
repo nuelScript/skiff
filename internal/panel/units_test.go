@@ -10,12 +10,12 @@ func TestDesiredReplicas(t *testing.T) {
 		cpu, target      float64
 		min, max, expect int
 	}{
-		{0, 70, 1, 5, 1},      // idle → floor
-		{180, 50, 1, 5, 4},    // ceil(180/50)=4
-		{500, 50, 1, 3, 3},    // clamp to max
-		{40, 70, 2, 5, 2},     // below target but min floor
-		{71, 70, 1, 5, 2},     // just over one replica's worth
-		{140, 70, 1, 5, 2},    // exactly two
+		{0, 70, 1, 5, 1},   // idle → floor
+		{180, 50, 1, 5, 4}, // ceil(180/50)=4
+		{500, 50, 1, 3, 3}, // clamp to max
+		{40, 70, 2, 5, 2},  // below target but min floor
+		{71, 70, 1, 5, 2},  // just over one replica's worth
+		{140, 70, 1, 5, 2}, // exactly two
 	}
 	for _, c := range cases {
 		if got := desiredReplicas(c.cpu, c.target, c.min, c.max); got != c.expect {
@@ -42,11 +42,11 @@ func TestScaleBounds(t *testing.T) {
 
 func TestSanitizeName(t *testing.T) {
 	cases := map[string]string{
-		"My-App":        "my-app",
-		"UPPER_case!":   "uppercase",
-		"  spaced  ":    "spaced",
-		"a/b\\c":        "abc",
-		"keep-123":      "keep-123",
+		"My-App":      "my-app",
+		"UPPER_case!": "uppercase",
+		"  spaced  ":  "spaced",
+		"a/b\\c":      "abc",
+		"keep-123":    "keep-123",
 	}
 	for in, want := range cases {
 		if got := sanitizeName(in); got != want {

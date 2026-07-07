@@ -81,7 +81,7 @@ type apiApp struct {
 func (p *Panel) apiAppView(a registry.App, src Source) apiApp {
 	v := apiApp{
 		Name: a.Name, State: p.eng.State(a.Container),
-		URL: "https://" + a.Name + "." + p.domain,
+		URL:  "https://" + a.Name + "." + p.domain,
 		Repo: src.Repo, Branch: src.Branch,
 		Replicas: src.Replicas, Running: len(a.Replicas), Autoscale: src.Autoscale,
 	}

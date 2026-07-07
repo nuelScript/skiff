@@ -165,8 +165,8 @@ func (p *Panel) createBucket(team, name string) (bucketRow, error) {
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: container, Image: minioImage, Network: net,
 		Volume: container + "-data", MountAt: "/data",
-		Env: map[string]string{"MINIO_ROOT_USER": accessKey, "MINIO_ROOT_PASSWORD": secretKey},
-		Cmd: []string{"server", "/data", "--console-address", ":9001"},
+		Env:    map[string]string{"MINIO_ROOT_USER": accessKey, "MINIO_ROOT_PASSWORD": secretKey},
+		Cmd:    []string{"server", "/data", "--console-address", ":9001"},
 		Labels: map[string]string{"skiff.kind": "storage", "skiff.bucket": id, "skiff.team": team},
 		Port:   9000,
 	}); err != nil {

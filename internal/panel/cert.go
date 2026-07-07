@@ -50,11 +50,11 @@ func ensureServerCert() (string, error) {
 		return "", err
 	}
 	tmpl := x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "skiff-db", Organization: []string{"Skiff"}},
-		DNSNames:              []string{"skiff-db"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "skiff-db", Organization: []string{"Skiff"}},
+		DNSNames:     []string{"skiff-db"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().AddDate(10, 0, 0),
 		// Self-signed and marked as a CA so it's its own chain of trust — MongoDB
 		// refuses to serve TLS otherwise (SERVER-72839).
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,

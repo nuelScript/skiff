@@ -1,4 +1,4 @@
-.PHONY: test vet build dash install
+.PHONY: test vet lint fmt fmt-check build dash install
 
 # Run the Go test suite.
 test:
@@ -6,6 +6,20 @@ test:
 
 vet:
 	go vet ./...
+
+# Lint with golangci-lint (config in .golangci.yml). Install:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+lint:
+	golangci-lint run
+
+# Format all Go sources in place.
+fmt:
+	gofmt -w .
+
+# Fail if anything isn't gofmt-clean (used in CI).
+fmt-check:
+	@out=$$(gofmt -l . | grep -v '^\.agents/' || true); \
+	if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 # Build the CLI (uses the already-embedded dashboard).
 build:

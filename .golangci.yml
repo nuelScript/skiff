@@ -1,0 +1,21 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+# The standard set (errcheck, govet, ineffassign, staticcheck, unused) plus a few
+# high-signal extras. errcheck honours explicit `_ =` discards, which the codebase
+# uses deliberately for best-effort cleanup/telemetry writes.
+linters:
+  enable:
+    - misspell
+    - unconvert
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

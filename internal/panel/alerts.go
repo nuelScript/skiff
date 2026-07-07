@@ -306,7 +306,7 @@ func (p *Panel) checkHealth() {
 				st = "missing"
 			}
 			go dispatchAlert(alertEvent{Team: src.Team, Kind: "app.unhealthy", App: name,
-				Title: "App down: " + name,
+				Title:  "App down: " + name,
 				Detail: "No running container (state: " + st + ")."})
 		}
 	}
@@ -342,7 +342,7 @@ func (p *Panel) checkErrorSpikes() {
 		}
 		spikeLast[app] = now
 		go dispatchAlert(alertEvent{Team: src.Team, Kind: "error.spike", App: app,
-			Title: "5xx spike: " + app,
+			Title:  "5xx spike: " + app,
 			Detail: fmt.Sprintf("%d server errors in 5 min — %.0f%% of %d requests.", s5, rate*100, req)})
 	}
 }

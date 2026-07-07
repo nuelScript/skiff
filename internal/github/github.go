@@ -62,7 +62,7 @@ func (c *Config) Save() error {
 }
 
 func (c *Config) Configured() bool { return c != nil && c.ID != 0 }
-func (c *Config) Installed() bool   { return c != nil && c.InstallationID != 0 }
+func (c *Config) Installed() bool  { return c != nil && c.InstallationID != 0 }
 
 func (c *Config) InstallURL() string {
 	return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.Slug)

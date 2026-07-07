@@ -19,10 +19,10 @@ import (
 // (e.g. self-update) doesn't lose recent history.
 
 const (
-	resWindowSecs int64 = 24 * 60 * 60
-	resBucketSecs int64 = 60
-	resSampleEvery      = 10 * time.Second // frequent enough to catch short-lived load between ticks
-	resSettle           = 12 * time.Second // let the box settle before the first sample
+	resWindowSecs  int64 = 24 * 60 * 60
+	resBucketSecs  int64 = 60
+	resSampleEvery       = 10 * time.Second // frequent enough to catch short-lived load between ticks
+	resSettle            = 12 * time.Second // let the box settle before the first sample
 )
 
 // resBucket is one minute of resource use for an app, summed across replicas and

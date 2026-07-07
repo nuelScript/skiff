@@ -11,18 +11,18 @@ import (
 // Source is a deployable app's git origin (per team), so a webhook or redeploy
 // can rebuild it without the user re-entering anything.
 type Source struct {
-	App      string `json:"app"`
-	Team     string `json:"team"`
-	Repo     string `json:"repo"` // owner/name
-	Branch   string `json:"branch"`
-	RootDir  string `json:"rootDir"` // subdirectory to build (monorepos)
-	Port     string `json:"port"`
-	CloneURL string `json:"cloneUrl"`
-	Auto     bool   `json:"auto"`
-	Parent   string `json:"parent,omitempty"`      // set on preview environments: the production app they branch from
-	PreviewAuto bool `json:"previewAuto,omitempty"` // auto-create a preview for pushes to other branches
-	Replicas int    `json:"replicas,omitempty"`    // identical containers to run behind the router (default 1)
-	Release  string `json:"release,omitempty"`     // command run once (e.g. migrations) before each release goes live
+	App         string `json:"app"`
+	Team        string `json:"team"`
+	Repo        string `json:"repo"` // owner/name
+	Branch      string `json:"branch"`
+	RootDir     string `json:"rootDir"` // subdirectory to build (monorepos)
+	Port        string `json:"port"`
+	CloneURL    string `json:"cloneUrl"`
+	Auto        bool   `json:"auto"`
+	Parent      string `json:"parent,omitempty"`      // set on preview environments: the production app they branch from
+	PreviewAuto bool   `json:"previewAuto,omitempty"` // auto-create a preview for pushes to other branches
+	Replicas    int    `json:"replicas,omitempty"`    // identical containers to run behind the router (default 1)
+	Release     string `json:"release,omitempty"`     // command run once (e.g. migrations) before each release goes live
 	// Autoscaling: when on, the panel adds/retires replicas to hold each one near
 	// ScaleCPU (percent of one core), bounded by ScaleMin..ScaleMax.
 	Autoscale bool `json:"autoscale,omitempty"`
