@@ -29,6 +29,12 @@ var (
 	inflight   = map[string]inflightBuild{}
 )
 
+// deployDeadline bounds the whole panel-side pipeline (clone + build + release).
+// It sits well above the inner build's own 15-minute cap so it only ever fires
+// on a genuine hang — a stalled clone or a wedged daemon — freeing the in-flight
+// slot instead of leaving a deploy stuck "building" forever.
+const deployDeadline = 30 * time.Minute
+
 // cancelInflight cancels the app's in-flight build if one is running (matching
 // id when given). The build's own runDeploy then records it as "canceled".
 func cancelInflight(app, id string) bool {
@@ -47,7 +53,7 @@ func cancelInflight(app, id string) bool {
 // subprocess, a predicate that's true once this build was itself superseded, and
 // a cleanup to defer.
 func beginBuild(app, id string) (context.Context, func() bool, func()) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), deployDeadline)
 	inflightMu.Lock()
 	if prev, ok := inflight[app]; ok {
 		prev.cancel()
