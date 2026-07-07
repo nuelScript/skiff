@@ -1,3 +1,5 @@
+import { queryKeys } from '@/constants/query-keys'
+import { fmtBytes } from '@/lib/format'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -389,12 +391,6 @@ function fmtDate(t: number) {
   })
 }
 
-function fmtBytes(b: number): string {
-  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + ' MB'
-  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + ' kB'
-  return b + ' B'
-}
-
 function BackupsDialog({
   db,
   open,
@@ -409,11 +405,11 @@ function BackupsDialog({
   const [error, setError] = useState('')
   const confirm = useConfirm()
   const { data: backups = [], isLoading } = useQuery<Backup[]>({
-    queryKey: ['backups', db.id],
+    queryKey: queryKeys.backups(db.id),
     queryFn: () => databasesService.listBackups(db.id),
     enabled: open,
   })
-  const reload = () => qc.invalidateQueries({ queryKey: ['backups', db.id] })
+  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.backups(db.id) })
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setError('')

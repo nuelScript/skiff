@@ -7,14 +7,7 @@ import { useConsole } from '@/hooks/use-console'
 import { deploysService, type Deploy } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { Drawer } from '@/components/drawer'
-
-function rel(unix: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
-  if (s < 60) return s + 's ago'
-  if (s < 3600) return Math.floor(s / 60) + 'm ago'
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
-  return Math.floor(s / 86400) + 'd ago'
-}
+import { relTime } from '@/lib/format'
 
 const deployDot = (status: string): string =>
   status === 'live'
@@ -159,7 +152,7 @@ export default function DeploymentsPage() {
                   {d.trigger}
                 </span>
                 <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
-                  {rel(d.started)}
+                  {relTime(d.started)}
                 </span>
               </button>
 

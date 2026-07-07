@@ -1,15 +1,8 @@
+import { relTime } from '@/lib/format'
 import { GitBranch, History, ScrollText } from 'lucide-react'
 import type { SystemInfo } from '@/services/api.service'
 import { Button } from '@/components/ui/button'
 import { LogoMark } from '@/components/logo'
-
-function rel(unix: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
-  if (s < 60) return s + 's ago'
-  if (s < 3600) return Math.floor(s / 60) + 'm ago'
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
-  return Math.floor(s / 86400) + 'd ago'
-}
 
 const deployDot = (status: string): string =>
   status === 'live'
@@ -74,7 +67,7 @@ export function ControlPlaneCard({
           <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + deployDot(latest.status)} />
           <span className="text-foreground">{latest.commit || latest.status}</span>
           <span className="text-muted-foreground truncate">
-            {latest.trigger} · {rel(latest.started)}
+            {latest.trigger} · {relTime(latest.started)}
           </span>
         </div>
       ) : (

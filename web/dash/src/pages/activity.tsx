@@ -1,3 +1,4 @@
+import { relTime } from '@/lib/format'
 import type { ComponentType } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -17,14 +18,6 @@ import {
 } from 'lucide-react'
 import { auditService, type AuditEntry } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
-
-function rel(unix: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
-  if (s < 60) return s + 's ago'
-  if (s < 3600) return Math.floor(s / 60) + 'm ago'
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
-  return Math.floor(s / 86400) + 'd ago'
-}
 
 type Kind = { icon: ComponentType<{ className?: string }>; verb: string; tone: string }
 
@@ -95,7 +88,7 @@ function Row({ e, last }: { e: AuditEntry; last: boolean }) {
         </p>
         {e.detail && <p className="text-muted-foreground mt-0.5 text-xs">{e.detail}</p>}
       </div>
-      <time className="text-muted-foreground shrink-0 text-xs tabular-nums">{rel(e.created)}</time>
+      <time className="text-muted-foreground shrink-0 text-xs tabular-nums">{relTime(e.created)}</time>
     </li>
   )
 }

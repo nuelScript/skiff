@@ -1,11 +1,5 @@
+import { fmtBytes } from '@/lib/format'
 import { useServer } from '@/hooks/use-server'
-
-function fmtBytes(b: number): string {
-  if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + ' GB'
-  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(0) + ' MB'
-  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + ' KB'
-  return b + ' B'
-}
 
 function fmtUptime(sec: number): string {
   if (!sec) return '—'

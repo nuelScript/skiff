@@ -1,3 +1,5 @@
+import { queryKeys } from '@/constants/query-keys'
+import { relTime } from '@/lib/format'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronRight, Cog, ExternalLink, GitBranch, Play, Plus, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
@@ -20,14 +22,6 @@ import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
 import { projectsService, type Job, type Preview, type Worker } from '@/services/api.service'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-
-function rel(unix: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix))
-  if (s < 60) return s + 's ago'
-  if (s < 3600) return Math.floor(s / 60) + 'm ago'
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago'
-  return Math.floor(s / 86400) + 'd ago'
-}
 
 const runningPill = (state: string): string =>
   state === 'running'
@@ -186,7 +180,7 @@ export default function ProjectDetailPage() {
                         <span className="font-mono text-sm">{latest.commit || '—'}</span>
                       )}
                       <span className="text-muted-foreground font-mono text-xs">
-                        on {project.branch || 'main'} · {latest.trigger} · {rel(latest.started)}
+                        on {project.branch || 'main'} · {latest.trigger} · {relTime(latest.started)}
                       </span>
                     </div>
                     {latest.message && <p className="text-foreground/90 text-sm">{latest.message}</p>}
@@ -271,7 +265,7 @@ export default function ProjectDetailPage() {
                       {d.trigger}
                     </span>
                     <span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-[11px]">
-                      {rel(d.started)}
+                      {relTime(d.started)}
                     </span>
                   </button>
                   {d.rollbackable && (
@@ -396,14 +390,14 @@ function JobsPanel({ app }: { app: string }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { data: jobs = [] } = useQuery<Job[]>({
-    queryKey: ['jobs', app],
+    queryKey: queryKeys.jobs(app),
     queryFn: () => projectsService.jobs(app),
   })
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState('')
   const [serverError, setServerError] = useState('')
   const [output, setOutput] = useState<{ id: string; ok: boolean; text: string } | null>(null)
-  const reload = () => qc.invalidateQueries({ queryKey: ['jobs', app] })
+  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.jobs(app) })
 
   const form = useForm<JobInput>({
     resolver: zodResolver(jobSchema),
@@ -552,7 +546,7 @@ function JobsPanel({ app }: { app: string }) {
                     last run{' '}
                     {j.lastRun ? (
                       <>
-                        {rel(j.lastRun)} ·{' '}
+                        {relTime(j.lastRun)} ·{' '}
                         <span className={j.lastOk ? 'text-emerald-300' : 'text-rose-300'}>
                           {j.lastOk ? 'ok' : 'failed'}
                         </span>
@@ -588,13 +582,13 @@ function WorkersPanel({ app }: { app: string }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { data: workers = [] } = useQuery<Worker[]>({
-    queryKey: ['workers', app],
+    queryKey: queryKeys.workers(app),
     queryFn: () => projectsService.workers(app),
     refetchInterval: 8000,
   })
   const [adding, setAdding] = useState(false)
   const [serverError, setServerError] = useState('')
-  const reload = () => qc.invalidateQueries({ queryKey: ['workers', app] })
+  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.workers(app) })
 
   const form = useForm<WorkerInput>({
     resolver: zodResolver(workerSchema),

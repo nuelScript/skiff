@@ -1,3 +1,4 @@
+import { fmtBytes } from '@/lib/format'
 import { useState } from 'react'
 import { Activity, Cpu } from 'lucide-react'
 import {
@@ -44,13 +45,6 @@ const fmtClock = (t: number) =>
   new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 const timeRange = (t: number, secs: number) => `${fmtClock(t)} – ${fmtClock(t + secs)}`
-
-function fmtBytes(b: number): string {
-  if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + 'GB'
-  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + 'MB'
-  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + 'kB'
-  return b + 'B'
-}
 
 // Small CPU values are real signal, not zero — keep two decimals under 1% so a
 // lightly-used app reads "0.12%" instead of a flat, misleading "0.0%".
