@@ -5,8 +5,10 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -36,8 +38,13 @@ func OpenAt(path string) (*sql.DB, error) {
 	}
 	// Idempotent migrations for databases created before a column existed.
 	// (CREATE TABLE IF NOT EXISTS won't add columns to a table that's already there.)
+	// Re-adding a column that's already present is the one expected failure; any
+	// other error means a genuinely broken migration and must surface loudly rather
+	// than leave the app running against a half-migrated schema.
 	for _, m := range migrations {
-		_, _ = d.Exec(m)
+		if _, err := d.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("migration %q: %w", m, err)
+		}
 	}
 	return d, nil
 }
