@@ -1,6 +1,6 @@
 # Skiff
 
-**Effortless deploys on your own server.** One small Go binary: point it at an app, it detects the stack, builds it, and runs it — on local Docker or a remote box over SSH. No cloud bill.
+**Ship it to a server you own.** Push-to-deploy with a web console, automatic HTTPS, managed databases, and preview environments — running on infrastructure you control, not rented. One small Go binary detects your stack, builds it, and runs it on Docker, local or over SSH.
 
 ```
 $ skiff deploy
@@ -36,17 +36,43 @@ To deploy your own app: `cd` into it, run `skiff init`, then `skiff deploy`.
 
 ## What it builds
 
-No Dockerfile required — Skiff detects the stack:
+No Dockerfile required — Skiff detects the stack and generates the build:
 
-| Stack | Detected by | Served |
-|---|---|---|
-| **Node.js** | `package.json` | `npm start`; framework-aware (Next, Vite, Astro, SvelteKit, Remix, Nuxt, …) → build + run |
-| **Python** | `requirements.txt` / `*.py` | entrypoint or a `Procfile` |
-| **Go** | `go.mod` | multi-stage → tiny image |
-| **PHP** | `index.php` | built-in server |
-| **Static** | `index.html` | tiny static server |
+| Stack | Detected by |
+|---|---|
+| **Node.js** | `package.json` — framework-aware (Next, Vite, Astro, SvelteKit, Remix, Nuxt, …) |
+| **Python** | `requirements.txt` / `*.py` |
+| **Go** | `go.mod` → multi-stage, tiny image |
+| **Rust** | `Cargo.toml` → multi-stage |
+| **Ruby** | `Gemfile` |
+| **Elixir** | `mix.exs` → `mix release` |
+| **Java** | Maven / Gradle |
+| **.NET** | `*.csproj` |
+| **PHP** | `index.php` |
+| **Static** | `index.html` |
 
-Have a `Dockerfile`? Skiff uses it instead — the escape hatch.
+Have a `Dockerfile`? Skiff uses it instead. Need to tweak a step? Set `[build]`
+commands in `skiff.toml` — the escape hatch short of a full Dockerfile.
+
+## The platform
+
+Run the web console with `skiff panel` (or set it up on a server) for the whole
+platform in the browser:
+
+- **Push-to-deploy** — connect GitHub and every push builds and ships, with
+  zero-downtime rollout and instant rollback.
+- **Preview environments** — every branch gets its own live URL and certificate.
+- **Managed databases** — Postgres, MySQL, MongoDB, and Redis, provisioned and
+  wired into your apps, with automatic daily backups.
+- **Object storage** — S3-compatible buckets.
+- **Custom domains + automatic HTTPS** — Let's Encrypt certificates, issued and
+  renewed for you.
+- **Autoscaling** — add and retire replicas to hold each app near a target CPU.
+- **Workers & cron** — long-running background processes and scheduled jobs.
+- **Alerts** — email, Slack, or webhook when a deploy fails, an app goes down, or
+  5xx errors spike.
+- **Teams, audit log, and API tokens** — collaborators, an activity trail, and a
+  token-authenticated API for CI.
 
 ## Commands
 
@@ -54,12 +80,16 @@ Have a `Dockerfile`? Skiff uses it instead — the escape hatch.
 |---|---|
 | `skiff init` | scaffold a `skiff.toml` |
 | `skiff deploy` | build + zero-downtime deploy |
-| `skiff proxy` | local `*.localhost` router |
-| `skiff status` | container state + health |
-| `skiff ls` | list apps |
-| `skiff logs [-f]` | app logs |
+| `skiff rollback` | instantly re-run a retained build, no rebuild |
+| `skiff open <app>` | open a deployed app's URL |
+| `skiff status` / `skiff ls` | app state + health / list apps |
+| `skiff logs [-f] <app>` | app logs |
 | `skiff down <app>` | stop + remove |
 | `skiff sync` | prune orphans / dead entries |
+| `skiff proxy` | local `*.localhost` router |
+| `skiff panel` | run the web console |
+| `skiff server setup <user@host>` | install Docker on a fresh server over SSH |
+| `skiff router` | edge router — subdomain routing + automatic HTTPS |
 
 ## skiff.toml
 
@@ -89,6 +119,14 @@ A `.env` file next to `skiff.toml` is loaded too.
 ## Zero-downtime
 
 Every deploy builds the new version, health-checks it, atomically cuts traffic over, then drains and retires the old one. If the new version never becomes healthy, it rolls back and the old one keeps serving.
+
+## Deploy to your own server
+
+`skiff server setup user@host` installs Docker on a fresh box; from there Skiff
+deploys to it over SSH, and the router serves your apps at real domains with
+automatic HTTPS. The full walkthrough — running the console, GitHub, databases,
+and domains on your server — is in the
+[self-hosting guide](https://useskiff.xyz/docs/self-hosting).
 
 ## Contributing
 
