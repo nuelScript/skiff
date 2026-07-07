@@ -131,7 +131,7 @@ func (p *Panel) apiDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := newDeployID()
-	recordAudit(apiTeam(r), apiActor(r), "deploy", name, "via api")
+	recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "deploy", Target: name, Detail: "via api"})
 	go p.runDeploy(src, "", "", "", "api", id)
 	apiJSON(w, http.StatusAccepted, map[string]string{"id": id, "app": name, "status": "building"})
 }
@@ -170,7 +170,7 @@ func (p *Panel) apiEnv(w http.ResponseWriter, r *http.Request) {
 			apiErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		recordAudit(apiTeam(r), apiActor(r), "env.update", name, "via api")
+		recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "env.update", Target: name, Detail: "via api"})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -53,5 +53,7 @@ func runRollback(configPath, image string, timeout time.Duration) error {
 	fmt.Println("  " + ui.Accent("Rolling back "+cfg.Name))
 	fmt.Println()
 
-	return releaseImage(eng, cfg, image, filepath.Dir(configPath), timeout, time.Now())
+	return releaseImage(eng, cfg, releaseSpec{
+		image: image, contextDir: filepath.Dir(configPath), timeout: timeout, start: time.Now(),
+	})
 }

@@ -20,15 +20,16 @@ type AuditEntry struct {
 	Created int64  `json:"created"`
 }
 
-// recordAudit appends an entry attributed to a named actor (use for system /
-// webhook actions that have no session, e.g. actor "push").
-func recordAudit(team, actor, action, target, detail string) {
+// recordAudit appends an entry to a team's trail (Actor/Action/Target/Detail of
+// the AuditEntry; ID/Created are ignored). Use for system / webhook actions that
+// have no session, e.g. actor "push".
+func recordAudit(team string, e AuditEntry) {
 	if team == "" || sqlDB == nil {
 		return
 	}
 	_, _ = sqlDB.Exec(
 		`INSERT INTO audit(team,actor,action,target,detail,created) VALUES(?,?,?,?,?,?)`,
-		team, actor, action, target, detail, time.Now().Unix())
+		team, e.Actor, e.Action, e.Target, e.Detail, time.Now().Unix())
 }
 
 // audit appends an entry attributed to the request's signed-in user.
@@ -43,7 +44,7 @@ func (p *Panel) audit(r *http.Request, action, target, detail string) {
 			actor = u.Name
 		}
 	}
-	recordAudit(s.teamID, actor, action, target, detail)
+	recordAudit(s.teamID, AuditEntry{Actor: actor, Action: action, Target: target, Detail: detail})
 }
 
 func teamAudit(team string, limit int) []AuditEntry {

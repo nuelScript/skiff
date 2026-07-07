@@ -96,35 +96,45 @@ func dispatchAlert(ev alertEvent) {
 
 // ---- channels ----
 
-func smtpConfig() (host, addr, user, pass, from string, ok bool) {
-	host = os.Getenv("SKIFF_SMTP_HOST")
-	from = os.Getenv("SKIFF_SMTP_FROM")
+type smtpSettings struct {
+	Host, Addr, User, Pass, From string
+}
+
+func smtpConfig() (smtpSettings, bool) {
+	host := os.Getenv("SKIFF_SMTP_HOST")
+	from := os.Getenv("SKIFF_SMTP_FROM")
 	if host == "" || from == "" {
-		return "", "", "", "", "", false
+		return smtpSettings{}, false
 	}
 	port := os.Getenv("SKIFF_SMTP_PORT")
 	if port == "" {
 		port = "587"
 	}
-	return host, host + ":" + port, os.Getenv("SKIFF_SMTP_USER"), os.Getenv("SKIFF_SMTP_PASS"), from, true
+	return smtpSettings{
+		Host: host,
+		Addr: host + ":" + port,
+		User: os.Getenv("SKIFF_SMTP_USER"),
+		Pass: os.Getenv("SKIFF_SMTP_PASS"),
+		From: from,
+	}, true
 }
 
 func sendEmail(to string, ev alertEvent) error {
-	host, addr, user, pass, from, ok := smtpConfig()
+	s, ok := smtpConfig()
 	if !ok {
 		return fmt.Errorf("email needs SMTP configured on the server (SKIFF_SMTP_*)")
 	}
 	var auth smtp.Auth
-	if user != "" {
-		auth = smtp.PlainAuth("", user, pass, host)
+	if s.User != "" {
+		auth = smtp.PlainAuth("", s.User, s.Pass, s.Host)
 	}
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "From: Skiff <%s>\r\n", from)
+	fmt.Fprintf(&b, "From: Skiff <%s>\r\n", s.From)
 	fmt.Fprintf(&b, "To: %s\r\n", to)
 	fmt.Fprintf(&b, "Subject: [Skiff] %s\r\n", ev.Title)
 	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n")
 	b.WriteString(ev.Detail + "\r\n")
-	return smtp.SendMail(addr, auth, from, []string{to}, b.Bytes())
+	return smtp.SendMail(s.Addr, auth, s.From, []string{to}, b.Bytes())
 }
 
 func postSlack(url string, ev alertEvent) error {
@@ -206,7 +216,7 @@ func (p *Panel) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		cfg := getAlerts(team)
-		_, _, _, _, _, smtpOK := smtpConfig()
+		_, smtpOK := smtpConfig()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(struct {
 			AlertConfig

@@ -118,7 +118,7 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 	}
 	ui.Done("Built " + image)
 
-	if err := releaseImage(eng, cfg, image, contextDir, timeout, start); err != nil {
+	if err := releaseImage(eng, cfg, releaseSpec{image: image, contextDir: contextDir, timeout: timeout, start: start}); err != nil {
 		return err
 	}
 
@@ -131,7 +131,18 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 // current one, waits for it to become healthy, atomically points the router at
 // it, and retires the previous version. Shared by `deploy` (after a build) and
 // `rollback` (re-running a retained image with no rebuild).
-func releaseImage(eng *docker.Engine, cfg *config.Config, image, contextDir string, timeout time.Duration, start time.Time) error {
+// releaseSpec is the per-release input to releaseImage: which image to release,
+// where its build context lives, the release-command timeout, and when the
+// deploy started (for the final "live in Ns" line).
+type releaseSpec struct {
+	image      string
+	contextDir string
+	timeout    time.Duration
+	start      time.Time
+}
+
+func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) error {
+	image, contextDir, timeout, start := spec.image, spec.contextDir, spec.timeout, spec.start
 	// Runtime env = build env + secrets. Secrets never bake into the image, so a
 	// rollback picks up the current secrets/env against the old code image.
 	buildEnv := cfg.Environment(contextDir)
