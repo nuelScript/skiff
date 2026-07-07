@@ -121,3 +121,10 @@ diff. Maintainers may squash-merge.
 
 Never file a public issue for a vulnerability. Follow the private disclosure
 process in [SECURITY.md](SECURITY.md).
+
+## License
+
+Skiff is dual-licensed under either [MIT](LICENSE-MIT) or
+[Apache-2.0](LICENSE-APACHE), at your option. Unless you state otherwise, any
+contribution you intentionally submit for inclusion in the project is
+dual-licensed as above, without any additional terms or conditions.

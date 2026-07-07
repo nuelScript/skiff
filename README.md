@@ -93,3 +93,7 @@ Every deploy builds the new version, health-checks it, atomically cuts traffic o
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and please follow our [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue? Report it privately per [SECURITY.md](SECURITY.md) — not in a public issue.
+
+## License
+
+Dual-licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

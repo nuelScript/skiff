@@ -12,7 +12,7 @@ Instead, report privately through either:
 
 - **GitHub Security Advisories** — on the repository, go to the **Security** tab
   → **Report a vulnerability** (preferred), or
-- **Email** — **igwee3333@gmail.com** with the subject `SECURITY: <short
+- **Email** — **ibiang.manuel@gmail.com** with the subject `SECURITY: <short
   description>`.
 
 Please include enough detail to reproduce:
