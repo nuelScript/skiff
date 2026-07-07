@@ -64,18 +64,23 @@ func (t *loginThrottle) ok(key string) {
 	delete(t.windows, key)
 }
 
-// clientIP is the caller's address. Behind Skiff's edge router the real client
-// IP arrives in X-Forwarded-For (the router replaces any client-supplied value,
-// so it can't be spoofed); otherwise fall back to the connection's remote addr.
+// clientIP is the caller's address. X-Forwarded-For is only trusted when the
+// direct peer is loopback — i.e. the request came through Skiff's edge router on
+// this box, which replaces any client-supplied XFF with the real client IP. A
+// non-loopback peer reaching the panel directly could forge XFF to dodge the
+// login lockout, so its real remote address is used instead.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		host = h
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if i := strings.IndexByte(xff, ','); i >= 0 {
+				return strings.TrimSpace(xff[:i])
+			}
+			return strings.TrimSpace(xff)
 		}
-		return strings.TrimSpace(xff)
 	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return host
 }

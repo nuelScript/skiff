@@ -22,9 +22,18 @@ func Open() (*sql.DB, error) {
 // OpenAt opens (creating if needed) a database at path with the schema and
 // migrations applied — so tests can stand up a real schema in a temp file.
 func OpenAt(path string) (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// The database holds session tokens, password + API-token hashes, and DB
+	// credentials, so keep it (and its WAL/SHM sidecars) private: a 0700 directory
+	// blocks other local users from even reading them, and the file itself is 0600.
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	_ = os.Chmod(dir, 0o700) // tighten a pre-existing dir created world-traversable
+	if f, err := os.OpenFile(path, os.O_CREATE, 0o600); err == nil {
+		_ = f.Close()
+	}
+	_ = os.Chmod(path, 0o600) // fix a pre-existing world-readable db file
 	dsn := "file:" + path +
 		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
 	d, err := sql.Open("sqlite", dsn)

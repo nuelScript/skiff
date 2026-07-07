@@ -119,11 +119,21 @@ func (p *Panel) handleAccept(w http.ResponseWriter, r *http.Request) {
 	}
 	var user auth.User
 	if existing, found := p.auth.UserByEmail(inv.Email); found {
+		// Accepting an invite for an existing account checks that account's
+		// password, so throttle it exactly like login — otherwise it's an
+		// unthrottled brute-force oracle for anyone holding an invite token.
+		ip := clientIP(r)
+		if loginLimiter.blocked(ip, time.Now()) {
+			http.Error(w, "too many attempts — try again later", http.StatusTooManyRequests)
+			return
+		}
 		u, valid := p.auth.Authenticate(inv.Email, body.Password)
 		if !valid {
+			loginLimiter.fail(ip, time.Now())
 			http.Error(w, "wrong password for "+existing.Email, http.StatusUnauthorized)
 			return
 		}
+		loginLimiter.ok(ip)
 		user = u
 	} else {
 		u, err := p.auth.CreateUserNoTeam(inv.Email, body.Name, body.Password)

@@ -43,7 +43,13 @@ type serverInfo struct {
 	Containers []containerStat `json:"containers"`
 }
 
-func (p *Panel) handleServer(w http.ResponseWriter, _ *http.Request) {
+func (p *Panel) handleServer(w http.ResponseWriter, r *http.Request) {
+	// The box view lists every container on the host (across teams), so it's for
+	// owners only — a member shouldn't be able to enumerate other teams' apps.
+	if !p.isOwner(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	host, _ := os.Hostname()
 	info := serverInfo{
 		Hostname:   host,
