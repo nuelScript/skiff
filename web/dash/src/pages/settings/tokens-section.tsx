@@ -7,6 +7,7 @@ import { queryKeys } from '@/constants/query-keys'
 import { errText } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/providers/confirm-provider'
+import { useCopy } from '@/hooks/use-copy'
 import { Section, inputCls } from './ui'
 
 export function TokensSection() {
@@ -19,7 +20,7 @@ export function TokensSection() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState<ApiToken | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy(1500)
   const [error, setError] = useState('')
 
   const create = async (e: FormEvent) => {
@@ -30,7 +31,6 @@ export function TokensSection() {
     try {
       const t = await tokensService.create(name.trim())
       setCreated(t)
-      setCopied(false)
       setName('')
       await qc.invalidateQueries({ queryKey: queryKeys.tokens })
     } catch (err) {
@@ -55,12 +55,6 @@ export function TokensSection() {
     qc.invalidateQueries({ queryKey: queryKeys.tokens })
   }
 
-  const copy = () => {
-    if (!created?.token) return
-    navigator.clipboard.writeText(created.token)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
 
   return (
     <Section
@@ -76,7 +70,12 @@ export function TokensSection() {
             <code className="min-w-0 flex-1 truncate rounded bg-black/40 px-2.5 py-1.5 font-mono text-xs">
               {created.token}
             </code>
-            <Button type="button" size="sm" variant="outline" onClick={copy}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => created?.token && copy(created.token)}
+            >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {copied ? 'Copied' : 'Copy'}
             </Button>

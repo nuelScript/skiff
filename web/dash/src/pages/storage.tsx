@@ -2,6 +2,8 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Boxes, Plus, Trash2, X, Copy, Check, Link2, Eye, EyeOff } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useStorage } from '@/hooks/use-storage'
+import { useCopy } from '@/hooks/use-copy'
+import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,9 +33,8 @@ export default function StoragePage() {
       await create(name.trim())
       setName('')
       setAdding(false)
-    } catch (err: unknown) {
-      const r = (err as { response?: { data?: string } })?.response?.data
-      setError(typeof r === 'string' && r ? r.trim() : 'Could not create that bucket.')
+    } catch (err) {
+      setError(errText(err, 'Could not create that bucket.'))
     } finally {
       setBusy(false)
     }
@@ -238,7 +239,7 @@ function BucketCard({
 
 function Detail({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [show, setShow] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const shown = secret && !show ? '•'.repeat(20) : value
   return (
     <div>
@@ -257,11 +258,7 @@ function Detail({ label, value, secret }: { label: string; value: string; secret
         )}
         <button
           type="button"
-          onClick={() => {
-            navigator.clipboard?.writeText(value)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
-          }}
+          onClick={() => copy(value)}
           className="text-muted-foreground hover:text-foreground shrink-0"
           title="Copy"
         >

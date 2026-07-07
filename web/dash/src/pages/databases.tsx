@@ -1,5 +1,7 @@
 import { queryKeys } from '@/constants/query-keys'
 import { fmtBytes } from '@/lib/format'
+import { errText } from '@/lib/errors'
+import { useCopy } from '@/hooks/use-copy'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -63,9 +65,8 @@ export default function DatabasesPage() {
       await create(engine, name.trim())
       setName('')
       setAdding(false)
-    } catch (err: unknown) {
-      const r = (err as { response?: { data?: string } })?.response?.data
-      setError(typeof r === 'string' && r ? r.trim() : 'Could not create that database.')
+    } catch (err) {
+      setError(errText(err, 'Could not create that database.'))
     } finally {
       setBusy(false)
     }
@@ -417,9 +418,8 @@ function BackupsDialog({
     try {
       await fn()
       reload()
-    } catch (err: unknown) {
-      const r = (err as { response?: { data?: string } })?.response?.data
-      setError(typeof r === 'string' && r ? r.trim() : 'Something went wrong.')
+    } catch (err) {
+      setError(errText(err, 'Something went wrong.'))
     } finally {
       setBusy('')
     }
@@ -529,15 +529,11 @@ function Toggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: ()
 }
 
 function Copyable({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   return (
     <button
       type="button"
-      onClick={() => {
-        navigator.clipboard?.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
-      }}
+      onClick={() => copy(text)}
       className="group/copy hover:border-white/20 flex w-full items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 text-left transition"
       title="Copy"
     >

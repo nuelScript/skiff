@@ -1,4 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { errText } from '@/lib/errors'
+import { useCopy } from '@/hooks/use-copy'
 import {
   Globe,
   Plus,
@@ -65,9 +67,8 @@ export default function DomainsPage() {
       await add(chosenApp, host.trim())
       setHost('')
       setAdding(false)
-    } catch (err: unknown) {
-      const r = (err as { response?: { data?: string } })?.response?.data
-      setError(typeof r === 'string' && r ? r.trim() : 'Could not add that domain.')
+    } catch (err) {
+      setError(errText(err, 'Could not add that domain.'))
     } finally {
       setBusy(false)
     }
@@ -305,15 +306,11 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 }
 
 function Copyable({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   return (
     <button
       type="button"
-      onClick={() => {
-        navigator.clipboard?.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
-      }}
+      onClick={() => copy(text)}
       className="group/copy hover:text-foreground text-foreground/90 flex items-center gap-1.5 truncate text-left transition"
       title="Copy"
     >
