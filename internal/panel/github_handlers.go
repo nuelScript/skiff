@@ -197,8 +197,8 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 			p.createPreview(app, push.Branch, push.Commit, push.Message)
 		}
 		// If the push changed Skiff itself, rebuild and hot-swap the control plane.
-		if p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch &&
-			p.pushTouchesSelf(push.Paths) {
+		toSelfBranch := p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch
+		if toSelfBranch && p.pushTouchesSelf(push.Paths) {
 			id := newDeployID()
 			addDeploy(Deploy{
 				ID: id, App: "panel", Commit: shortCommit(push.Commit), Message: push.Message,

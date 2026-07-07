@@ -1,3 +1,4 @@
+// Package cmd defines the skiff CLI: the root command and every subcommand.
 package cmd
 
 import (

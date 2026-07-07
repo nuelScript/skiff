@@ -16,31 +16,31 @@ type Config struct {
 	Name     string `toml:"name"`
 	Replicas int    `toml:"replicas"` // how many identical containers to run behind the router
 
-	Server    ServerConfig      `toml:"server"`
-	Build     BuildConfig       `toml:"build"`
-	Deploy    DeployConfig      `toml:"deploy"`
-	Resources ResourcesConfig   `toml:"resources"`
+	Server    Server            `toml:"server"`
+	Build     Build             `toml:"build"`
+	Deploy    Deploy            `toml:"deploy"`
+	Resources Resources         `toml:"resources"`
 	Env       map[string]string `toml:"env"`     // available at build + runtime
 	Secrets   map[string]string `toml:"secrets"` // runtime only (never baked into the image)
 }
 
-// DeployConfig holds deploy-lifecycle hooks.
-type DeployConfig struct {
+// Deploy holds deploy-lifecycle hooks.
+type Deploy struct {
 	Release string `toml:"release"` // command run once (e.g. migrations) before a new version goes live
 	Network string `toml:"network"` // docker network to join for team isolation; empty = shared "skiff"
 }
 
-type ResourcesConfig struct {
+type Resources struct {
 	Memory string `toml:"memory"` // e.g. "512m"
 	CPU    string `toml:"cpu"`    // e.g. "0.5"
 }
 
-// ServerConfig describes where the app runs. An empty host means local Docker.
-type ServerConfig struct {
+// Server describes where the app runs. An empty host means local Docker.
+type Server struct {
 	Host string `toml:"host"`
 }
 
-type BuildConfig struct {
+type Build struct {
 	Dockerfile string `toml:"dockerfile"`
 	Port       int    `toml:"port"`
 

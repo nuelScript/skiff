@@ -40,11 +40,11 @@ type dbEngine struct {
 // dbTLS describes how an engine serves TLS on its public port. entrypoint/cmd
 // override the container to enable it using the shared cert mounted at
 // /skiff-certs (both empty for engines that serve TLS with no config, e.g.
-// MySQL). certs is whether that cert dir must be mounted.
+// MySQL). hasCerts is whether that cert dir must be mounted.
 type dbTLS struct {
 	entrypoint string
 	cmd        []string
-	certs      bool
+	hasCerts   bool
 }
 
 var dbEngines = map[string]dbEngine{
@@ -71,7 +71,7 @@ var dbEngines = map[string]dbEngine{
 		restoreCmd: func(_, dbname string) []string { return []string{"psql", "-U", "skiff", "-d", dbname} },
 		// Fix key perms as root, then hand off to the normal entrypoint with ssl on.
 		tls: &dbTLS{
-			certs:      true,
+			hasCerts:   true,
 			entrypoint: "sh",
 			cmd: []string{"-c",
 				"cp /skiff-certs/server.crt /skiff-certs/server.key /tmp/ && chmod 600 /tmp/server.key && " +
@@ -141,7 +141,7 @@ var dbEngines = map[string]dbEngine{
 		// preferTLS lets the entrypoint's localhost init connect in the clear while
 		// offering TLS to public clients.
 		tls: &dbTLS{
-			certs:      true,
+			hasCerts:   true,
 			entrypoint: "sh",
 			cmd: []string{"-c",
 				"cp /skiff-certs/server.pem /skiff-certs/server.crt /tmp/ && chmod 600 /tmp/server.pem && " +
@@ -490,7 +490,7 @@ func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 	}
 	// Going public: serve TLS so internet-facing connections are encrypted.
 	if on && e.tls != nil {
-		if e.tls.certs {
+		if e.tls.hasCerts {
 			if dir, err := ensureServerCert(); err == nil {
 				spec.Binds = []string{dir + ":/skiff-certs:ro"}
 			}
