@@ -349,9 +349,14 @@ func putSession(token, userID, teamID string) {
 		token, userID, teamID, time.Now().Unix())
 }
 
+// sessionMaxAge bounds how long a session stays valid regardless of use, so a
+// leaked cookie doesn't live forever.
+const sessionMaxAge = 30 * 24 * 60 * 60 // 30 days
+
 func getSession(token string) (sess, bool) {
 	var s sess
-	if sqlDB.QueryRow(`SELECT user_id,team_id FROM sessions WHERE token=?`, token).
+	cutoff := time.Now().Unix() - sessionMaxAge
+	if sqlDB.QueryRow(`SELECT user_id,team_id FROM sessions WHERE token=? AND created > ?`, token, cutoff).
 		Scan(&s.userID, &s.teamID) != nil {
 		return sess{}, false
 	}

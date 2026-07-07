@@ -57,7 +57,7 @@ func newPanelCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&addr, "addr", ":7070", "listen address")
+	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:7070", "listen address (loopback by default — the edge router proxies to it)")
 	cmd.Flags().StringVar(&domain, "domain", "", "base domain for app URLs")
 	return cmd
 }

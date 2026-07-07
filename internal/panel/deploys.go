@@ -287,15 +287,31 @@ func (p *Panel) tailLog(w http.ResponseWriter, r *http.Request, app, id string) 
 
 func (p *Panel) handleDeployLog(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	id := sanitizeID(r.URL.Query().Get("id"))
 	p.tailLog(w, r, app, id)
 }
 
 func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
+	team := p.teamID(r)
 	w.Header().Set("Content-Type", "application/json")
 	if app == "" {
-		_ = json.NewEncoder(w).Encode(allDeploys())
+		// The global feed, scoped to the caller's team — never other teams' builds.
+		out := []Deploy{}
+		for _, d := range allDeploys() {
+			if src, ok := getSource(d.App); ok && src.Team == team {
+				out = append(out, d)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(out)
+		return
+	}
+	if !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(appDeploys(app))

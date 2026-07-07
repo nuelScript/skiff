@@ -195,7 +195,15 @@ func (p *Panel) session(r *http.Request) (sess, bool) {
 func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) {
 	tok := randToken()
 	putSession(tok, userID, teamID)
-	http.SetCookie(w, &http.Cookie{Name: "skiff_session", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	// SameSite=Strict is the CSRF defense: the browser won't attach the session
+	// to any cross-site request, so a crafted link can't trigger a deploy. The SPA
+	// is same-origin so its own API calls still carry it. Secure in production
+	// (served over HTTPS behind the router); off for local http.
+	http.SetCookie(w, &http.Cookie{
+		Name: "skiff_session", Value: tok, Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   p.domain != "" && p.domain != "localhost",
+	})
 }
 
 // teamID returns the caller's active team.

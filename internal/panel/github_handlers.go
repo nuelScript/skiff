@@ -136,6 +136,12 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	// An empty secret makes the HMAC forgeable (empty key), so treat it as
+	// unconfigured rather than accepting unsigned pushes.
+	if cfg.WebhookSecret == "" {
+		http.Error(w, "webhook secret not configured", http.StatusServiceUnavailable)
+		return
+	}
 	if !github.VerifySignature(cfg.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
