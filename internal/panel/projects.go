@@ -365,6 +365,9 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 		_ = p.eng.Remove(c)
 	}
 	_, _ = sqlDB.Exec(`DELETE FROM workers WHERE app=?`, name)
+	if deleteAppDomains(name) {
+		writeDomainsFile() // re-mirror the host→app map for the router
+	}
 	_, _ = registry.Delete(name)
 	deleteSource(name)
 	p.removeAppImages(name) // free the build layers; nothing left to roll back to

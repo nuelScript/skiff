@@ -20,6 +20,8 @@ import (
 type Domain struct {
 	Host       string   `json:"host"`
 	App        string   `json:"app"`
+	Parent     string   `json:"parent,omitempty"` // set for a managed branch domain: the parent project's app
+	Branch     string   `json:"branch,omitempty"` // set for a managed branch domain: the branch it tracks
 	Created    int64    `json:"created"`
 	PointsHere bool     `json:"pointsHere"`           // computed: DNS resolves to this server
 	ResolvesTo []string `json:"resolvesTo,omitempty"` // computed: where the host currently points
@@ -81,7 +83,7 @@ func writeDomainsFile() {
 
 func teamDomains(team string) []Domain {
 	rows, err := sqlDB.Query(
-		`SELECT host, app, created FROM domains WHERE team=? ORDER BY app, host`, team)
+		`SELECT host, app, parent, branch, created FROM domains WHERE team=? ORDER BY app, host`, team)
 	if err != nil {
 		return nil
 	}
@@ -89,7 +91,7 @@ func teamDomains(team string) []Domain {
 	out := []Domain{}
 	for rows.Next() {
 		var d Domain
-		if rows.Scan(&d.Host, &d.App, &d.Created) == nil {
+		if rows.Scan(&d.Host, &d.App, &d.Parent, &d.Branch, &d.Created) == nil {
 			out = append(out, d)
 		}
 	}
@@ -103,6 +105,20 @@ func domainOwner(host string) (Domain, bool) {
 	var d Domain
 	err := sqlDB.QueryRow(`SELECT host, app FROM domains WHERE host=?`, host).Scan(&d.Host, &d.App)
 	return d, err == nil
+}
+
+// deleteAppDomains removes the plain custom domains bound to a torn-down app so
+// they don't dangle at a dead backend. Managed branch domains (those with a
+// parent set) are left in place — they re-bind to the preview on its next
+// deploy. Reports whether it removed anything, so the caller can re-mirror the
+// router file.
+func deleteAppDomains(app string) bool {
+	res, err := sqlDB.Exec(`DELETE FROM domains WHERE app=? AND parent=''`, app)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 // handleDomains manages a team's custom domains: list (GET), add (POST), remove
