@@ -13,12 +13,6 @@ import (
 	"time"
 )
 
-// A single long-lived self-signed certificate serves TLS on every public
-// database, so connections that leave the box over the internet are encrypted
-// (the private-network hop between an app and its database stays plaintext — it
-// never leaves the team's isolated docker net). Clients connect with
-// sslmode=require / tls=true: encrypted, without verifying this self-signed cert.
-
 func certDir() string { return filepath.Join(skiffDir(), "certs") }
 
 func fileExists(p string) bool {
@@ -26,9 +20,7 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// ensureServerCert writes server.crt / server.key / server.pem into ~/.skiff/certs
-// (reusing them if present) and returns the directory. server.pem is the cert and
-// key concatenated, which MongoDB wants as one file.
+// ensureServerCert writes (or reuses) server.crt/.key/.pem in ~/.skiff/certs; server.pem is cert+key concatenated, which MongoDB wants as one file.
 func ensureServerCert() (string, error) {
 	dir := certDir()
 	crtPath := filepath.Join(dir, "server.crt")
@@ -55,8 +47,7 @@ func ensureServerCert() (string, error) {
 		DNSNames:     []string{"skiff-db"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
-		// Self-signed and marked as a CA so it's its own chain of trust — MongoDB
-		// refuses to serve TLS otherwise (SERVER-72839).
+		// Self-signed but marked IsCA so it's its own chain of trust — MongoDB refuses to serve TLS otherwise (SERVER-72839).
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,

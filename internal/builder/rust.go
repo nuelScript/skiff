@@ -30,7 +30,7 @@ func (r *rustBuilder) Dockerfile(port int, env map[string]string) (string, error
 	})
 }
 
-// cargoPackageName reads the [package] name from Cargo.toml (the built binary's name).
+// cargoPackageName reads [package] name from Cargo.toml — the name of the built release binary.
 func cargoPackageName(dir string) string {
 	data, err := os.ReadFile(filepath.Join(dir, "Cargo.toml"))
 	if err != nil {

@@ -29,14 +29,12 @@ func TestVersionLess(t *testing.T) {
 }
 
 func TestUpdateNotice(t *testing.T) {
-	// A newer release produces a hint naming it, the current version, and how to update.
 	msg := updateNotice("0.1.0", "0.1.1")
 	for _, want := range []string{"0.1.1", "0.1.0", updateInstallCmd} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("notice %q missing %q", msg, want)
 		}
 	}
-	// Nothing to say when up to date or when the latest is unknown.
 	if got := updateNotice("0.1.1", "0.1.1"); got != "" {
 		t.Errorf("up-to-date should be silent, got %q", got)
 	}

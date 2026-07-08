@@ -12,7 +12,6 @@ import (
 	"github.com/nuelScript/skiff/internal/db"
 )
 
-// openTestDB stands up a real schema in a temp file and points the package at it.
 func openTestDB(t *testing.T) {
 	t.Helper()
 	database, err := db.OpenAt(filepath.Join(t.TempDir(), "test.db"))
@@ -85,9 +84,6 @@ func TestDeployFeedTeamScoped(t *testing.T) {
 	}
 }
 
-// TestTeamDeploysPagination checks the keyset feed: team-scoped (plus the control
-// plane), newest-first, and a cursor page that reaches the rest without overlap
-// or leaking another team's builds.
 func TestTeamDeploysPagination(t *testing.T) {
 	openTestDB(t)
 	putSource(Source{App: "mine", Team: "t1", Port: "3000"})
@@ -105,13 +101,11 @@ func TestTeamDeploysPagination(t *testing.T) {
 		addDeploy(d)
 	}
 
-	// First page: newest-first, this team + control plane only.
 	p1 := teamDeploys("t1", 0, "", 3)
 	if len(p1) != 3 || p1[0].ID != "p0" || p1[1].ID != "m4" || p1[2].ID != "m3" {
 		t.Fatalf("page1 wrong: %+v", p1)
 	}
 
-	// Cursor page from the last row: the remaining rows, no overlap.
 	last := p1[len(p1)-1]
 	p2 := teamDeploys("t1", last.Started, last.ID, 3)
 	seen := map[string]bool{}
@@ -128,7 +122,6 @@ func TestTeamDeploysPagination(t *testing.T) {
 		t.Fatalf("want 6 reachable rows, got %d: %v", len(seen), seen)
 	}
 
-	// Past the oldest row → empty.
 	oldest := p2[len(p2)-1]
 	if extra := teamDeploys("t1", oldest.Started, oldest.ID, 3); len(extra) != 0 {
 		t.Fatalf("expected nothing past the end, got %+v", extra)

@@ -1,6 +1,4 @@
-// Package db opens Skiff's embedded SQLite database (pure-Go, no CGO, so it
-// cross-compiles) and applies the schema. It lives as a single file on the box,
-// keeping the one-binary self-hosted story intact.
+// Package db opens Skiff's embedded SQLite database (pure-Go, no CGO) and applies the schema.
 package db
 
 import (
@@ -13,18 +11,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Open opens the panel's database at the default location (~/.skiff/skiff.db).
 func Open() (*sql.DB, error) {
 	home, _ := os.UserHomeDir()
 	return OpenAt(filepath.Join(home, ".skiff", "skiff.db"))
 }
 
-// OpenAt opens (creating if needed) a database at path with the schema and
-// migrations applied — so tests can stand up a real schema in a temp file.
 func OpenAt(path string) (*sql.DB, error) {
-	// The database holds session tokens, password + API-token hashes, and DB
-	// credentials, so keep it (and its WAL/SHM sidecars) private: a 0700 directory
-	// blocks other local users from even reading them, and the file itself is 0600.
+	// Holds session tokens plus password/API-token/DB-credential hashes, so lock the dir (0700) and file (0600) against other local users.
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -45,11 +38,7 @@ func OpenAt(path string) (*sql.DB, error) {
 	if _, err := d.Exec(schema); err != nil {
 		return nil, err
 	}
-	// Idempotent migrations for databases created before a column existed.
-	// (CREATE TABLE IF NOT EXISTS won't add columns to a table that's already there.)
-	// Re-adding a column that's already present is the one expected failure; any
-	// other error means a genuinely broken migration and must surface loudly rather
-	// than leave the app running against a half-migrated schema.
+	// ADD COLUMN migrations re-run on every open; tolerate the "duplicate column name" failure but surface any other as a genuinely broken migration.
 	for _, m := range migrations {
 		if _, err := d.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("migration %q: %w", m, err)

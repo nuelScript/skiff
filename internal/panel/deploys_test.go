@@ -17,7 +17,6 @@ func TestProjectToml(t *testing.T) {
 	}
 	out := projectToml(src, env)
 
-	// It must round-trip through the real config loader.
 	path := filepath.Join(t.TempDir(), "skiff.toml")
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
 		t.Fatal(err)
@@ -36,8 +35,7 @@ func TestProjectToml(t *testing.T) {
 	if cfg.Deploy.Release != "npm run migrate" {
 		t.Fatalf("release = %q", cfg.Deploy.Release)
 	}
-	// The build var belongs in [env]; the secret belongs in [secrets] and must
-	// NOT leak into [env] (where it would bake into the image).
+	// The secret must NOT leak into [env], where it would bake into the image; the build var belongs there.
 	if cfg.Env["API_URL"] != "https://x" {
 		t.Errorf("build var missing from [env]: %v", cfg.Env)
 	}
@@ -48,7 +46,6 @@ func TestProjectToml(t *testing.T) {
 		t.Errorf("secret missing from [secrets]: %v", cfg.Secrets)
 	}
 
-	// replicas=1 and a blank release omit those lines.
 	bare := projectToml(Source{App: "web", Port: "8080"}, nil)
 	if strings.Contains(bare, "replicas") || strings.Contains(bare, "release") {
 		t.Errorf("bare config should omit replicas/release:\n%s", bare)
@@ -75,7 +72,6 @@ func TestBeginBuildSupersede(t *testing.T) {
 		t.Fatal("first build reported superseded before any newer build")
 	}
 
-	// A newer build for the same app supersedes the first.
 	_, superseded2, done2 := beginBuild("supersede-app", "id2")
 	defer done2()
 	if !superseded1() {
@@ -85,7 +81,6 @@ func TestBeginBuildSupersede(t *testing.T) {
 		t.Fatal("second (current) build wrongly reported superseded")
 	}
 
-	// Cleaning up the first build must not evict the second's in-flight entry.
 	done1()
 	if superseded2() {
 		t.Fatal("cleanup of the first build evicted the current one")

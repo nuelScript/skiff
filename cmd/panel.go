@@ -40,9 +40,7 @@ func newPanelCmd() *cobra.Command {
 			ui.Note("control panel — deploy + manage from the browser (ctrl-c to stop)")
 			fmt.Println()
 
-			// Graceful shutdown: on SIGTERM/SIGINT, drain in-flight requests before
-			// exiting so a control-plane swap (systemctl stop of the old panel)
-			// never severs a live deploy stream or request mid-flight.
+			// Graceful shutdown: drain in-flight requests on SIGTERM/SIGINT so a control-plane swap never severs a live deploy stream.
 			srv := &http.Server{
 				Addr:              addr,
 				Handler:           pn.Handler(),

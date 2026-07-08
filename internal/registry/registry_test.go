@@ -49,7 +49,6 @@ func TestListSortedAndOverwrite(t *testing.T) {
 		t.Fatalf("List not name-sorted: %+v", got)
 	}
 
-	// Re-Put an existing name updates it in place rather than duplicating.
 	if err := Put(App{Name: "apple", Container: "a", Port: 99}); err != nil {
 		t.Fatal(err)
 	}

@@ -18,8 +18,7 @@ import (
 	"github.com/nuelScript/skiff/internal/github"
 )
 
-// inflight tracks the currently-building deploy per app so a newer deploy can
-// supersede (cancel) an older one still building, rather than racing it.
+// inflightBuild is the app's currently-building deploy; a newer deploy supersedes (cancels) an older one still building instead of racing it.
 type inflightBuild struct {
 	id     string
 	cancel context.CancelFunc
@@ -30,14 +29,9 @@ var (
 	inflight   = map[string]inflightBuild{}
 )
 
-// deployDeadline bounds the whole panel-side pipeline (clone + build + release).
-// It sits well above the inner build's own 15-minute cap so it only ever fires
-// on a genuine hang — a stalled clone or a wedged daemon — freeing the in-flight
-// slot instead of leaving a deploy stuck "building" forever.
+// deployDeadline bounds the whole pipeline (clone+build+release); set above the build's own 15-minute cap so it only fires on a genuine hang, freeing the in-flight slot rather than leaving a deploy stuck "building".
 const deployDeadline = 30 * time.Minute
 
-// cancelInflight cancels the app's in-flight build if one is running (matching
-// id when given). The build's own runDeploy then records it as "canceled".
 func cancelInflight(app, id string) bool {
 	inflightMu.Lock()
 	defer inflightMu.Unlock()
@@ -48,11 +42,7 @@ func cancelInflight(app, id string) bool {
 	return false
 }
 
-// beginBuild registers this build as the app's in-flight one, superseding
-// (canceling) any prior deploy OR rollback of the same app so the two never race
-// each other's container swap. Returns a cancelable context to hand the build
-// subprocess, a predicate that's true once this build was itself superseded, and
-// a cleanup to defer.
+// beginBuild registers this build as the app's in-flight one, canceling any prior deploy OR rollback so their container swaps never race. Returns a build context, a "was I superseded" predicate, and a cleanup to defer.
 func beginBuild(app, id string) (context.Context, func() bool, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployDeadline)
 	inflightMu.Lock()
@@ -72,10 +62,7 @@ func beginBuild(app, id string) (context.Context, func() bool, func()) {
 	return ctx, func() bool { return ctx.Err() != nil }, cleanup
 }
 
-// runDeploy clones a source, builds, and releases it, writing a persisted log
-// and recording the deploy in history. Shared by manual deploys and webhooks.
-// authURL, when set, overrides the clone URL (e.g. a pasted token); otherwise a
-// GitHub-App token is used for repo sources.
+// runDeploy clones, builds, and releases a source (manual deploys and webhooks both use it). authURL overrides the clone URL when set (e.g. a pasted token); otherwise repo sources use a GitHub-App token.
 func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id string) {
 	logp := logPath(src.App, id)
 	if err := os.MkdirAll(filepath.Dir(logp), 0o755); err != nil {
@@ -93,12 +80,9 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		Trigger: trigger, Status: "building", Started: time.Now().Unix(),
 	})
 
-	// Supersede any in-flight deploy/rollback of the same app, and register this
-	// one so a later build can in turn supersede it.
 	ctx, superseded, done := beginBuild(src.App, id)
 	defer done()
-	// finish records the terminal status, mapping a cancellation (superseded by a
-	// newer deploy) to "canceled" rather than "failed".
+	// finish maps a supersede (canceled by a newer deploy) to "canceled", not "failed" — no failure alert.
 	finish := func(failMsg string) {
 		if superseded() {
 			logln("✗ superseded by a newer deploy")
@@ -140,17 +124,14 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	args = append(args, clone, work)
 	cl := exec.CommandContext(ctx, "git", args...)
-	// GIT_ALLOW_PROTOCOL restricts clone to http(s) so a crafted URL can't reach
-	// git's command-executing transports (ext::, file::) even if it slips past the
-	// handler's scheme check.
+	// GIT_ALLOW_PROTOCOL restricts clone to http(s) so a crafted URL can't reach git's command-executing transports (ext::, file::) even if it slips past the scheme check.
 	cl.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=https:http")
 	if out, e := cl.CombinedOutput(); e != nil {
 		finish("✗ clone failed: " + cloneError(out))
 		return
 	}
 
-	// Build from the project's root directory (monorepo support), safely joined
-	// so a "../.." can't escape the clone.
+	// Root dir (monorepo support), joined safely so a "../.." can't escape the clone.
 	ctxDir := filepath.Join(work, filepath.Clean("/"+src.RootDir))
 	if fi, err := os.Stat(ctxDir); err != nil || !fi.IsDir() {
 		finish("✗ root directory not found in the repo: " + orRoot(src.RootDir))
@@ -162,8 +143,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	logln("→ building & deploying")
 	self, _ := os.Executable()
 	cmd := exec.CommandContext(ctx, self, "deploy", "-c", tomlPath)
-	// On supersede, interrupt (SIGINT) so the build cancels gracefully rather than
-	// being hard-killed; fall back to a kill if it doesn't exit promptly.
+	// On supersede, SIGINT so the build cancels gracefully; WaitDelay hard-kills it if it doesn't exit promptly.
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Env = append(os.Environ(), "SKIFF_DEPLOY_ID="+id) // retain this build for rollback
@@ -176,9 +156,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	for sc.Scan() {
 		logln(sc.Text())
 	}
-	// Drain any remainder (e.g. a log line past the scanner's 1 MB cap, which stops
-	// Scan early) so the child can't block writing to a full pipe and wedge the
-	// build until the deadline.
+	// Drain the remainder (e.g. a line past the scanner's 1 MB cap stops Scan early) so the child can't block on a full pipe and wedge the build.
 	_, _ = io.Copy(io.Discard, pr)
 	if e := <-errc; e != nil {
 		finish("✗ deploy failed")
@@ -186,12 +164,9 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	logln("✓ live")
 	setDeployStatus(src.App, id, "live")
-	p.reconcileWorkers(src.App) // (re)start declared workers from the new image
+	p.reconcileWorkers(src.App)
 }
 
-// runRollback re-runs a retained build image (skiff-<app>:<targetID>) with no
-// rebuild, records it as a new deploy, and writes a persisted log streamed over
-// SSE. commit/message are copied from the target so history reads sensibly.
 func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	logp := logPath(src.App, id)
 	if err := os.MkdirAll(filepath.Dir(logp), 0o755); err != nil {
@@ -209,12 +184,9 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 		Trigger: "rollback", Status: "building", Started: time.Now().Unix(),
 	})
 
-	// Participate in supersede so a rollback and a deploy of the same app can't
-	// run their container swaps concurrently, and handleCancel can stop it.
 	ctx, superseded, done := beginBuild(src.App, id)
 	defer done()
 
-	// A throwaway config dir carrying the current port/env/secrets for the run.
 	work := filepath.Join(p.buildsDir, sanitizeName(src.App)+"-rollback")
 	_ = os.RemoveAll(work)
 	if err := os.MkdirAll(work, 0o755); err != nil {
@@ -240,9 +212,7 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	for sc.Scan() {
 		logln(sc.Text())
 	}
-	// Drain any remainder (e.g. a log line past the scanner's 1 MB cap, which stops
-	// Scan early) so the child can't block writing to a full pipe and wedge the
-	// build until the deadline.
+	// Drain the remainder (e.g. a line past the scanner's 1 MB cap stops Scan early) so the child can't block on a full pipe and wedge the build.
 	_, _ = io.Copy(io.Discard, pr)
 	if e := <-errc; e != nil {
 		if superseded() {
@@ -259,8 +229,6 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	p.reconcileWorkers(src.App)
 }
 
-// tailLog streams a deploy's persisted log over SSE, following it live until the
-// deploy reaches a terminal state.
 func (p *Panel) tailLog(w http.ResponseWriter, r *http.Request, app, id string) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
@@ -301,13 +269,9 @@ func (p *Panel) tailLog(w http.ResponseWriter, r *http.Request, app, id string) 
 	}
 }
 
-// controlPlaneApp is the pseudo-app Skiff records its own self-deploys under. It
-// has no source/team, so it's box infrastructure any signed-in user may inspect.
+// controlPlaneApp is the pseudo-app Skiff records its own self-deploys under — no source/team, so any signed-in user may inspect it.
 const controlPlaneApp = "panel"
 
-// canViewDeploys gates the deploy history/log endpoints: the control plane is
-// visible to any signed-in user (these handlers are already session-gated);
-// every real app is team-scoped.
 func (p *Panel) canViewDeploys(r *http.Request, app string) bool {
 	return app == controlPlaneApp || p.canAccess(r, app)
 }
@@ -327,9 +291,6 @@ func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
 	w.Header().Set("Content-Type", "application/json")
 	if app == "" {
-		// The global feed: this team's builds plus the control plane's own — never
-		// another team's builds — keyset-paginated on (started, id). The client
-		// pages into older history by passing the last row's started + id.
 		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
 		beforeID := r.URL.Query().Get("beforeId")
 		limit := 30
@@ -386,8 +347,7 @@ func orRoot(d string) string {
 	return d
 }
 
-// projectToml renders the skiff.toml the panel deploys with: name, port, and the
-// project's env vars split into [env] (build+runtime) and [secrets] (runtime).
+// projectToml renders the deploy skiff.toml; env vars split into [env] (build+runtime) vs [secrets] (runtime-only, never baked into the image).
 func projectToml(src Source, env []EnvVar) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "name = %q\n", src.App)

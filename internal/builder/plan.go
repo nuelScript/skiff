@@ -7,29 +7,24 @@ import (
 	"strings"
 )
 
-// Plan is a runtime-agnostic description of how to build and serve an app.
-// A stack builder produces one; render turns it into a Dockerfile. This is the
-// seam every language and framework flows through.
 type Plan struct {
-	Base       string            // build/runtime base image
-	CacheFiles []string          // manifest files to copy before Install (layer caching)
-	Install    []string          // install commands
-	Build      []string          // build commands (empty if none)
-	Env        map[string]string // env available at build time (ENV in the build stage)
+	Base       string
+	CacheFiles []string
+	Install    []string
+	Build      []string
+	Env        map[string]string
 
-	// Multi-stage server: when RuntimeBase is set, the final image is RuntimeBase
-	// with artifacts copied from the build stage (e.g. a compiled Go binary).
+	// RuntimeBase, when set, makes the build multi-stage: the final image is RuntimeBase with Copy artifacts from the build stage.
 	RuntimeBase string
 	Copy        []Artifact
 
-	// Exactly one of these says how to serve:
-	StaticDir string   // serve this directory of static files, or
-	Start     []string // run this command (rendered as an exec-form CMD)
+	// Exactly one of StaticDir or Start must be set.
+	StaticDir string
+	Start     []string
 
 	Port int
 }
 
-// Artifact is a file copied from the build stage into the runtime image.
 type Artifact struct{ From, To string }
 
 func render(p Plan) (string, error) {
@@ -37,7 +32,6 @@ func render(p Plan) (string, error) {
 	switch {
 	case p.StaticDir != "":
 		if needsBuildStage(p) {
-			// Build in the runtime image, then serve the output from a tiny image.
 			fmt.Fprintf(&b, "FROM %s AS build\n", p.Base)
 			writeAppBuild(&b, p)
 			b.WriteString("FROM busybox\nWORKDIR /site\n")
@@ -50,7 +44,6 @@ func render(p Plan) (string, error) {
 		fmt.Fprintf(&b, "CMD [\"httpd\", \"-f\", \"-p\", \"%d\", \"-h\", \"/site\"]\n", p.Port)
 	case len(p.Start) > 0:
 		if p.RuntimeBase != "" {
-			// Multi-stage server: compile in Base, run from a small RuntimeBase.
 			fmt.Fprintf(&b, "FROM %s AS build\n", p.Base)
 			writeAppBuild(&b, p)
 			fmt.Fprintf(&b, "FROM %s\n", p.RuntimeBase)
@@ -74,10 +67,7 @@ func needsBuildStage(p Plan) bool {
 	return len(p.Install) > 0 || len(p.Build) > 0
 }
 
-// writeAppBuild writes the WORKDIR/ENV/COPY/install/build lines shared by the
-// server stage and the static build stage. When CacheFiles are given, manifests
-// are copied and installed before the source so the install layer caches across
-// source-only changes.
+// writeAppBuild emits the shared build lines; with CacheFiles, manifests install before the source so the install layer caches across source-only changes.
 func writeAppBuild(b *strings.Builder, p Plan) {
 	b.WriteString("WORKDIR /app\n")
 	writeEnv(b, p.Env)
@@ -110,8 +100,7 @@ func writeEnv(b *strings.Builder, env map[string]string) {
 	}
 }
 
-// execForm renders argv as a JSON array so CMD gets exec form (OS signals reach
-// the app directly).
+// execForm renders argv as JSON so CMD is exec form and OS signals reach the app directly.
 func execForm(argv []string) string {
 	quoted := make([]string, len(argv))
 	for i, a := range argv {

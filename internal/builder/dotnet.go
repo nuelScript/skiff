@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-// dotnetBuilder is best-effort: the .NET SDK build is heavy and hasn't been
-// verified locally. ASP.NET binds via ASPNETCORE_URLS, set from $PORT at start.
+// dotnetBuilder is best-effort and unverified locally; ASP.NET binds via ASPNETCORE_URLS set from $PORT at start.
 type dotnetBuilder struct{ dir string }
 
 func (d *dotnetBuilder) Name() string { return ".NET" }

@@ -7,7 +7,6 @@ import (
 	"github.com/nuelScript/skiff/internal/auth"
 )
 
-// handleAccount updates the signed-in user's profile (display name).
 func (p *Panel) handleAccount(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok {
@@ -27,7 +26,6 @@ func (p *Panel) handleAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handlePassword changes the signed-in user's password after verifying the current one.
 func (p *Panel) handlePassword(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok {
@@ -59,8 +57,6 @@ func countTeamDatabases(team string) int {
 	return n
 }
 
-// reassignTeam moves the caller's session onto another team they belong to (or
-// none), used after they leave or delete the current one.
 func (p *Panel) reassignTeam(w http.ResponseWriter, r *http.Request, userID string) {
 	next := ""
 	if teams := p.auth.TeamsForUser(userID); len(teams) > 0 {
@@ -71,10 +67,6 @@ func (p *Panel) reassignTeam(w http.ResponseWriter, r *http.Request, userID stri
 	}
 }
 
-// handleAccountDelete removes the caller's account. It's deliberate: it requires
-// the password, refuses to orphan a shared team the caller is the last owner of,
-// and refuses while a personal team still holds apps or databases. Personal teams
-// with nothing left in them are deleted along with the account.
 func (p *Panel) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok || r.Method != http.MethodPost {
@@ -129,7 +121,6 @@ func (p *Panel) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleTeamLeave removes the caller from the current team.
 func (p *Panel) handleTeamLeave(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok || r.Method != http.MethodPost {
@@ -148,8 +139,6 @@ func (p *Panel) handleTeamLeave(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleTeamDelete deletes the current team (owners only) once it holds no apps
-// or databases.
 func (p *Panel) handleTeamDelete(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok || r.Method != http.MethodPost {
@@ -181,7 +170,6 @@ func (p *Panel) handleTeamDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleTeamRename renames the current team (owners only).
 func (p *Panel) handleTeamRename(w http.ResponseWriter, r *http.Request) {
 	s, ok := p.session(r)
 	if !ok {

@@ -45,9 +45,7 @@ func newGitSetupCmd() *cobra.Command {
 				skiffPath = "skiff"
 			}
 
-			// post-receive: check the pushed branch out to a work dir and deploy it.
-			// The default branch deploys the app; other branches get a
-			// <branch>-<app> preview environment.
+			// post-receive: check out the pushed branch and deploy it — the default branch as the app, others as a <branch>-<app> preview.
 			hook := "#!/bin/sh\nset -e\n" +
 				"WORK=\"" + work + "\"\n" +
 				"SKIFF=\"" + skiffPath + "\"\n" +

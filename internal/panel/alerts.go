@@ -16,13 +16,6 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// Alerting closes the loop on everything we watch: a control loop plus deploy
-// hooks fire on the events that matter — a failed deploy, an app that fell over,
-// a burst of 5xx — and fan each one out to the team's channels (email over SMTP,
-// a Slack incoming webhook, a generic JSON webhook). Best-effort and async: a
-// channel that errors is logged, never blocks the event.
-
-// AlertConfig is a team's notification channels; an empty field is off.
 type AlertConfig struct {
 	Email      string `json:"email"`
 	SlackURL   string `json:"slackUrl"`
@@ -45,7 +38,6 @@ func setAlerts(team string, a AlertConfig) error {
 	return err
 }
 
-// alertEvent is one notifiable thing that happened.
 type alertEvent struct {
 	Team   string
 	Kind   string // deploy.failed | app.unhealthy | app.recovered | error.spike | test
@@ -60,8 +52,6 @@ type channelResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// deliver sends an event to every configured channel and reports per-channel
-// outcomes (used by the test endpoint; dispatchAlert discards them).
 func deliver(ev alertEvent) []channelResult {
 	cfg := getAlerts(ev.Team)
 	var res []channelResult
@@ -84,8 +74,7 @@ func deliver(ev alertEvent) []channelResult {
 	return res
 }
 
-// dispatchAlert fans an event out to the team's channels, logging failures. Call
-// it as `go dispatchAlert(...)` from event sites so nothing blocks.
+// dispatchAlert delivers ev to a team's channels; call as `go dispatchAlert(...)` — it blocks on network I/O.
 func dispatchAlert(ev alertEvent) {
 	for _, r := range deliver(ev) {
 		if !r.OK {
@@ -93,8 +82,6 @@ func dispatchAlert(ev alertEvent) {
 		}
 	}
 }
-
-// ---- channels ----
 
 type smtpSettings struct {
 	Host, Addr, User, Pass, From string
@@ -148,11 +135,7 @@ func postWebhook(url string, ev alertEvent) error {
 	})
 }
 
-// alertHTTPClient delivers alerts to user-supplied Slack/webhook URLs but refuses
-// to connect to private, loopback, or link-local addresses. The check runs at
-// dial time on the resolved IP, so it also stops DNS-rebinding and internal
-// redirects from turning an alert webhook into an SSRF against the box's own
-// metadata endpoint or internal services.
+// alertHTTPClient refuses to dial private/loopback/link-local addresses; the check runs at dial time on the resolved IP, so it also stops DNS-rebinding SSRF via user-supplied webhook URLs.
 var alertHTTPClient = &http.Client{
 	Timeout: 8 * time.Second,
 	Transport: &http.Transport{
@@ -172,7 +155,6 @@ var alertHTTPClient = &http.Client{
 	},
 }
 
-// isBlockedDialIP is true for addresses an outbound alert must never reach.
 func isBlockedDialIP(ip net.IP) bool {
 	return ip == nil || ip.IsLoopback() || ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
@@ -208,8 +190,6 @@ func slackText(ev alertEvent) string {
 }
 
 func nowUnix() int64 { return time.Now().Unix() }
-
-// ---- HTTP handlers ----
 
 func (p *Panel) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
@@ -252,12 +232,10 @@ func (p *Panel) handleAlertTest(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 }
 
-// ---- triggers: health + error-rate control loop ----
-
 var (
-	healthDown    = map[string]int{}   // consecutive unhealthy checks per app
-	healthAlerted = map[string]bool{}  // already alerted, waiting for recovery
-	spikeLast     = map[string]int64{} // last 5xx-spike alert per app (cooldown)
+	healthDown    = map[string]int{}
+	healthAlerted = map[string]bool{}
+	spikeLast     = map[string]int64{}
 )
 
 func isInflight(app string) bool {
@@ -279,8 +257,7 @@ func (p *Panel) alertLoop() {
 	}
 }
 
-// checkHealth alerts when an app has had no running container for two straight
-// checks (so a deploy's brief swap doesn't page anyone), and once on recovery.
+// checkHealth needs two straight checks with no running container before it alerts, so a deploy's brief container swap doesn't page; it alerts once on recovery.
 func (p *Panel) checkHealth() {
 	states, err := p.eng.AppStates()
 	if err != nil {
@@ -295,7 +272,7 @@ func (p *Panel) checkHealth() {
 		if !ok {
 			continue
 		}
-		if isInflight(name) { // mid-deploy — not a real outage
+		if isInflight(name) {
 			healthDown[name] = 0
 			continue
 		}
@@ -322,8 +299,6 @@ func (p *Panel) checkHealth() {
 	}
 }
 
-// checkErrorSpikes alerts when an app serves a burst of 5xx over the last 5
-// minutes, with enough traffic to be meaningful and a per-app cooldown.
 func (p *Panel) checkErrorSpikes() {
 	data := readMetricsFile()
 	now := time.Now().Unix()
@@ -341,14 +316,14 @@ func (p *Panel) checkErrorSpikes() {
 			}
 		}
 		if req < 20 || s5 < 10 {
-			continue // too little traffic, or too few errors, to judge
+			continue
 		}
 		rate := float64(s5) / float64(req)
 		if rate < 0.10 {
 			continue
 		}
 		if now-spikeLast[app] < 15*60 {
-			continue // cooldown
+			continue
 		}
 		spikeLast[app] = now
 		go dispatchAlert(alertEvent{Team: src.Team, Kind: "error.spike", App: app,

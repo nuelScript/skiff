@@ -10,8 +10,7 @@ import (
 //go:embed all:dist
 var distFS embed.FS
 
-// spa serves the built dashboard, falling back to index.html so client-side
-// routing works. Static assets are public; the app itself gates on /api/me.
+// spa serves the dashboard, falling back to index.html for client-side routing. Assets are public; the app gates on /api/me.
 func (p *Panel) spa() http.Handler {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {

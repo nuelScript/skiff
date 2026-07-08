@@ -33,8 +33,6 @@ func (p *Panel) handleGithubStatus(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// handleGithubCreate serves an auto-submitting form that registers a Skiff
-// GitHub App via the manifest flow.
 func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
 	if !p.isOwner(r) {
 		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
@@ -51,8 +49,6 @@ func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
 <script>document.getElementById('f').submit()</script></body>`, manifest)
 }
 
-// handleGithubCreated receives the manifest code, converts it to app credentials,
-// then sends the user on to install the app.
 func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
 	if !p.isOwner(r) {
 		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
@@ -75,7 +71,6 @@ func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, cfg.InstallURL(), http.StatusFound)
 }
 
-// handleGithubInstalled records the installation id (GitHub's setup redirect).
 func (p *Panel) handleGithubInstalled(w http.ResponseWriter, r *http.Request) {
 	if !p.isOwner(r) {
 		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
@@ -110,7 +105,6 @@ func (p *Panel) handleGithubRepos(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(repos)
 }
 
-// handleGithubDeploy deploys a chosen repo and streams the build log.
 func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	repo := strings.TrimSpace(q.Get("repo"))
@@ -134,8 +128,7 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok && envStage.heldByOther(name, team, time.Now()) {
-		// Another team staged env under this unused name — discard it so this deploy
-		// can't inherit foreign vars.
+		// Discard env another team staged under this unused name so this deploy can't inherit foreign vars.
 		_ = setEnv(name, nil)
 	}
 	if port == "" {
@@ -160,8 +153,7 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// An empty secret makes the HMAC forgeable (empty key), so treat it as
-	// unconfigured rather than accepting unsigned pushes.
+	// An empty secret makes the HMAC forgeable (empty key), so reject rather than accept unsigned pushes.
 	if cfg.WebhookSecret == "" {
 		http.Error(w, "webhook secret not configured", http.StatusServiceUnavailable)
 		return
@@ -176,7 +168,6 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 	push, ok := github.ParsePush(body)
 	if ok {
-		// Rebuild each managed app whose root directory the push actually touched.
 		for _, src := range sourcesForRepo(push.Repo, push.Branch) {
 			if !touched(push.Paths, src.RootDir) {
 				continue
@@ -185,18 +176,15 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 			recordAudit(src.Team, AuditEntry{Actor: "push", Action: "deploy", Target: src.App, Detail: shortCommit(push.Commit)})
 			go p.runDeploy(src, "", push.Commit, push.Message, "push", id)
 		}
-		// Auto-create a preview for a push to a branch that isn't a project's
-		// production branch (and doesn't already have one). Opt-in per project.
 		for _, app := range productionAppsForRepo(push.Repo) {
 			if !app.PreviewAuto || app.Branch == "" || app.Branch == push.Branch {
 				continue
 			}
 			if _, exists := getSource(previewName(app.App, push.Branch)); exists {
-				continue // already exists — redeployed by the loop above
+				continue
 			}
 			p.createPreview(app, push.Branch, push.Commit, push.Message)
 		}
-		// If the push changed Skiff itself, rebuild and hot-swap the control plane.
 		toSelfBranch := p.selfRepo != "" && push.Repo == p.selfRepo && push.Branch == p.selfBranch
 		if toSelfBranch && p.pushTouchesSelf(push.Paths) {
 			id := newDeployID()

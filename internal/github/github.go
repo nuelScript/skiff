@@ -1,6 +1,4 @@
-// Package github integrates Skiff with a GitHub App: it drives the app-manifest
-// creation flow, mints installation access tokens, lists installed repos, builds
-// authenticated clone URLs, and verifies incoming webhooks.
+// Package github integrates Skiff with a GitHub App: manifest creation, installation tokens, repo listing, authenticated clone URLs, and webhook verification.
 package github
 
 import (
@@ -24,8 +22,7 @@ import (
 	"time"
 )
 
-// Config is the persisted GitHub App: its identity, private key, secrets, and
-// the installation it's bound to. Stored 0600 at ~/.skiff/github.json.
+// Config is the persisted GitHub App (identity, private key, secrets, installation); stored 0600 at ~/.skiff/github.json.
 type Config struct {
 	ID             int64  `json:"id"`
 	Slug           string `json:"slug"`
@@ -68,7 +65,6 @@ func (c *Config) InstallURL() string {
 	return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.Slug)
 }
 
-// Manifest is the GitHub App manifest posted to github.com/settings/apps/new.
 func Manifest(baseURL, name string) string {
 	m := map[string]any{
 		"name":                name,
@@ -85,7 +81,6 @@ func Manifest(baseURL, name string) string {
 	return string(b)
 }
 
-// ConvertManifest exchanges the temporary manifest code for the app credentials.
 func ConvertManifest(code string) (*Config, error) {
 	req, _ := http.NewRequest(http.MethodPost, "https://api.github.com/app-manifests/"+code+"/conversions", nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -105,7 +100,6 @@ func ConvertManifest(code string) (*Config, error) {
 	return &c, nil
 }
 
-// appJWT builds a short-lived RS256 JWT signed with the app's private key.
 func (c *Config) appJWT() (string, error) {
 	block, _ := pem.Decode([]byte(c.PEM))
 	if block == nil {
@@ -187,7 +181,6 @@ type Repo struct {
 	CloneURL      string `json:"clone_url"`
 }
 
-// ListRepos returns every repository the installation can access.
 func (c *Config) ListRepos() ([]Repo, error) {
 	token, err := c.InstallationToken()
 	if err != nil {
@@ -223,7 +216,6 @@ func (c *Config) ListRepos() ([]Repo, error) {
 	return repos, nil
 }
 
-// CloneURLWithToken returns an authenticated https clone URL for private repos.
 func (c *Config) CloneURLWithToken(cloneURL string) (string, error) {
 	token, err := c.InstallationToken()
 	if err != nil {
@@ -236,7 +228,6 @@ func (c *Config) CloneURLWithToken(cloneURL string) (string, error) {
 	return cloneURL, nil
 }
 
-// VerifySignature checks the X-Hub-Signature-256 header against the webhook secret.
 func VerifySignature(secret string, body []byte, sig string) bool {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
@@ -259,8 +250,6 @@ type commitFiles struct {
 	Removed  []string `json:"removed"`
 }
 
-// ParsePush extracts the repo, branch, head commit, and changed paths from a
-// push event.
 func ParsePush(body []byte) (Push, bool) {
 	var p struct {
 		Ref        string `json:"ref"`

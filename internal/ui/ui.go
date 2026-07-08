@@ -38,8 +38,7 @@ func Done(msg string) {
 	fmt.Println("  " + green.Render("✓") + " " + msg)
 }
 
-// Fail writes an error to stderr (not stdout) so it's captured by `2>` and never
-// corrupts the data stream of a command being piped.
+// Fail writes to stderr (not stdout) so it never corrupts the data stream of a piped command.
 func Fail(msg string) {
 	fmt.Fprintln(os.Stderr, "  "+red.Render("✗")+" "+msg)
 }

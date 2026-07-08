@@ -26,7 +26,6 @@ func newSyncCmd() *cobra.Command {
 				expected[a.Container] = true
 			}
 
-			// 1) Remove local Skiff containers the registry doesn't track (orphans).
 			local := docker.Local()
 			containers, err := local.Containers()
 			if err != nil {
@@ -42,7 +41,6 @@ func newSyncCmd() *cobra.Command {
 				}
 			}
 
-			// 2) Drop registry entries whose container is gone (on its own engine).
 			for _, a := range apps {
 				if docker.For(a.Host).State(a.Container) == "missing" {
 					if ok, _ := registry.Delete(a.Name); ok {

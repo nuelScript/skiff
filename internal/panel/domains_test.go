@@ -10,13 +10,9 @@ import (
 	"github.com/nuelScript/skiff/internal/auth"
 )
 
-// TestDeleteAppDomainsKeepsManaged verifies teardown drops a plain custom domain
-// bound to an app but leaves a managed branch domain (parent set) in place, and
-// that teamDomains surfaces the parent/branch columns intact.
 func TestDeleteAppDomainsKeepsManaged(t *testing.T) {
 	openTestDB(t)
 	now := time.Now().Unix()
-	// Both point at the same preview app: one plain, one branch-managed.
 	if _, err := sqlDB.Exec(
 		`INSERT INTO domains(host,app,team,parent,branch,created) VALUES('app.example.com','myapp-staging','t1','','',?)`,
 		now); err != nil {
@@ -40,19 +36,14 @@ func TestDeleteAppDomainsKeepsManaged(t *testing.T) {
 		t.Fatalf("managed branch domain not preserved intact: %+v", d)
 	}
 
-	// A second teardown removes nothing (no plain rows left) — no needless re-mirror.
 	if deleteAppDomains("myapp-staging") {
 		t.Fatal("expected no further deletions on a managed-only app")
 	}
 }
 
-// TestRebindBranchDomains verifies a managed domain is re-pointed at the current
-// preview app (correcting a stale target, e.g. a domain added before the preview
-// first deployed) while plain domains are left untouched.
 func TestRebindBranchDomains(t *testing.T) {
 	openTestDB(t)
 	now := time.Now().Unix()
-	// Managed row with a stale app target, plus a plain domain that must not move.
 	if _, err := sqlDB.Exec(
 		`INSERT INTO domains(host,app,team,parent,branch,created) VALUES('staging.acme.com','stale','t1','web','staging',?)`,
 		now); err != nil {
@@ -82,8 +73,6 @@ func TestRebindBranchDomains(t *testing.T) {
 	}
 }
 
-// TestAddBranchDomainBindsToPreview drives the POST endpoint: a domain added with
-// a branch is stored as a managed row bound to that branch's preview app.
 func TestAddBranchDomainBindsToPreview(t *testing.T) {
 	openTestDB(t)
 	t.Setenv("HOME", t.TempDir()) // isolate writeDomainsFile from the real ~/.skiff
@@ -114,7 +103,6 @@ func TestAddBranchDomainBindsToPreview(t *testing.T) {
 		t.Fatalf("branch domain not bound to the preview app: %+v", d)
 	}
 
-	// Binding a branch of a non-existent project is rejected.
 	req2 := httptest.NewRequest("POST", "/api/domains",
 		strings.NewReader(`{"app":"ghost","host":"x.acme.com","branch":"staging"}`))
 	req2.AddCookie(&http.Cookie{Name: "skiff_session", Value: "s"})

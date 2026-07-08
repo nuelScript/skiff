@@ -14,28 +14,26 @@ const DefaultFile = "skiff.toml"
 
 type Config struct {
 	Name     string `toml:"name"`
-	Replicas int    `toml:"replicas"` // how many identical containers to run behind the router
+	Replicas int    `toml:"replicas"`
 
 	Server    Server            `toml:"server"`
 	Build     Build             `toml:"build"`
 	Deploy    Deploy            `toml:"deploy"`
 	Resources Resources         `toml:"resources"`
-	Env       map[string]string `toml:"env"`     // available at build + runtime
-	Secrets   map[string]string `toml:"secrets"` // runtime only (never baked into the image)
+	Env       map[string]string `toml:"env"`
+	Secrets   map[string]string `toml:"secrets"` // runtime only, never baked into the image
 }
 
-// Deploy holds deploy-lifecycle hooks.
 type Deploy struct {
-	Release string `toml:"release"` // command run once (e.g. migrations) before a new version goes live
-	Network string `toml:"network"` // docker network to join for team isolation; empty = shared "skiff"
+	Release string `toml:"release"`
+	Network string `toml:"network"`
 }
 
 type Resources struct {
-	Memory string `toml:"memory"` // e.g. "512m"
-	CPU    string `toml:"cpu"`    // e.g. "0.5"
+	Memory string `toml:"memory"`
+	CPU    string `toml:"cpu"`
 }
 
-// Server describes where the app runs. An empty host means local Docker.
 type Server struct {
 	Host string `toml:"host"`
 }
@@ -44,8 +42,7 @@ type Build struct {
 	Dockerfile string `toml:"dockerfile"`
 	Port       int    `toml:"port"`
 
-	// Optional recipe overrides — set start or static to skip auto-detection
-	// and build from these instead of a Dockerfile.
+	// Optional recipe overrides: setting start or static skips auto-detection and builds from these instead of a Dockerfile.
 	Base    string `toml:"base"`
 	Install string `toml:"install"`
 	Build   string `toml:"build"`

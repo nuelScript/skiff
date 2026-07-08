@@ -9,19 +9,13 @@ import (
 	"github.com/nuelScript/skiff/internal/docker"
 )
 
-// Workers are long-lived background process types declared on an app — a queue
-// consumer, a clock, anything that runs the app's image with a different command
-// and no HTTP port. They're managed like web replicas: N per worker, recreated
-// from the current image on every deploy, watched by docker's restart policy.
-// (Scheduled one-off work is the separate "jobs" feature.)
-
 type Worker struct {
 	ID       string `json:"id"`
 	App      string `json:"app"`
 	Name     string `json:"name"`
 	Command  string `json:"command"`
 	Replicas int    `json:"replicas"`
-	Running  int    `json:"running"` // computed: live containers for this worker
+	Running  int    `json:"running"`
 	Created  int64  `json:"created"`
 }
 
@@ -86,10 +80,6 @@ func toWorker(w workerRow, containers []string) Worker {
 	}
 }
 
-// reconcileWorkers brings an app's worker containers in line with its worker
-// definitions and current image: retire every existing one, then start the
-// declared replicas from skiff-<app>:latest. Called after a deploy/rollback and
-// whenever the definitions change. A no-op (just cleanup) if the app isn't built.
 func (p *Panel) reconcileWorkers(app string) {
 	src, ok := getSource(app)
 	if !ok {
@@ -176,7 +166,7 @@ func (p *Panel) handleWorkers(w http.ResponseWriter, r *http.Request) {
 		}
 		p.audit(r, "worker.set", app, name)
 		go p.reconcileWorkers(app)
-		// return the freshly-stored row (id may differ on conflict update, so re-read)
+		// re-read the stored row: on a conflict update the id differs from the one we submitted.
 		writeJSON(w, toWorker(mustWorker(app, name, wk), p.eng.WorkerContainers(app)))
 
 	case http.MethodDelete:
@@ -195,8 +185,6 @@ func (p *Panel) handleWorkers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// mustWorker re-reads a worker by (app, name) after an upsert so the response
-// reflects the stored row; falls back to the submitted one.
 func mustWorker(app, name string, fallback workerRow) workerRow {
 	if w, ok := scanWorker(sqlDB.QueryRow(`SELECT `+workerCols+` FROM workers WHERE app=? AND name=?`, app, name)); ok {
 		return w

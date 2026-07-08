@@ -83,15 +83,10 @@ func save(apps map[string]App) error {
 	return os.Rename(tmp, f)
 }
 
-// mu serializes registry mutations across in-process goroutines; the file lock
-// (below) additionally serializes against the `skiff deploy`/`rollback`
-// subprocesses that write the same apps.json.
+// mu serializes mutations across in-process goroutines; the flock (below) also serializes against the deploy/rollback subprocesses writing the same apps.json.
 var mu sync.Mutex
 
-// Update runs fn against the current registry under an exclusive lock (process
-// mutex + an flock on apps.lock) and persists the result — the only safe way to
-// read-modify-write, since deploy, autoscale, and teardown mutate concurrently
-// from several goroutines and separate OS processes.
+// Update read-modify-writes the registry under an exclusive lock (mu + flock), the only safe path given concurrent goroutines and separate OS processes.
 func Update(fn func(apps map[string]App)) error {
 	mu.Lock()
 	defer mu.Unlock()

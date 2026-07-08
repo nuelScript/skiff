@@ -1,7 +1,4 @@
-// Package auth is Skiff's accounts + teams layer: users authenticate, belong to
-// teams, and everything else (projects, env, deploys) is scoped to a team. It's
-// a self-hosted, single-instance model — teams organize collaborators on your
-// own box, not a central SaaS. Backed by SQLite.
+// Package auth is Skiff's accounts + teams layer: users belong to teams, and projects/env/deploys are scoped to a team. Backed by SQLite.
 package auth
 
 import (
@@ -60,7 +57,6 @@ func (s *Store) HasUsers() bool {
 	return n > 0
 }
 
-// CreateUser adds a user with a bcrypt-hashed password and a personal team.
 func (s *Store) CreateUser(email, name, password string) (User, Team, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || len(password) < 8 {
@@ -101,9 +97,7 @@ func (s *Store) CreateUser(email, name, password string) (User, Team, error) {
 	return u, team, tx.Commit()
 }
 
-// CreateUserNoTeam adds a user with no personal team — used when accepting an
-// invite, where the user joins the inviter's team rather than getting one of
-// their own.
+// CreateUserNoTeam adds a user without a personal team, for the invite flow where they join the inviter's team instead.
 func (s *Store) CreateUserNoTeam(email, name, password string) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || len(password) < 8 {
@@ -271,7 +265,6 @@ func (s *Store) AcceptInvite(token, userID string) (Team, error) {
 	return t, tx.Commit()
 }
 
-// UpdateName changes a user's display name.
 func (s *Store) UpdateName(userID, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -281,7 +274,6 @@ func (s *Store) UpdateName(userID, name string) error {
 	return err
 }
 
-// ChangePassword verifies the current password, then sets a new one.
 func (s *Store) ChangePassword(userID, current, next string) error {
 	if len(next) < 8 {
 		return fmt.Errorf("new password must be at least 8 characters")
@@ -301,7 +293,6 @@ func (s *Store) ChangePassword(userID, current, next string) error {
 	return err
 }
 
-// RenameTeam changes a team's name (and slug).
 func (s *Store) RenameTeam(teamID, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -347,8 +338,7 @@ func (s *Store) LeaveTeam(userID, teamID string) error {
 	return err
 }
 
-// DeleteTeam removes a team along with its memberships and pending invites.
-// Callers must first ensure the team owns no apps or databases.
+// DeleteTeam removes a team with its memberships and invites; callers must first ensure it owns no apps or databases.
 func (s *Store) DeleteTeam(teamID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -367,8 +357,7 @@ func (s *Store) DeleteTeam(teamID string) error {
 	return tx.Commit()
 }
 
-// DeleteUser removes a user and all their team memberships. Callers must first
-// deal with any teams the user solely owns.
+// DeleteUser removes a user and their memberships; callers must first deal with any teams the user solely owns.
 func (s *Store) DeleteUser(userID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {

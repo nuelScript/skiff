@@ -57,7 +57,6 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 		cfg.Name = nameOverride
 	}
 
-	// Local Docker, or a remote engine over SSH when [server] host is set.
 	eng := docker.For(cfg.RemoteHost())
 
 	ui.Banner(version)
@@ -95,7 +94,6 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 		return err
 	}
 
-	// Cancel the build on Ctrl-C or after buildTimeout.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if buildTimeout > 0 {
@@ -122,18 +120,10 @@ func runDeploy(configPath string, timeout, buildTimeout time.Duration, nameOverr
 		return err
 	}
 
-	// Retain this build as a rollback point (tagged by deploy id), pruning old ones.
 	retainRollbackImage(eng, cfg.Name, image)
 	return nil
 }
 
-// releaseImage runs an already-built image as a new container alongside the
-// current one, waits for it to become healthy, atomically points the router at
-// it, and retires the previous version. Shared by `deploy` (after a build) and
-// `rollback` (re-running a retained image with no rebuild).
-// releaseSpec is the per-release input to releaseImage: which image to release,
-// where its build context lives, the release-command timeout, and when the
-// deploy started (for the final "live in Ns" line).
 type releaseSpec struct {
 	image      string
 	contextDir string
@@ -141,10 +131,10 @@ type releaseSpec struct {
 	start      time.Time
 }
 
+// releaseImage brings a built image up healthy, atomically swaps the router to it, then retires the old — the blue-green path shared by deploy and rollback.
 func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) error {
 	image, contextDir, timeout, start := spec.image, spec.contextDir, spec.timeout, spec.start
-	// Runtime env = build env + secrets. Secrets never bake into the image, so a
-	// rollback picks up the current secrets/env against the old code image.
+	// Runtime env = build env + secrets; secrets never bake into the image, so a rollback runs current secrets against the old code.
 	buildEnv := cfg.Environment(contextDir)
 	runtimeEnv := make(map[string]string, len(buildEnv)+len(cfg.Secrets))
 	for k, v := range buildEnv {
@@ -154,10 +144,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		runtimeEnv[k] = v
 	}
 
-	// Join the app's network so it can reach managed databases by name. The panel
-	// sets this to the team's private network (isolation); it defaults to the
-	// shared "skiff" net. If it can't be created, fall back to no network rather
-	// than failing the deploy.
+	// Join the app's network to reach managed DBs by name (team-private, else shared "skiff"); fall back to no network rather than fail the deploy.
 	netName := cfg.Deploy.Network
 	if netName == "" {
 		netName = "skiff"
@@ -171,8 +158,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		healthHost = docker.SSHHostname(cfg.Server.Host)
 	}
 
-	// Release command (e.g. migrations): run it once against the runtime env before
-	// the new version goes live. If it fails, abort — the old version keeps serving.
+	// Release command (e.g. migrations) runs once before the new version goes live; on failure abort — the old version keeps serving.
 	if rel := strings.TrimSpace(cfg.Deploy.Release); rel != "" {
 		ui.Step("Running release command")
 		rctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -198,8 +184,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		ui.Step("Starting new version")
 	}
 
-	// Bring the whole new set up and healthy before touching the old one. If any
-	// replica fails, roll back everything we started — the old version keeps serving.
+	// Bring the whole new set up healthy before touching the old; if any replica fails, roll back everything started — the old version keeps serving.
 	var reps []registry.Replica
 	rollback := func() {
 		for _, rp := range reps {
@@ -235,7 +220,6 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	}
 	ui.Done("Healthy")
 
-	// Point the router at the new set (atomic), then retire the old one.
 	if err := registry.Put(registry.App{
 		Name:      cfg.Name,
 		Container: reps[0].Container,
@@ -248,8 +232,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		return err
 	}
 
-	// Retire every container for this app that isn't in the new set — the previous
-	// version plus any left over from a failed swap or a canceled build.
+	// Retire every container for this app not in the new set — the previous version plus leftovers from a failed swap or canceled build.
 	newSet := map[string]bool{}
 	for _, rp := range reps {
 		newSet[rp.Container] = true
@@ -257,7 +240,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	retired := 0
 	for _, name := range eng.AppContainers(cfg.Name) {
 		if !newSet[name] {
-			_ = eng.Stop(name) // graceful drain (SIGTERM) before removal
+			_ = eng.Stop(name)
 			_ = eng.Remove(name)
 			retired++
 		}
@@ -279,9 +262,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 // retainImages is how many past builds to keep as instant-rollback points, per app.
 const retainImages = 5
 
-// retainRollbackImage tags the just-built image by its deploy id so a later
-// rollback can re-run it without a rebuild, then prunes builds beyond the last
-// retainImages. Only runs when invoked by the panel (which sets SKIFF_DEPLOY_ID).
+// retainRollbackImage tags the build by deploy id for no-rebuild rollback and prunes old ones; only when the panel sets SKIFF_DEPLOY_ID.
 func retainRollbackImage(eng *docker.Engine, app, image string) {
 	did := os.Getenv("SKIFF_DEPLOY_ID")
 	if did == "" {

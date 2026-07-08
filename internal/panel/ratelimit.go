@@ -8,10 +8,7 @@ import (
 	"time"
 )
 
-// loginThrottle blunts online password guessing: after too many failed logins
-// from one client within a window, further attempts get a 429 until it cools
-// off. It's in-memory — a restart clears it, which is fine for a self-hosted
-// panel behind its own edge router.
+// loginThrottle blunts online password guessing: too many failed logins from one client trip a 429 until the window cools off (in-memory; a restart clears it).
 type loginThrottle struct {
 	mu      sync.Mutex
 	windows map[string]*failWindow
@@ -30,7 +27,6 @@ func newLoginThrottle() *loginThrottle {
 
 var loginLimiter = newLoginThrottle()
 
-// blocked reports whether key is currently locked out, dropping an expired window.
 func (t *loginThrottle) blocked(key string, now time.Time) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -45,7 +41,6 @@ func (t *loginThrottle) blocked(key string, now time.Time) bool {
 	return w.count >= t.max
 }
 
-// fail records a failed attempt, opening or extending the client's window.
 func (t *loginThrottle) fail(key string, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -57,18 +52,13 @@ func (t *loginThrottle) fail(key string, now time.Time) {
 	w.count++
 }
 
-// ok clears a client's failures after a successful login.
 func (t *loginThrottle) ok(key string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.windows, key)
 }
 
-// clientIP is the caller's address. X-Forwarded-For is only trusted when the
-// direct peer is loopback — i.e. the request came through Skiff's edge router on
-// this box, which replaces any client-supplied XFF with the real client IP. A
-// non-loopback peer reaching the panel directly could forge XFF to dodge the
-// login lockout, so its real remote address is used instead.
+// clientIP trusts X-Forwarded-For only from a loopback peer (Skiff's edge router, which sets the real IP); a direct non-loopback peer could forge XFF to dodge the login lockout.
 func clientIP(r *http.Request) string {
 	host := r.RemoteAddr
 	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {

@@ -2,23 +2,16 @@ package panel
 
 import "log"
 
-// Per-team network isolation: each team's apps and databases join a private
-// docker network (skiff-t-<team>) instead of the shared "skiff" net, so a
-// compromised app can't reach another team's containers by name. New deploys,
-// databases, replicas, and jobs go straight onto the team network; existing
-// databases are attached to it on startup so an app redeployed onto the team
-// net keeps reaching them.
+// Each team's apps/databases join a private docker network (skiff-t-<team>) so a compromised app can't reach another team's containers by name.
 
 func teamNetwork(team string) string {
 	if team == "" {
-		return dbNetwork // shared fallback for team-less / legacy apps
+		return dbNetwork
 	}
 	return "skiff-t-" + sanitizeName(team)
 }
 
-// reconcileNetworks makes sure every existing database is reachable on its
-// team's private network (in addition to wherever it already lives), so an app
-// redeployed onto the team net can still find it by name.
+// reconcileNetworks attaches every existing database to its team's private network so an app redeployed onto the team net still finds it by name.
 func (p *Panel) reconcileNetworks() {
 	rows, err := sqlDB.Query(`SELECT team, container FROM databases`)
 	if err != nil {

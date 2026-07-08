@@ -12,8 +12,6 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// Job is a command run on a cron schedule in a one-off container from the app's
-// image, with the app's runtime env on the shared network.
 type Job struct {
 	ID       string `json:"id"`
 	App      string `json:"app"`
@@ -22,7 +20,7 @@ type Job struct {
 	Command  string `json:"command"`
 	LastRun  int64  `json:"lastRun"`
 	LastOk   bool   `json:"lastOk"`
-	Next     int64  `json:"next"` // computed: next scheduled run
+	Next     int64  `json:"next"`
 	Created  int64  `json:"created"`
 }
 
@@ -117,8 +115,6 @@ func toJob(j jobRow) Job {
 	}
 }
 
-// execJob runs a job in a one-off container from the app's current image and
-// records the outcome. Returns the combined output.
 func (p *Panel) execJob(j jobRow) (string, error) {
 	src, ok := getSource(j.App)
 	if !ok {
@@ -141,9 +137,8 @@ func (p *Panel) execJob(j jobRow) (string, error) {
 	return out, err
 }
 
-// jobLoop runs due scheduled jobs, checking once a minute.
 func (p *Panel) jobLoop() {
-	time.Sleep(90 * time.Second) // settle after startup
+	time.Sleep(90 * time.Second)
 	for {
 		guard("jobLoop", func() {
 			now := time.Now()
@@ -157,10 +152,10 @@ func (p *Panel) jobLoop() {
 					base = time.Unix(j.LastRun, 0)
 				}
 				if sched.Next(base).After(now) {
-					continue // not due yet
+					continue
 				}
 				if !claimJob(j.ID) {
-					continue // already running
+					continue
 				}
 				go func(j jobRow) {
 					defer releaseJob(j.ID)
@@ -233,7 +228,6 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleJobRun triggers a job immediately and returns its output.
 func (p *Panel) handleJobRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

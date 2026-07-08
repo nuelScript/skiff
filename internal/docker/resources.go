@@ -7,9 +7,7 @@ import (
 	"io"
 )
 
-// DBRunSpec runs a managed resource (a database) — network-internal, backed by a
-// named volume, and deliberately unlabeled with skiff=1 so the app reaper leaves
-// it alone.
+// DBRunSpec runs a managed resource (a database), deliberately unlabeled with skiff=1 so the app reaper leaves it alone.
 type DBRunSpec struct {
 	Name       string
 	Image      string
@@ -25,9 +23,7 @@ type DBRunSpec struct {
 	Binds      []string          // extra bind mounts, "host:container[:ro]" (e.g. the TLS cert dir)
 }
 
-// RunDatabase (re)creates a managed database container. It returns the published
-// host port when Publish is set (0 otherwise). Recreating with the same name +
-// volume preserves the data.
+// RunDatabase (re)creates a managed database container, returning the published host port when Publish is set (0 otherwise); reusing the same name + volume preserves the data.
 func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	_ = e.command("rm", "-f", s.Name).Run()
 	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped"}
@@ -63,12 +59,10 @@ func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	return 0, nil
 }
 
-// RemoveVolume deletes a named volume (used when tearing down a database).
 func (e *Engine) RemoveVolume(name string) error {
 	return e.command("volume", "rm", "-f", name).Run()
 }
 
-// PullImage fetches an image ahead of time so a later run doesn't block on it.
 func (e *Engine) PullImage(image string) error {
 	if out, err := e.command("pull", image).CombinedOutput(); err != nil {
 		return fmt.Errorf("docker pull failed: %s", firstLine(out))
@@ -76,9 +70,7 @@ func (e *Engine) PullImage(image string) error {
 	return nil
 }
 
-// RunOnce runs a throwaway container from an image with the given env on a
-// network, executing a shell command. Returns combined output and the exit
-// error — used for release commands (migrations) and scheduled jobs.
+// RunOnce runs a throwaway container executing a shell command (sh -c), for release commands (migrations) and scheduled jobs.
 func (e *Engine) RunOnce(ctx context.Context, image string, env map[string]string, network, cmd string) (string, error) {
 	args := []string{"run", "--rm"}
 	if network != "" {
@@ -92,8 +84,7 @@ func (e *Engine) RunOnce(ctx context.Context, image string, env map[string]strin
 	return string(out), err
 }
 
-// RunTool runs a throwaway container passing args straight to the image's
-// entrypoint (no shell), used for CLI images like minio/mc that have no shell.
+// RunTool runs a throwaway container passing args straight to the entrypoint (no shell), for CLI images like minio/mc that have none.
 func (e *Engine) RunTool(network string, env map[string]string, image string, args ...string) (string, error) {
 	full := []string{"run", "--rm"}
 	if network != "" {
@@ -108,8 +99,7 @@ func (e *Engine) RunTool(network string, env map[string]string, image string, ar
 	return string(out), err
 }
 
-// Exec runs a command inside a container, wiring stdin/stdout to the given
-// streams — used to dump a database to a file and pipe a dump back in.
+// Exec runs a command inside a container, wiring stdin/stdout to the given streams — used to dump a database and pipe a dump back in.
 func (e *Engine) Exec(ctx context.Context, container string, cmd []string, stdin io.Reader, stdout io.Writer) error {
 	args := append([]string{"exec", "-i", container}, cmd...)
 	c := e.contextCommand(ctx, args...)

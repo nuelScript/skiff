@@ -36,8 +36,7 @@ func (e *Engine) Containers() ([]string, error) {
 	return splitLines(out), nil
 }
 
-// AppContainers lists every container (running or not) for an app, so all stale
-// versions can be retired — not just the one the registry last recorded.
+// AppContainers lists every container (running or not) for an app, so all stale versions get retired, not just the registry's last-recorded one.
 func (e *Engine) AppContainers(app string) []string {
 	out, err := e.command("ps", "-a", "--filter", "label=skiff.app="+app, "--format", "{{.Names}}").Output()
 	if err != nil {
@@ -46,14 +45,11 @@ func (e *Engine) AppContainers(app string) []string {
 	return splitLines(out)
 }
 
-// ContainerInfo is a skiff-managed container's name and creation time.
 type ContainerInfo struct {
 	Name    string
 	Created time.Time
 }
 
-// SkiffContainers lists all skiff-managed containers with their creation time,
-// for reaping orphans (deleted apps, failed swaps) on startup.
 func (e *Engine) SkiffContainers() []ContainerInfo {
 	out, err := e.command("ps", "-a", "--filter", "label=skiff=1", "--format", "{{.Names}}|{{.CreatedAt}}").Output()
 	if err != nil {
@@ -71,7 +67,6 @@ func (e *Engine) SkiffContainers() []ContainerInfo {
 	return cs
 }
 
-// Routes discovers app-to-hostport mappings from skiff.app-labeled containers.
 func (e *Engine) Routes() ([]Route, error) {
 	out, err := e.command("ps", "--filter", "label=skiff.app", "--format", `{{.Label "skiff.app"}} {{.Label "skiff.port"}} {{.Names}}`).Output()
 	if err != nil {
@@ -96,8 +91,7 @@ func (e *Engine) Routes() ([]Route, error) {
 	return routes, nil
 }
 
-// AppStates maps each skiff app to its container state (running, exited, ...).
-// Running wins when an app has more than one container (e.g. mid-rollout).
+// AppStates maps each skiff app to its container state; running wins when an app has more than one container (e.g. mid-rollout).
 func (e *Engine) AppStates() (map[string]string, error) {
 	out, err := e.command("ps", "-a", "--filter", "label=skiff.app", "--format", `{{.Label "skiff.app"}}|{{.State}}`).Output()
 	if err != nil {

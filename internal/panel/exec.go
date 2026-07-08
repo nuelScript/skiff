@@ -12,8 +12,6 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// handleExec opens an interactive shell inside an app's container over a
-// WebSocket — a browser terminal for running migrations, inspecting state, etc.
 func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	if !p.canAccess(r, app) {
@@ -38,9 +36,6 @@ func (p *Panel) handleExec(w http.ResponseWriter, r *http.Request) {
 		[]string{"sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"})
 }
 
-// serveContainerShell bridges a WebSocket to a PTY running `docker exec -it
-// <container> <cmd...>`. A real TTY gives line editing, colours, and curses
-// apps (psql, redis-cli, migrations).
 func (p *Panel) serveContainerShell(w http.ResponseWriter, r *http.Request, container string, shellArgs []string) {
 	c, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -48,8 +43,7 @@ func (p *Panel) serveContainerShell(w http.ResponseWriter, r *http.Request, cont
 	}
 	defer c.CloseNow()
 
-	// r.Context() is canceled once Accept hijacks the connection, so the session
-	// gets its own context, canceled when either side of the bridge goes away.
+	// r.Context() is canceled once Accept hijacks the connection, so give the session its own context, canceled when either side goes away.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -96,8 +90,7 @@ func (p *Panel) serveContainerShell(w http.ResponseWriter, r *http.Request, cont
 		case "in":
 			_, _ = ptmx.WriteString(msg.D)
 		case "resize":
-			// Clamp the browser-supplied dimensions before the uint16 conversion so a
-			// bogus value can't silently wrap to a tiny terminal size.
+			// Clamp browser-supplied dims before the uint16 cast so a bogus value can't silently wrap to a tiny terminal.
 			if msg.C > 0 && msg.R > 0 && msg.C <= 1000 && msg.R <= 1000 {
 				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(msg.R), Cols: uint16(msg.C)})
 			}

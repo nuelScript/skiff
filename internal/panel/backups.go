@@ -12,13 +12,10 @@ import (
 	"time"
 )
 
-// backupRetention is how many backups we keep per database before pruning the
-// oldest.
 const backupRetention = 10
 
 func backupsDir() string { return filepath.Join(skiffDir(), "backups") }
 
-// Backup is a stored database dump as the dashboard sees it.
 type Backup struct {
 	ID      string `json:"id"`
 	Size    int64  `json:"size"`
@@ -78,7 +75,6 @@ func deleteBackup(b backupRow) {
 	_, _ = sqlDB.Exec(`DELETE FROM backups WHERE id=?`, b.ID)
 }
 
-// pruneBackups keeps the newest `keep` backups for a database, dropping the rest.
 func pruneBackups(dbID string, keep int) {
 	all := listBackupRows(dbID)
 	for i := keep; i < len(all); i++ {
@@ -110,7 +106,6 @@ func allDatabases() []dbRow {
 	return out
 }
 
-// runBackup dumps a database to a new file, records it, and prunes old ones.
 func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	e := dbEngines[d.Engine]
 	if e.backupExt == "" {
@@ -202,8 +197,6 @@ func (p *Panel) handleBackups(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleBackupRestore pipes a stored dump back into its database, replacing
-// current contents.
 func (p *Panel) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -270,7 +263,6 @@ func (p *Panel) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, f)
 }
 
-// backupLoop takes a daily snapshot of every database that supports backups.
 func (p *Panel) backupLoop() {
 	time.Sleep(2 * time.Minute) // let startup settle before the first pass
 	for {

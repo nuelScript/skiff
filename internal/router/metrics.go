@@ -9,17 +9,13 @@ import (
 	"time"
 )
 
-// Request metrics: the router buckets traffic per app, per minute, keeping a
-// rolling window in memory and snapshotting it to a file the panel reads for the
-// Analytics page. The window is seeded from that file on startup so a router
-// restart doesn't lose recent history.
+// Request metrics: a rolling in-memory window of per-app, per-minute buckets, snapshotted to a file and reseeded from it on restart so history survives.
 
 const (
 	metricsWindowSecs int64 = 24 * 60 * 60 // keep ~24h of buckets
 	metricsBucketSecs int64 = 60           // one bucket per minute
 )
 
-// Bucket is one minute of traffic for an app.
 type Bucket struct {
 	T      int64 `json:"t"` // minute, unix seconds (floored)
 	Req    int   `json:"req"`
@@ -49,7 +45,6 @@ func NewMetrics(file string) *Metrics {
 	return m
 }
 
-// Record adds one request to the current minute's bucket for an app.
 func (m *Metrics) Record(app string, status int, bytesIn, bytesOut int64, dur time.Duration) {
 	if app == "" {
 		return
@@ -85,8 +80,6 @@ func (m *Metrics) Record(app string, status int, bytesIn, bytesOut int64, dur ti
 	b.BytesO += bytesOut
 }
 
-// Run prunes the window and snapshots to disk on a fixed cadence, for the life
-// of the process.
 func (m *Metrics) Run() {
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
@@ -162,8 +155,7 @@ func (m *Metrics) load() {
 	}
 }
 
-// statusRecorder captures the response status and byte count while forwarding
-// everything else (including Flush, via Unwrap) so proxied SSE/streaming works.
+// statusRecorder records the status + byte count while still forwarding Flush (via Unwrap) so proxied SSE/streaming isn't buffered.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int

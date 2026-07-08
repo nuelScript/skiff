@@ -87,13 +87,12 @@ func (n *nodeBuilder) framework() *nodeFramework {
 
 type nodeFramework struct {
 	name      string
-	dep       string   // dependency that signals this framework
-	staticDir string   // static shape: `npm run build`, then serve this directory
-	serverCmd []string // server shape: `npm run build`, then run this command
+	dep       string
+	staticDir string
+	serverCmd []string
 }
 
-// Order matters: frameworks that also pull in `vite` (Astro, SvelteKit, Nuxt)
-// must come before the plain Vite entry so the more specific one wins.
+// Order matters: frameworks that also bundle vite must come before the plain Vite entry so the more specific one wins.
 var nodeFrameworks = []nodeFramework{
 	{name: "Next.js", dep: "next", serverCmd: []string{"npm", "start"}},
 	{name: "Nuxt", dep: "nuxt", serverCmd: []string{"node", ".output/server/index.mjs"}},

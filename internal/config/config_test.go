@@ -25,11 +25,11 @@ func TestEnvironmentMerge(t *testing.T) {
 	env := c.Environment(dir)
 
 	want := map[string]string{
-		"FOO":      "from_dotenv", // "export " prefix stripped
-		"BAR":      "quoted",      // double quotes trimmed
-		"BAZ":      "single",      // single quotes trimmed
-		"OVERRIDE": "config",      // c.Env wins over the .env
-		"NEW":      "x",           // config-only var present
+		"FOO":      "from_dotenv",
+		"BAR":      "quoted",
+		"BAZ":      "single",
+		"OVERRIDE": "config",
+		"NEW":      "x",
 	}
 	for k, v := range want {
 		if env[k] != v {
@@ -43,7 +43,7 @@ func TestEnvironmentMerge(t *testing.T) {
 
 func TestEnvironmentNoDotenv(t *testing.T) {
 	c := &Config{Env: map[string]string{"A": "1"}}
-	env := c.Environment(t.TempDir()) // no .env present
+	env := c.Environment(t.TempDir())
 	if len(env) != 1 || env["A"] != "1" {
 		t.Errorf("missing .env should yield just the config env, got %v", env)
 	}

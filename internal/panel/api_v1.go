@@ -9,11 +9,6 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// The /api/v1 surface is the stable, token-authenticated API — the same actions
-// the dashboard drives (list apps, deploy, poll a deploy, read and write env),
-// shaped as plain JSON so they fit into CI. Every request is scoped to the
-// token's team; there is no cross-team access.
-
 type ctxKey int
 
 const (
@@ -28,7 +23,6 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-// apiAuth authenticates a bearer token and pins the request to its team.
 func (p *Panel) apiAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		team, name, ok := resolveToken(bearerToken(r))
@@ -56,7 +50,6 @@ func apiErr(w http.ResponseWriter, code int, msg string) {
 	apiJSON(w, code, map[string]string{"error": msg})
 }
 
-// apiSource resolves an app the token's team owns (nil for unknown / other team).
 func apiSource(r *http.Request, name string) (Source, bool) {
 	src, ok := getSource(name)
 	if !ok || src.Team != apiTeam(r) {
@@ -105,7 +98,7 @@ func (p *Panel) apiListApps(w http.ResponseWriter, r *http.Request) {
 	for _, a := range apps {
 		src, ok := getSource(a.Name)
 		if !ok || src.Team != team || src.Parent != "" {
-			continue // this team's production apps only
+			continue
 		}
 		out = append(out, p.apiAppView(a, src))
 	}

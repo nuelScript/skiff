@@ -8,11 +8,6 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// Preview environments deploy a project's branch as its own throwaway app at
-// <name>.<domain>, where name = "<app>-<branch>" slugified. They ride the same
-// subdomain routing + automatic certs as any app — no edge changes needed.
-
-// previewName derives a DNS-safe subdomain label for an app's branch preview.
 func previewName(app, branch string) string {
 	slug := slugify(app + "-" + branch)
 	if len(slug) > 50 {
@@ -21,11 +16,9 @@ func previewName(app, branch string) string {
 	return slug
 }
 
-// slugify lowercases and reduces a string to [a-z0-9-] with no leading, trailing
-// or repeated dashes — a valid DNS label.
 func slugify(s string) string {
 	var b strings.Builder
-	dash := true // avoid a leading dash
+	dash := true
 	for _, r := range strings.ToLower(s) {
 		switch {
 		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
@@ -66,7 +59,6 @@ type previewView struct {
 	Updated int64  `json:"updated"`
 }
 
-// buildPreviews assembles the live view of a project's preview environments.
 func (p *Panel) buildPreviews(parent string) []previewView {
 	srcs := previewSources(parent)
 	out := make([]previewView, 0, len(srcs))
@@ -90,8 +82,6 @@ func (p *Panel) buildPreviews(parent string) []previewView {
 	return out
 }
 
-// handleCreatePreview deploys a branch of a project as a preview environment,
-// inheriting the project's repo, build config and env, and streams the build.
 func (p *Panel) handleCreatePreview(w http.ResponseWriter, r *http.Request) {
 	parent := sanitizeName(r.URL.Query().Get("app"))
 	branch := strings.TrimSpace(r.URL.Query().Get("branch"))
@@ -116,9 +106,6 @@ func (p *Panel) handleCreatePreview(w http.ResponseWriter, r *http.Request) {
 	p.tailLog(w, r, name, id)
 }
 
-// createPreview provisions (or updates) a preview environment for a project's
-// branch — inheriting the project's source, build config and env — and starts
-// its deploy. Shared by the manual endpoint and webhook auto-creation.
 func (p *Panel) createPreview(parent Source, branch, commit, message string) (name, id string, ok bool) {
 	name = previewName(parent.App, branch)
 	if name == "" || name == parent.App {
@@ -131,17 +118,15 @@ func (p *Panel) createPreview(parent Source, branch, commit, message string) (na
 		Auto: true, Parent: parent.App,
 	}
 	_ = putSource(pv)
-	_ = setEnv(name, getEnv(parent.App)) // start from the project's environment
+	_ = setEnv(name, getEnv(parent.App))
 	if rebindBranchDomains(parent.App, branch, name) {
-		writeDomainsFile() // a pinned branch domain now resolves to this preview
+		writeDomainsFile()
 	}
 	id = newDeployID()
 	go p.runDeploy(pv, "", commit, message, "preview", id)
 	return name, id, true
 }
 
-// removeAppImages deletes every retained image for an app (used on teardown so
-// throwaway previews don't leave build layers behind).
 func (p *Panel) removeAppImages(app string) {
 	for _, t := range p.eng.AppImageTags(app) {
 		_ = p.eng.RemoveImage(fmt.Sprintf("skiff-%s:%s", app, t))

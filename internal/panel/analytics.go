@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-// Analytics reads the per-app request metrics the router snapshots and
-// aggregates them for the caller's team over a selectable window, optionally
-// scoped to a single app, bucketed for a clean time series.
-
 type metricBucket struct {
 	T   int64 `json:"t"`
 	Req int   `json:"req"`
@@ -53,7 +49,7 @@ type analyticsSeries struct {
 	S5  int   `json:"s5"`
 	Bi  int64 `json:"bi"`
 	Bo  int64 `json:"bo"`
-	Lat int   `json:"lat"` // average latency (ms) in the bucket
+	Lat int   `json:"lat"`
 }
 
 type analyticsApp struct {
@@ -130,7 +126,7 @@ func (p *Panel) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	for app, bs := range data.Apps {
 		src, ok := getSource(app)
 		if !ok || src.Team != team {
-			continue // this team's apps only
+			continue
 		}
 		appOptions = append(appOptions, app)
 		if only != "" && app != only {

@@ -21,10 +21,9 @@ const (
 	updateInstallCmd = "curl -fsSL https://useskiff.xyz/cli | sh"
 )
 
-// updateInfo is the on-disk cache of the last-seen latest release.
 type updateInfo struct {
 	CheckedAt int64  `json:"checkedAt"`
-	Latest    string `json:"latest"` // e.g. "0.1.1"
+	Latest    string `json:"latest"`
 }
 
 func updateCachePath() string {
@@ -56,11 +55,7 @@ func writeUpdateCache(u updateInfo) {
 	}
 }
 
-// notifyUpdate prints a one-line hint when a newer release exists, and refreshes
-// the cached latest version — in a detached process — at most once a day. The
-// hot path only reads a local cache, so it never blocks the command; it stays
-// silent on any error, for dev builds, in CI (SKIFF_NO_UPDATE_CHECK), and when
-// stderr isn't a terminal.
+// notifyUpdate hints when a newer release exists and refreshes the cache in a detached process at most daily, so the hot path only reads a local cache and never blocks.
 func notifyUpdate(current string) {
 	if current == "" || current == "dev" || os.Getenv("SKIFF_NO_UPDATE_CHECK") != "" {
 		return
@@ -77,8 +72,6 @@ func notifyUpdate(current string) {
 	}
 }
 
-// updateNotice returns the one-line hint to show when latest is newer than
-// current, or "" when there's nothing to say.
 func updateNotice(current, latest string) string {
 	if latest == "" || !versionLess(current, latest) {
 		return ""
@@ -87,9 +80,7 @@ func updateNotice(current, latest string) string {
 		latest, current, updateInstallCmd)
 }
 
-// refreshUpdateCacheDetached re-invokes skiff to fetch and cache the latest
-// version without blocking: it starts the child and never waits, so the check
-// happens in the background (and outlives this command) with no output.
+// refreshUpdateCacheDetached re-invokes skiff to refresh the version cache in a detached child that outlives this command.
 func refreshUpdateCacheDetached() {
 	exe, err := os.Executable()
 	if err != nil {
@@ -125,8 +116,7 @@ func fetchLatestVersion() (string, bool) {
 	return strings.TrimPrefix(out.TagName, "v"), true
 }
 
-// newUpdateCheckCmd is the hidden command the detached refresh runs: it fetches
-// the latest release and writes the cache, then exits.
+// newUpdateCheckCmd is the hidden command the detached refresh runs to fetch the latest release and write the cache.
 func newUpdateCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    updateCheckCmd,
@@ -139,8 +129,7 @@ func newUpdateCheckCmd() *cobra.Command {
 	}
 }
 
-// versionLess reports whether a < b for simple dotted versions; any pre-release
-// suffix after "-" is ignored.
+// versionLess reports whether a < b for dotted versions; any "-" pre-release suffix is ignored.
 func versionLess(a, b string) bool {
 	pa, pb := parseSemver(a), parseSemver(b)
 	for i := 0; i < 3; i++ {

@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-// Server metrics for the "Server" page — the box you own, laid bare. Host stats
-// come from /proc + statfs; container stats from `docker stats`. Values a given
-// OS can't provide (e.g. /proc on macOS during local dev) come back zeroed.
-
 type resourceUsage struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
@@ -44,8 +40,7 @@ type serverInfo struct {
 }
 
 func (p *Panel) handleServer(w http.ResponseWriter, r *http.Request) {
-	// The box view lists every container on the host (across teams), so it's for
-	// owners only — a member shouldn't be able to enumerate other teams' apps.
+	// The box view lists every container across teams, so it's owners-only — a member mustn't enumerate other teams' apps.
 	if !p.isOwner(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return

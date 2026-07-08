@@ -15,20 +15,16 @@ import (
 	"time"
 )
 
-// Domain is a custom hostname pointed at one of the team's apps. The router
-// serves it (with an on-demand Let's Encrypt cert) once DNS points at the box.
 type Domain struct {
 	Host       string   `json:"host"`
 	App        string   `json:"app"`
-	Parent     string   `json:"parent,omitempty"` // set for a managed branch domain: the parent project's app
-	Branch     string   `json:"branch,omitempty"` // set for a managed branch domain: the branch it tracks
+	Parent     string   `json:"parent,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
 	Created    int64    `json:"created"`
-	PointsHere bool     `json:"pointsHere"`           // computed: DNS resolves to this server
-	ResolvesTo []string `json:"resolvesTo,omitempty"` // computed: where the host currently points
+	PointsHere bool     `json:"pointsHere"`
+	ResolvesTo []string `json:"resolvesTo,omitempty"`
 }
 
-// domainsResponse carries the team's domains plus this server's public IP, so
-// the dashboard can show the exact A record to set.
 type domainsResponse struct {
 	ServerIP string   `json:"serverIp"`
 	Domains  []Domain `json:"domains"`
@@ -36,9 +32,7 @@ type domainsResponse struct {
 
 var hostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
 
-// normalizeHost cleans user input to a bare hostname and rejects anything that
-// isn't a valid custom domain — including subdomains of the base domain, which
-// the router already serves automatically.
+// normalizeHost cleans input to a bare hostname and rejects invalid ones — including base-domain subdomains, which the router already serves automatically.
 func normalizeHost(host, served string) (string, bool) {
 	h := strings.ToLower(strings.TrimSpace(host))
 	h = strings.TrimPrefix(h, "https://")
@@ -51,15 +45,13 @@ func normalizeHost(host, served string) (string, bool) {
 		return "", false
 	}
 	if h == served || strings.HasSuffix(h, "."+served) {
-		return "", false // already served at <sub>.<domain>
+		return "", false
 	}
 	return h, true
 }
 
 func domainsFilePath() string { return filepath.Join(skiffDir(), "domains.json") }
 
-// writeDomainsFile mirrors the host→app map to a file the edge router reads
-// (cached briefly) for routing + its ACME host policy. Called after any change.
 func writeDomainsFile() {
 	rows, err := sqlDB.Query(`SELECT host, app FROM domains`)
 	if err != nil {
@@ -107,11 +99,7 @@ func domainOwner(host string) (Domain, bool) {
 	return d, err == nil
 }
 
-// deleteAppDomains removes the plain custom domains bound to a torn-down app so
-// they don't dangle at a dead backend. Managed branch domains (those with a
-// parent set) are left in place — they re-bind to the preview on its next
-// deploy. Reports whether it removed anything, so the caller can re-mirror the
-// router file.
+// deleteAppDomains removes only plain custom domains of a torn-down app (empty parent); managed branch domains survive to re-bind on the preview's next deploy. Reports whether anything was removed.
 func deleteAppDomains(app string) bool {
 	res, err := sqlDB.Exec(`DELETE FROM domains WHERE app=? AND parent=''`, app)
 	if err != nil {
@@ -121,10 +109,7 @@ func deleteAppDomains(app string) bool {
 	return n > 0
 }
 
-// rebindBranchDomains points every managed domain tracking (parent, branch) at
-// the given preview app, so a branch's custom hostnames follow its preview
-// across (re)deploys — including the first deploy of a domain added before the
-// preview existed. Reports whether any row matched, so the caller can re-mirror.
+// rebindBranchDomains repoints managed domains for (parent, branch) at the preview app, so a branch's hostnames follow its preview across (re)deploys — including one added before the preview existed.
 func rebindBranchDomains(parent, branch, app string) bool {
 	res, err := sqlDB.Exec(`UPDATE domains SET app=? WHERE parent=? AND branch=?`, app, parent, branch)
 	if err != nil {
@@ -134,8 +119,6 @@ func rebindBranchDomains(parent, branch, app string) bool {
 	return n > 0
 }
 
-// handleDomains manages a team's custom domains: list (GET), add (POST), remove
-// (DELETE). Each is scoped to apps the caller can access.
 func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -156,9 +139,6 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		// With a branch, `app` names the parent project and the host is bound to
-		// that project's branch preview; the preview lifecycle keeps it in sync.
-		// Without one, it's a plain domain pinned to the app itself.
 		parent, branch, target := "", strings.TrimSpace(body.Branch), app
 		if branch != "" {
 			src, ok := getSource(app)
@@ -219,8 +199,6 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resolveDomains records where each host currently resolves and whether that
-// includes this server's public IP (i.e. DNS is pointed here).
 func resolveDomains(domains []Domain, serverIP string) {
 	for i := range domains {
 		ips := resolveIPs(domains[i].Host)
@@ -259,9 +237,6 @@ var (
 	pubIPVal string
 )
 
-// serverPublicIP is this box's public IP — the value a custom domain's A record
-// should point at. Determined once via an egress lookup, falling back to the
-// base domain's own A record (which points here in the standard setup).
 func serverPublicIP(base string) string {
 	pubIPMu.Lock()
 	defer pubIPMu.Unlock()

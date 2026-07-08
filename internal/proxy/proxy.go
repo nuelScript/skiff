@@ -15,8 +15,6 @@ import (
 
 const DefaultAddr = ":8080"
 
-// Proxy serves *.localhost requests, round-robining across each app's replicas.
-// It implements http.Handler.
 type Proxy struct {
 	mu sync.Mutex
 	rr map[string]uint64 // per-app round-robin cursor
@@ -24,8 +22,6 @@ type Proxy struct {
 
 func New() *Proxy { return &Proxy{rr: map[string]uint64{}} }
 
-// pickPort round-robins across an app's replicas (falling back to the single
-// representative port when none are recorded).
 func (p *Proxy) pickPort(app registry.App) int {
 	if len(app.Replicas) == 0 {
 		return app.HostPort
@@ -81,7 +77,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
-			pr.SetXForwarded()       // X-Forwarded-For / -Host / -Proto
+			pr.SetXForwarded()
 			pr.Out.Host = pr.In.Host // let the app see its real public hostname
 		},
 	}

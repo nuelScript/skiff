@@ -84,9 +84,7 @@ func firstLine(b []byte) string {
 	return strings.TrimSpace(string(b))
 }
 
-// cmdErr turns a failed command's captured output into an error, falling back to
-// the raw exit error when the command produced no output (e.g. an OOM-killed
-// container exits 137 with nothing captured) so the error message is never blank.
+// cmdErr surfaces a failed command's output as the error, falling back to the exit error when output is empty (e.g. an OOM-killed container exits 137) so it's never blank.
 func cmdErr(out []byte, err error) error {
 	if msg := firstLine(out); msg != "" {
 		return fmt.Errorf("%s", msg)
@@ -94,8 +92,6 @@ func cmdErr(out []byte, err error) error {
 	return err
 }
 
-// splitLines turns command output into its non-empty, trimmed lines — the shared
-// shape behind every `docker ps --format …` reader.
 func splitLines(b []byte) []string {
 	var out []string
 	for _, ln := range strings.Split(strings.TrimSpace(string(b)), "\n") {

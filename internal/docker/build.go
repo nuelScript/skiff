@@ -18,13 +18,11 @@ func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, conte
 	return cmd.Run()
 }
 
-// ensureDockerignore writes a sensible default .dockerignore when the app has
-// none, so host junk (node_modules, .git) doesn't bloat or corrupt the image.
-// The returned cleanup removes only a file we created.
+// ensureDockerignore writes a default .dockerignore when the app ships none; its cleanup removes only a file we created.
 func ensureDockerignore(dir string) func() {
 	p := filepath.Join(dir, ".dockerignore")
 	if _, err := os.Stat(p); err == nil {
-		return func() {} // the app ships its own — leave it alone
+		return func() {}
 	}
 	if err := os.WriteFile(p, []byte("node_modules\n.git\n.skiff\n.env\n*.log\n"), 0o644); err != nil {
 		return func() {}

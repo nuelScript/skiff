@@ -11,13 +11,6 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// Autoscaling closes the loop on the metrics we record: a control loop compares
-// each opted-in app's recent CPU against its target and adds or retires replicas
-// to hold every replica near that target, bounded by min..max. Replicas are the
-// same labeled containers a manual deploy runs, so the edge router — which
-// discovers backends from container labels — load-balances to them the moment
-// they're up, with no restart.
-
 const (
 	autoscaleEvery     = 30 * time.Second
 	autoscaleSettle    = 45 * time.Second // wait for the first resource samples
@@ -27,12 +20,9 @@ const (
 	autoscaleHealthTTL = 30 * time.Second
 )
 
-// autoscaleLast records the last scale action per app so a single control loop
-// (the only writer) can enforce cooldowns without a lock.
+// autoscaleLast holds the last scale time per app; the single control-loop writer means cooldowns need no lock.
 var autoscaleLast = map[string]int64{}
 
-// recentCPU is the average total CPU% (summed across replicas) for an app over
-// the last mins minutes. ok is false when there's no data to act on.
 func (s *resStore) recentCPU(app string, mins int) (float64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,9 +99,7 @@ func (p *Panel) autoscaleTick() {
 	}
 }
 
-// desiredReplicas is the replica count that keeps each replica near target CPU%
-// (total app CPU is measured across the current replicas), clamped to [min,max].
-// Pure, so the scaling decision is unit-testable.
+// desiredReplicas clamps ceil(cpu/target) to [min,max]; cpu is total app CPU across the current replicas, so this holds each replica near target%.
 func desiredReplicas(cpu, target float64, min, max int) int {
 	d := int(math.Ceil(cpu / target))
 	if d < min {
@@ -123,7 +111,6 @@ func desiredReplicas(cpu, target float64, min, max int) int {
 	return d
 }
 
-// scaleBounds normalizes an app's autoscale settings to sane values.
 func scaleBounds(src Source) (min, max int, target float64) {
 	min, max = src.ScaleMin, src.ScaleMax
 	if min < 1 {
@@ -142,9 +129,6 @@ func scaleBounds(src Source) (min, max int, target float64) {
 	return min, max, target
 }
 
-// scaleUp starts up to count new replicas from the app's current image, waits
-// for each to answer, and registers it so the reaper keeps it. Returns how many
-// were added; stops early on the first failure, leaving what succeeded.
 func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	image := fmt.Sprintf("skiff-%s:latest", app.Name)
 	if !p.eng.ImageExists(image) {
@@ -176,8 +160,7 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 			_ = p.eng.Remove(container)
 			break
 		}
-		// Register the new replica atomically so a concurrent deploy's write isn't
-		// clobbered (the app may have been torn down mid-scale).
+		// Register atomically so a concurrent deploy's write isn't clobbered (the app may have been torn down mid-scale).
 		gone := false
 		regErr := registry.Update(func(apps map[string]registry.App) {
 			a, ok := apps[app.Name]
@@ -200,9 +183,7 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	return added
 }
 
-// scaleDown retires up to count replicas (never the last one), draining each
-// gracefully and dropping exactly those from the registry — re-read under the
-// lock so a deploy that lands during the (seconds-long) drain isn't clobbered.
+// scaleDown retires up to count replicas (never the last), re-reading under the registry lock so a deploy landing during the seconds-long drain isn't clobbered.
 func (p *Panel) scaleDown(app string, count int) int {
 	fresh, err := registry.Load()
 	if err != nil {
@@ -236,7 +217,7 @@ func (p *Panel) scaleDown(app string, count int) int {
 			}
 		}
 		if len(kept) == 0 {
-			return // nothing left to represent; leave the registry as-is
+			return
 		}
 		b.Replicas = kept
 		b.Container, b.HostPort = kept[0].Container, kept[0].HostPort
@@ -245,8 +226,6 @@ func (p *Panel) scaleDown(app string, count int) int {
 	return len(retire)
 }
 
-// healthPoll returns true once the container answers HTTP on its host port (any
-// status = it's listening), or false if it never does within the timeout.
 func healthPoll(hostPort int, timeout time.Duration) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://127.0.0.1:%d/", hostPort)

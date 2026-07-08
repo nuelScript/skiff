@@ -1,6 +1,4 @@
-// Package panel is Skiff's hosted control panel: a login-gated web app with
-// accounts + teams, where teams own projects deployed from git and managed on
-// the box. Served behind the router at dash.<domain>.
+// Package panel is Skiff's login-gated control panel where teams deploy git projects onto the box, served behind the router at dash.<domain>.
 package panel
 
 import (
@@ -31,8 +29,7 @@ type Panel struct {
 	buildsDir   string
 	auth        *auth.Store
 
-	// selfRepo/selfBranch identify Skiff's own repository, so a push to it
-	// rebuilds and hot-swaps the control plane. Empty (unset) disables self-deploy.
+	// selfRepo/selfBranch identify Skiff's own repo so a push to it hot-swaps the control plane; empty disables self-deploy.
 	selfRepo   string
 	selfBranch string
 }
@@ -43,7 +40,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		return nil, err
 	}
 	sqlDB = database
-	reconcileStuckDeploys() // clear builds orphaned by a previous process
+	reconcileStuckDeploys()
 	home, _ := os.UserHomeDir()
 	branch := os.Getenv("SKIFF_SELF_BRANCH")
 	if branch == "" {
@@ -59,23 +56,20 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		selfBranch:  branch,
 	}
 	resStats = newResStore(filepath.Join(home, ".skiff", "resources.json"))
-	// one-shot startup tasks — each guarded so a panic in one can't abort boot
-	go guard("reapOrphanContainers", p.reapOrphanContainers) // clean up containers from deleted apps / failed swaps
+	go guard("reapOrphanContainers", p.reapOrphanContainers)
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
-	go guard("reconcileNetworks", p.reconcileNetworks)         // attach existing databases to their team's private net
-	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages) // fetch DB images ahead of first provision
-	go guard("prewarmStorageImages", p.prewarmStorageImages)   // fetch MinIO images ahead of first bucket
-	go p.backupLoop()                                          // daily database snapshots
-	go p.jobLoop()                                             // scheduled jobs (cron)
-	go p.resourceLoop()                                        // sample per-app CPU/memory
-	go p.autoscaleLoop()                                       // add/retire replicas off those metrics
-	go p.alertLoop()                                           // health + error-rate alerts
+	go guard("reconcileNetworks", p.reconcileNetworks)
+	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages)
+	go guard("prewarmStorageImages", p.prewarmStorageImages)
+	go p.backupLoop()
+	go p.jobLoop()
+	go p.resourceLoop()
+	go p.autoscaleLoop()
+	go p.alertLoop()
 	return p, nil
 }
 
-// reapOrphanContainers removes skiff-managed containers that aren't the current
-// version of any registered app (deleted apps, or orphans from a failed swap).
-// It skips very recent ones so a deploy in progress during startup isn't hit.
+// reapOrphanContainers removes skiff containers not backing any current app, skipping recent ones so an in-progress deploy isn't hit.
 func (p *Panel) reapOrphanContainers() {
 	apps, err := registry.Load()
 	if err != nil {
@@ -102,7 +96,6 @@ func (p *Panel) reapOrphanContainers() {
 
 func (p *Panel) Handler() http.Handler {
 	mux := http.NewServeMux()
-	// auth + account state
 	mux.HandleFunc("/api/me", p.handleMe)
 	mux.HandleFunc("/api/auth/setup", p.handleSetup)
 	mux.HandleFunc("/api/auth/login", p.handleLogin)
@@ -118,7 +111,6 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/teams/delete", p.protected(p.handleTeamDelete))
 	mux.HandleFunc("/api/teams/members", p.protected(p.handleMembers))
 	mux.HandleFunc("/api/teams/invite", p.protected(p.handleInvite))
-	// projects
 	mux.HandleFunc("/api/system", p.protected(p.handleSystem))
 	mux.HandleFunc("/api/server", p.protected(p.handleServer))
 	mux.HandleFunc("/api/apps", p.protected(p.handleApps))
@@ -149,7 +141,6 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/audit", p.protected(p.handleAudit))
 	mux.HandleFunc("/api/tokens", p.protected(p.handleTokens))
 
-	// Public API v1 — token-authenticated, stable JSON for CI.
 	mux.HandleFunc("GET /api/v1/apps", p.apiAuth(p.apiListApps))
 	mux.HandleFunc("GET /api/v1/apps/{name}", p.apiAuth(p.apiGetApp))
 	mux.HandleFunc("POST /api/v1/apps/{name}/deploy", p.apiAuth(p.apiDeploy))
@@ -162,7 +153,6 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/env", p.protected(p.handleEnv))
 	mux.HandleFunc("/api/deploys", p.protected(p.handleDeploys))
 	mux.HandleFunc("/api/deploys/log", p.protected(p.handleDeployLog))
-	// github
 	mux.HandleFunc("/api/github/status", p.protected(p.handleGithubStatus))
 	mux.HandleFunc("/api/github/create", p.protected(p.handleGithubCreate))
 	mux.HandleFunc("/api/github/created", p.protected(p.handleGithubCreated))
@@ -192,19 +182,13 @@ func (p *Panel) session(r *http.Request) (sess, bool) {
 	return getSession(c.Value)
 }
 
-// setSession persists a new session and sets its cookie. It returns an error
-// (and sets no cookie) if the session couldn't be stored, so a caller never hands
-// the browser a session cookie with no backing row — which would look logged-in
-// but 401 on the next request.
+// setSession returns an error and sets no cookie if the session can't be stored, so the browser never gets a cookie with no backing row (would look logged-in, then 401).
 func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) error {
 	tok := randToken()
 	if err := putSession(tok, userID, teamID); err != nil {
 		return err
 	}
-	// SameSite=Strict is the CSRF defense: the browser won't attach the session
-	// to any cross-site request, so a crafted link can't trigger a deploy. The SPA
-	// is same-origin so its own API calls still carry it. Secure in production
-	// (served over HTTPS behind the router); off for local http.
+	// SameSite=Strict is the CSRF defense — the browser won't attach the session cross-site, so a crafted link can't trigger a deploy. Secure off only for local http.
 	http.SetCookie(w, &http.Cookie{
 		Name: "skiff_session", Value: tok, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
@@ -213,14 +197,11 @@ func (p *Panel) setSession(w http.ResponseWriter, userID, teamID string) error {
 	return nil
 }
 
-// teamID returns the caller's active team.
 func (p *Panel) teamID(r *http.Request) string {
 	s, _ := p.session(r)
 	return s.teamID
 }
 
-// isOwner is true when the caller owns their active team — the gate for
-// instance- or team-wide actions (connecting GitHub, destructive team changes).
 func (p *Panel) isOwner(r *http.Request) bool {
 	s, ok := p.session(r)
 	if !ok {
@@ -230,7 +211,6 @@ func (p *Panel) isOwner(r *http.Request) bool {
 	return ok && role == auth.RoleOwner
 }
 
-// canAccess is true when the caller is a member of the team that owns the app.
 func (p *Panel) canAccess(r *http.Request, app string) bool {
 	src, ok := getSource(app)
 	if !ok || src.Team == "" {
@@ -243,8 +223,6 @@ func (p *Panel) canAccess(r *http.Request, app string) bool {
 	_, member := p.auth.Role(s.userID, src.Team)
 	return member
 }
-
-// ---- helpers ----
 
 func sanitizeName(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -289,9 +267,7 @@ func cloneError(b []byte) string {
 	return msg
 }
 
-// guard runs one iteration of a background loop, recovering from and logging any
-// panic so a single bad tick (a malformed record, a nil deref) can't take down
-// the whole control plane.
+// guard runs a background-loop iteration, recovering and logging any panic so one bad tick can't take down the control plane.
 func guard(name string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -301,8 +277,6 @@ func guard(name string, fn func()) {
 	fn()
 }
 
-// prewarmImages pulls any of the given images that aren't present yet, so the
-// first provision needing one doesn't stall on the download.
 func (p *Panel) prewarmImages(images ...string) {
 	for _, img := range images {
 		if !p.eng.ImageExists(img) {
@@ -311,8 +285,6 @@ func (p *Panel) prewarmImages(images ...string) {
 	}
 }
 
-// randHex returns n cryptographically-random bytes as a hex string — the shared
-// primitive behind session tokens, deploy IDs, API tokens, and replica suffixes.
 func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)

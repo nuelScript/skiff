@@ -10,10 +10,7 @@ import (
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
-// cloneURLAllowed reports whether a user-supplied clone URL uses an http(s)
-// scheme. Git's other transports (ext::, file::, ssh) can execute arbitrary
-// commands during `git clone`, so anything but http/https is rejected — with
-// GIT_ALLOW_PROTOCOL on the clone itself as the second line of defense.
+// cloneURLAllowed rejects non-http(s) clone URLs: git's ext::/file::/ssh transports can execute arbitrary commands during clone (GIT_ALLOW_PROTOCOL is the second line of defense).
 func cloneURLAllowed(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -34,8 +31,6 @@ type appView struct {
 	Updated int64  `json:"updated,omitempty"`
 }
 
-// handleSystem reports the control plane itself: whether it self-deploys, the
-// repo it tracks, and its own deploy history (recorded under app "panel").
 func (p *Panel) handleSystem(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -57,10 +52,10 @@ func (p *Panel) handleApps(w http.ResponseWriter, r *http.Request) {
 	for _, a := range apps {
 		src, ok := getSource(a.Name)
 		if !ok || src.Team != team {
-			continue // only this team's projects
+			continue
 		}
 		if src.Parent != "" {
-			continue // previews live under their project, not the grid
+			continue
 		}
 		av := appView{
 			Name:   a.Name,
@@ -92,7 +87,7 @@ type projectView struct {
 	Auto        bool          `json:"auto"`
 	PreviewAuto bool          `json:"previewAuto"`
 	Replicas    int           `json:"replicas"`
-	Running     int           `json:"running"` // replicas currently up (autoscaling moves this)
+	Running     int           `json:"running"`
 	Release     string        `json:"release"`
 	Autoscale   bool          `json:"autoscale"`
 	ScaleMin    int           `json:"scaleMin"`
@@ -102,8 +97,6 @@ type projectView struct {
 	Previews    []previewView `json:"previews"`
 }
 
-// handleProject serves one project's detail (GET) or updates its settings (PUT):
-// source config, live state, URL, and deploy history — the project page.
 func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	if !p.canAccess(r, app) {
@@ -186,8 +179,6 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleRedeploy rebuilds a project's current source (its latest commit) without
-// needing a fresh push, streaming the build log over SSE.
 func (p *Panel) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	if !p.canAccess(r, app) {
@@ -205,8 +196,6 @@ func (p *Panel) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 	p.tailLog(w, r, app, id)
 }
 
-// markRollbackable flags each past deploy whose build image is still retained
-// and that isn't the version currently serving — i.e. an instant-rollback target.
 func (p *Panel) markRollbackable(app string, deploys []Deploy) {
 	retained := map[string]bool{}
 	for _, t := range p.eng.AppImageTags(app) {
@@ -215,7 +204,7 @@ func (p *Panel) markRollbackable(app string, deploys []Deploy) {
 	current := ""
 	for _, d := range deploys {
 		if d.Status == "live" {
-			current = d.ID // newest live deploy = what's running
+			current = d.ID
 			break
 		}
 	}
@@ -224,8 +213,6 @@ func (p *Panel) markRollbackable(app string, deploys []Deploy) {
 	}
 }
 
-// handleRollback re-runs a retained past build with no rebuild (instant
-// rollback), recording it as a new deploy and streaming progress over SSE.
 func (p *Panel) handleRollback(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	target := sanitizeID(r.URL.Query().Get("id"))
@@ -255,9 +242,6 @@ func (p *Panel) handleRollback(w http.ResponseWriter, r *http.Request) {
 	p.tailLog(w, r, app, id)
 }
 
-// handleCancel stops a build: it cancels the live in-flight build for the app
-// (which records it as "canceled"), or force-clears a deploy stuck at "building"
-// with no live process behind it.
 func (p *Panel) handleCancel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -270,13 +254,11 @@ func (p *Panel) handleCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !cancelInflight(app, id) && deployStatus(app, id) == "building" {
-		setDeployStatus(app, id, "canceled") // orphaned build — no live process
+		setDeployStatus(app, id, "canceled")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleDeploy deploys from a pasted git URL (with an optional token), scoped to
-// the caller's team, recording history + a persisted log streamed over SSE.
 func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	git := strings.TrimSpace(r.URL.Query().Get("git"))
 	name := sanitizeName(r.URL.Query().Get("name"))
@@ -298,8 +280,7 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok && envStage.heldByOther(name, team, time.Now()) {
-		// Another team staged env under this unused name — discard it so this deploy
-		// can't inherit foreign vars, then start clean.
+		// Discard env another team staged under this unused name so this deploy can't inherit foreign vars.
 		_ = setEnv(name, nil)
 	}
 	if port == "" {
@@ -355,9 +336,7 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	// Remove every container for the app — all replicas, not just the
-	// representative — or the leftovers keep serving at the app's URL (the router
-	// discovers backends by label) and hold their host ports.
+	// Remove every container — all replicas, not just the representative — or leftovers keep serving (router finds backends by label) and hold host ports.
 	for _, c := range p.eng.AppContainers(name) {
 		_ = p.eng.Remove(c)
 	}
@@ -366,11 +345,11 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = sqlDB.Exec(`DELETE FROM workers WHERE app=?`, name)
 	if deleteAppDomains(name) {
-		writeDomainsFile() // re-mirror the host→app map for the router
+		writeDomainsFile()
 	}
 	_, _ = registry.Delete(name)
 	deleteSource(name)
-	p.removeAppImages(name) // free the build layers; nothing left to roll back to
+	p.removeAppImages(name)
 	p.audit(r, "project.delete", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -378,15 +357,12 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	if _, exists := getSource(app); exists {
-		// A deployed app: require access to its owning team.
 		if !p.canAccess(r, app) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 	} else {
-		// Not deployed yet — staged from the deploy dialog. Reserve the pending name
-		// for the caller's team so another team can't read, overwrite, or hijack the
-		// env it will inherit on first deploy.
+		// Not deployed yet: reserve the pending name for this team so another team can't read or hijack the env it'll inherit on first deploy.
 		team := p.teamID(r)
 		if team == "" || !envStage.reserve(app, team, time.Now()) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -413,8 +389,6 @@ func (p *Panel) handleEnv(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleSharedEnv manages the caller team's shared environment variables, which
-// are merged into every app in the team on its next deploy.
 func (p *Panel) handleSharedEnv(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
 	if team == "" {

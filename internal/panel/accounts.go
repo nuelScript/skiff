@@ -22,7 +22,7 @@ type meResponse struct {
 	User          *userView   `json:"user,omitempty"`
 	Teams         []auth.Team `json:"teams,omitempty"`
 	Team          string      `json:"team,omitempty"`
-	Role          string      `json:"role,omitempty"` // caller's role in the current team
+	Role          string      `json:"role,omitempty"`
 }
 
 func (p *Panel) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,6 @@ func (p *Panel) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleAccept joins an invited user to a team (creating their account if new).
 func (p *Panel) handleAccept(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Token, Name, Password string }
 	_ = json.NewDecoder(r.Body).Decode(&body)
@@ -119,9 +118,7 @@ func (p *Panel) handleAccept(w http.ResponseWriter, r *http.Request) {
 	}
 	var user auth.User
 	if existing, found := p.auth.UserByEmail(inv.Email); found {
-		// Accepting an invite for an existing account checks that account's
-		// password, so throttle it exactly like login — otherwise it's an
-		// unthrottled brute-force oracle for anyone holding an invite token.
+		// Throttle like login — this verifies an existing account's password, else it's a brute-force oracle for any invite holder.
 		ip := clientIP(r)
 		if loginLimiter.blocked(ip, time.Now()) {
 			http.Error(w, "too many attempts — try again later", http.StatusTooManyRequests)

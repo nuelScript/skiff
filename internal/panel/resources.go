@@ -12,34 +12,26 @@ import (
 	"github.com/nuelScript/skiff/internal/docker"
 )
 
-// Resource metrics: a background loop samples CPU and memory for every running
-// app container via `docker stats`, sums replicas per app, and keeps a rolling
-// 24h window bucketed by the minute — the compute-side companion to the router's
-// request analytics. The window snapshots to disk so a control-plane restart
-// (e.g. self-update) doesn't lose recent history.
-
 const (
 	resWindowSecs  int64 = 24 * 60 * 60
 	resBucketSecs  int64 = 60
-	resSampleEvery       = 10 * time.Second // frequent enough to catch short-lived load between ticks
-	resSettle            = 12 * time.Second // let the box settle before the first sample
+	resSampleEvery       = 10 * time.Second
+	resSettle            = 12 * time.Second
 )
 
-// resBucket is one minute of resource use for an app, summed across replicas and
-// averaged over the samples taken in that minute.
 type resBucket struct {
 	T        int64   `json:"t"`
-	CPUSum   float64 `json:"cpu"` // Σ cpu% across samples (÷ N for the average)
-	MemSum   int64   `json:"mem"` // Σ used bytes across samples
-	MemLimit int64   `json:"lim"` // last-seen memory limit
-	N        int     `json:"n"`   // sample count
-	Restarts int     `json:"rs"`  // restart events observed in the minute
+	CPUSum   float64 `json:"cpu"`
+	MemSum   int64   `json:"mem"`
+	MemLimit int64   `json:"lim"`
+	N        int     `json:"n"`
+	Restarts int     `json:"rs"`
 }
 
 type resStore struct {
 	mu      sync.Mutex
 	apps    map[string]map[int64]*resBucket
-	last    map[string]int // container → last restart count seen
+	last    map[string]int
 	updated int64
 	file    string
 }
@@ -52,7 +44,6 @@ func newResStore(file string) *resStore {
 	return s
 }
 
-// record folds one round of samples into the current minute's bucket per app.
 func (s *resStore) record(samples []docker.ContainerResource) {
 	type acc struct {
 		cpu      float64
@@ -170,8 +161,6 @@ func (s *resStore) load() {
 	}
 }
 
-// resourceLoop samples the running app containers on a fixed cadence for the life
-// of the process, recording and snapshotting each round.
 func (p *Panel) resourceLoop() {
 	time.Sleep(resSettle)
 	tick := time.NewTicker(resSampleEvery)
@@ -189,8 +178,8 @@ func (p *Panel) resourceLoop() {
 
 type resourcesSeries struct {
 	T   int64    `json:"t"`
-	CPU *float64 `json:"cpu"` // average cpu% in the bucket (summed across replicas); null = unmeasured
-	Mem *int64   `json:"mem"` // average used bytes in the bucket; null = unmeasured
+	CPU *float64 `json:"cpu"`
+	Mem *int64   `json:"mem"`
 }
 
 type resourcesApp struct {
@@ -238,10 +227,7 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 	appOptions := []string{}
 	var resp resourcesResponse
 
-	// Snapshot the sampler's buckets under the lock (a fast in-memory copy), then
-	// do the per-app team filtering — which hits the DB via getSource — with the
-	// lock released, so a dashboard request never stalls the sampler and
-	// autoscaler that share this mutex.
+	// Copy the sampler's buckets under the lock, then do per-app team filtering (which hits the DB) with the lock released, so a dashboard request never stalls the sampler/autoscaler sharing this mutex.
 	type appSnap struct {
 		app string
 		bs  map[int64]resBucket
@@ -261,7 +247,7 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 	for _, sn := range snaps {
 		src, ok := getSource(sn.app)
 		if !ok || src.Team != team {
-			continue // this team's apps only
+			continue
 		}
 		appOptions = append(appOptions, sn.app)
 		if only != "" && sn.app != only {

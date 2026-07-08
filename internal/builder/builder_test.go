@@ -25,10 +25,9 @@ func TestSelectNode(t *testing.T) {
 	}
 }
 
-// A committed Dockerfile takes precedence over stack auto-detection.
 func TestSelectDockerfileWins(t *testing.T) {
 	dir := t.TempDir()
-	touch(t, dir, "package.json") // would otherwise be Node.js
+	touch(t, dir, "package.json")
 	touch(t, dir, "Dockerfile")
 	b, err := Select(dir, "Dockerfile")
 	if err != nil {

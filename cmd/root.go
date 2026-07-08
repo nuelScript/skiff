@@ -8,24 +8,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// buildVersion is injected at release time via
-// -ldflags "-X github.com/nuelScript/skiff/cmd.buildVersion=<tag>". Empty in
-// every other build.
+// buildVersion is injected at release time via -ldflags "-X …/cmd.buildVersion=<tag>"; empty otherwise.
 var buildVersion = ""
 
-// version is the resolved, display-ready version everything prints.
 var version = resolveVersion()
 
-// resolveVersion prefers the ldflags-injected release tag, then the clean module
-// version stamped into `go install …@vX` builds (that path gets no ldflags), and
-// otherwise reports "dev" — with any leading "v" trimmed for consistent output.
+// resolveVersion prefers the ldflags release tag, then a clean `go install` module version, else "dev".
 func resolveVersion() string {
 	if buildVersion != "" {
 		return strings.TrimPrefix(buildVersion, "v")
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
-		// A tagged `go install` yields e.g. "v0.1.1"; a local/dirty build yields
-		// "(devel)" or a pseudo-version with "+", which we treat as dev.
+		// A clean `go install` gives "vX.Y.Z"; "(devel)" or a "+" pseudo-version means dev.
 		if v := info.Main.Version; strings.HasPrefix(v, "v") && !strings.Contains(v, "+") {
 			return strings.TrimPrefix(v, "v")
 		}
@@ -42,8 +36,6 @@ build it, run it, and get an HTTPS URL. No cloud bill.`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// After a successful command, hint (quietly, on stderr) if a newer release
-		// is out. Skipped for the internal refresh, completion, and help.
 		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
 			switch cmd.Name() {
 			case updateCheckCmd, "completion", "help":

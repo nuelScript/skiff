@@ -24,8 +24,7 @@ func Select(dir, dockerfile string) (Builder, error) {
 	return nil, fmt.Errorf("couldn't detect how to build this app — add a Dockerfile")
 }
 
-// stacks lists the stack builders in priority order. Static is last so a runtime
-// (which may also ship an index.html) wins over a plain static site.
+// stacks orders builders so Static is last: a runtime that also ships index.html wins over a plain static site.
 func stacks(dir string) []stackBuilder {
 	return []stackBuilder{
 		&nodeBuilder{dir: dir},

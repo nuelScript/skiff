@@ -18,8 +18,6 @@ type statusView struct {
 	Services []serviceView
 }
 
-// serveStatus renders a live, public status page from the apps the router can
-// see on the box (container states via Docker labels).
 func (rt *Router) serveStatus(w http.ResponseWriter, _ *http.Request) {
 	states, _ := rt.Engine.AppStates()
 

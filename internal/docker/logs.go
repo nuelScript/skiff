@@ -29,8 +29,6 @@ func (e *Engine) StreamLogs(ctx context.Context, container string, out io.Writer
 	return cmd.Run()
 }
 
-// StreamLogsSSE follows a container's logs and writes them as SSE data frames,
-// flushing after each line.
 func (e *Engine) StreamLogsSSE(ctx context.Context, container string, w io.Writer, flush func()) {
 	pr, pw := io.Pipe()
 	go func() { _ = e.StreamLogs(ctx, container, pw); pw.Close() }()

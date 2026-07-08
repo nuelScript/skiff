@@ -7,9 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSelfUpdateCmd rebuilds Skiff from its own repo and hot-swaps the running
-// control plane behind the router. It's launched internally by the webhook, not
-// meant to be run by hand, so it's hidden.
+// newSelfUpdateCmd rebuilds and hot-swaps the control plane from git; launched by the webhook, not by hand — hence hidden.
 func newSelfUpdateCmd() *cobra.Command {
 	var repo, branch, commit, deployID string
 	cmd := &cobra.Command{

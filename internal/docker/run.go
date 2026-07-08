@@ -16,14 +16,13 @@ type RunSpec struct {
 	Network       string // optional docker network to join (for reaching managed resources by name)
 }
 
-// Route is a discovered app-to-hostport mapping (from container labels).
 type Route struct {
 	App      string
 	HostPort int
 }
 
 func (e *Engine) Run(s RunSpec) (int, error) {
-	_ = e.command("rm", "-f", s.Name).Run() // best-effort: drop the old one
+	_ = e.command("rm", "-f", s.Name).Run()
 
 	bind := "127.0.0.1"
 	if s.Public {
@@ -60,8 +59,7 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 	return e.HostPort(s.Name, s.ContainerPort)
 }
 
-// WorkerSpec runs a long-lived background process from an app's image with no
-// published port and no routing labels, so the edge router never targets it.
+// WorkerSpec runs a long-lived background process with no published port or routing labels, so the edge router never targets it.
 type WorkerSpec struct {
 	Name    string
 	App     string
@@ -88,8 +86,7 @@ func (e *Engine) RunWorker(s WorkerSpec) error {
 	return nil
 }
 
-// WorkerContainers lists an app's worker containers (running or not); all worker
-// containers when app is "".
+// WorkerContainers lists an app's worker containers (running or not); all of them when app is "".
 func (e *Engine) WorkerContainers(app string) []string {
 	filter := "label=skiff.kind=worker"
 	if app != "" {
@@ -102,7 +99,6 @@ func (e *Engine) WorkerContainers(app string) []string {
 	return splitLines(out)
 }
 
-// EnsureNetwork creates a docker network if it doesn't already exist.
 func (e *Engine) EnsureNetwork(name string) error {
 	if e.command("network", "inspect", name).Run() == nil {
 		return nil
@@ -113,8 +109,7 @@ func (e *Engine) EnsureNetwork(name string) error {
 	return nil
 }
 
-// ConnectNetwork attaches a running container to an additional network. It's a
-// no-op error (already connected) when the container is already a member.
+// ConnectNetwork attaches a container to an additional network; an already-connected container returns a benign error.
 func (e *Engine) ConnectNetwork(network, container string) error {
 	out, err := e.command("network", "connect", network, container).CombinedOutput()
 	if err != nil {

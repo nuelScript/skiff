@@ -9,9 +9,7 @@ import (
 	"time"
 )
 
-// API tokens authenticate programmatic access to the stable /api/v1 surface, so
-// deploys and config fit into CI without a browser session. A token is scoped to
-// one team and shown exactly once, at creation; only its SHA-256 is stored.
+// API tokens authenticate the /api/v1 surface for CI; each is team-scoped, shown once at creation, and stored only as its SHA-256.
 
 type APIToken struct {
 	ID       string `json:"id"`
@@ -68,8 +66,6 @@ func revokeToken(team, id string) {
 	_, _ = sqlDB.Exec(`DELETE FROM api_tokens WHERE team=? AND id=?`, team, id)
 }
 
-// resolveToken maps a presented bearer token to its team and name, and stamps
-// last_used. ok is false for an unknown or empty token.
 func resolveToken(tok string) (team, name string, ok bool) {
 	if tok == "" {
 		return "", "", false

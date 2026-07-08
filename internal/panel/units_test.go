@@ -25,7 +25,6 @@ func TestDesiredReplicas(t *testing.T) {
 }
 
 func TestScaleBounds(t *testing.T) {
-	// Defaults and clamping when the stored values are unset or out of range.
 	min, max, target := scaleBounds(Source{})
 	if min != 1 || max != 1 || target != 70 {
 		t.Errorf("empty source bounds = %d,%d,%v; want 1,1,70", min, max, target)

@@ -11,36 +11,23 @@ import (
 
 const dbNetwork = "skiff"
 
-// dbEngine describes a supported database image and how to provision, address,
-// and open a shell into it.
 type dbEngine struct {
-	image   string
-	port    int
-	mountAt string
-	envVar  string // env var injected into an attached app
-	label   string
-	user    string // fixed application user ("" when the engine has none)
-	hasDB   bool   // provisions a named database
-	// container builds the run-time env + command for a fresh instance.
-	container func(user, pass, dbname string) (map[string]string, []string)
-	// url builds a connection string; tls picks the encrypted variant (for the
-	// public URL) over the plaintext one used on the private network.
-	url   func(host string, port int, user, pass, dbname string, tls bool) string
-	shell func(pass, dbname string) []string
-	// backupExt is the dump file extension; "" means backups aren't supported.
-	// dumpCmd writes a backup to stdout; restoreCmd reads one from stdin.
+	image      string
+	port       int
+	mountAt    string
+	envVar     string
+	label      string
+	user       string
+	hasDB      bool
+	container  func(user, pass, dbname string) (map[string]string, []string)
+	url        func(host string, port int, user, pass, dbname string, tls bool) string
+	shell      func(pass, dbname string) []string
 	backupExt  string
 	dumpCmd    func(pass, dbname string) []string
 	restoreCmd func(pass, dbname string) []string
-	// tls, when set, lets a public instance serve TLS so internet-facing
-	// connections are encrypted. nil means the engine has no public-TLS support.
-	tls *dbTLS
+	tls        *dbTLS
 }
 
-// dbTLS describes how an engine serves TLS on its public port. entrypoint/cmd
-// override the container to enable it using the shared cert mounted at
-// /skiff-certs (both empty for engines that serve TLS with no config, e.g.
-// MySQL). hasCerts is whether that cert dir must be mounted.
 type dbTLS struct {
 	entrypoint string
 	cmd        []string
@@ -55,8 +42,7 @@ var dbEngines = map[string]dbEngine{
 			return map[string]string{"POSTGRES_USER": user, "POSTGRES_PASSWORD": pass, "POSTGRES_DB": dbname}, nil
 		},
 		url: func(host string, port int, user, pass, dbname string, tls bool) string {
-			// Private hop → sslmode=disable (some drivers otherwise require TLS the
-			// container doesn't serve internally); public → require, so it's encrypted.
+			// Private hop → sslmode=disable (some drivers otherwise demand TLS the container doesn't serve internally); public → require, so it's encrypted.
 			mode := "disable"
 			if tls {
 				mode = "require"
@@ -107,8 +93,7 @@ var dbEngines = map[string]dbEngine{
 		restoreCmd: func(pass, dbname string) []string {
 			return []string{"sh", "-c", fmt.Sprintf("MYSQL_PWD=%s mysql -u skiff %s", pass, dbname)}
 		},
-		// MySQL 8 auto-generates certs and serves TLS with no config — the public
-		// URL just needs to ask for it.
+		// MySQL 8 auto-generates certs and serves TLS with no config — the public URL just needs to ask for it.
 		tls: &dbTLS{},
 	},
 	"mongodb": {
@@ -138,8 +123,7 @@ var dbEngines = map[string]dbEngine{
 		restoreCmd: func(pass, _ string) []string {
 			return []string{"mongorestore", "-u", "skiff", "-p", pass, "--authenticationDatabase", "admin", "--archive", "--gzip", "--drop"}
 		},
-		// preferTLS lets the entrypoint's localhost init connect in the clear while
-		// offering TLS to public clients.
+		// preferTLS lets the entrypoint's localhost init connect in the clear while offering TLS to public clients.
 		tls: &dbTLS{
 			hasCerts:   true,
 			entrypoint: "sh",
@@ -158,9 +142,7 @@ var dbEngines = map[string]dbEngine{
 			return nil, []string{"redis-server", "--requirepass", pass, "--appendonly", "yes"}
 		},
 		url: func(host string, port int, _, pass, _ string, _ bool) string {
-			// The "default" ACL user is what requirepass sets the password for; the
-			// empty-username form (redis://:pass@) is rejected as WRONGPASS on Redis 7.
-			// (TLS for public Redis is a follow-up — it's gated for now.)
+			// The "default" ACL user is what requirepass sets the password for; the empty-username form (redis://:pass@) is rejected as WRONGPASS on Redis 7.
 			return fmt.Sprintf("redis://default:%s@%s:%d", pass, host, port)
 		},
 		shell: func(pass, _ string) []string {
@@ -169,7 +151,6 @@ var dbEngines = map[string]dbEngine{
 	},
 }
 
-// Database is a managed data store, plus computed fields the dashboard needs.
 type Database struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -177,11 +158,11 @@ type Database struct {
 	Host      string   `json:"host"`
 	Port      int      `json:"port"`
 	Created   int64    `json:"created"`
-	State     string   `json:"state"`               // computed: running / exited / missing
-	URL       string   `json:"url"`                 // computed: private connection string
-	Attached  []string `json:"attached"`            // computed: apps it's wired into
-	Public    bool     `json:"public"`              // reachable from outside the box
-	PublicURL string   `json:"publicUrl,omitempty"` // computed: external connection string
+	State     string   `json:"state"`
+	URL       string   `json:"url"`
+	Attached  []string `json:"attached"`
+	Public    bool     `json:"public"`
+	PublicURL string   `json:"publicUrl,omitempty"`
 }
 
 type dbRow struct {
@@ -330,8 +311,6 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// prewarmDatabaseImages pulls any missing engine images so the first provision
-// of a large image (MySQL, MongoDB) doesn't stall the create request.
 func (p *Panel) prewarmDatabaseImages() {
 	imgs := make([]string, 0, len(dbEngines))
 	for _, e := range dbEngines {
@@ -428,9 +407,6 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDatabaseAttach wires a database into an app (POST) or unwires it (DELETE)
-// by injecting/removing the connection URL in the app's environment. The app
-// picks it up on its next deploy.
 func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	id := sanitizeID(r.URL.Query().Get("id"))
 	d, ok := p.canAccessDB(r, id)
@@ -464,8 +440,6 @@ func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDatabasePublic toggles external access by recreating the container with
-// or without a published host port. Data survives (same name + volume).
 func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -488,7 +462,6 @@ func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": d.ID, "skiff.team": d.Team},
 		Port:   e.port, Publish: on,
 	}
-	// Going public: serve TLS so internet-facing connections are encrypted.
 	if on && e.tls != nil {
 		if e.tls.hasCerts {
 			if dir, err := ensureServerCert(); err == nil {

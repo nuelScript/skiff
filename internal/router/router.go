@@ -1,7 +1,4 @@
-// Package router is Skiff's edge router: it discovers apps from Docker labels
-// and reverse-proxies <app>.<domain> to them, with automatic HTTPS. It runs on
-// the server. Reserved hosts: dash.<domain> → the control panel, status.<domain>
-// → a live status page, and the apex + www.<domain> → a designated site app.
+// Package router is Skiff's edge router: it discovers apps from Docker labels and reverse-proxies <app>.<domain> to them, with automatic HTTPS.
 package router
 
 import (
@@ -26,17 +23,12 @@ type Router struct {
 	Domains []string
 	Engine  *docker.Engine
 	Panel   string // fallback host:port of the control panel; dash.<domain> proxies here
-	// PanelPointer, when set, is a file holding the current panel host:port. The
-	// panel can rewrite it during a zero-downtime self-deploy to flip dash.<domain>
-	// onto the freshly-built process, so the router itself never restarts.
+	// PanelPointer, when set, is a file the panel rewrites during a zero-downtime self-deploy to flip dash.<domain> onto the new process without restarting the router.
 	PanelPointer string
 	SiteApp      string // app that serves the apex + www.<domain>
-	// DomainsFile, when set, is a JSON file of custom host→app mappings the panel
-	// maintains. The router reads it live (cached briefly) so domains can be added
-	// or removed without restarting the edge.
+	// DomainsFile, when set, is a JSON file of custom host→app mappings read live (cached briefly) so domains change without restarting the edge.
 	DomainsFile string
-	// MetricsFile, when set, is where the router snapshots per-app request metrics
-	// for the panel's Analytics page.
+	// MetricsFile, when set, is where the router snapshots per-app request metrics for the panel's Analytics page.
 	MetricsFile string
 
 	metrics       *Metrics
@@ -47,16 +39,12 @@ type Router struct {
 	cachedDomAt   time.Time
 	rr            map[string]uint64 // per-app round-robin cursor across replicas
 
-	// routesMu guards the discovered-routes cache. It's separate from mu so the
-	// (slow) Docker fetch never blocks round-robin/domain lookups, and concurrent
-	// cache misses coalesce behind it into a single `docker ps` instead of one per
-	// in-flight request.
+	// routesMu is separate from mu so the slow Docker fetch never blocks lookups, and concurrent cache misses coalesce into a single `docker ps` instead of one per request.
 	routesMu      sync.Mutex
 	cachedRoutes  []docker.Route
 	cachedRouteAt time.Time
 }
 
-// startMetrics begins request accounting if a metrics file is configured.
 func (rt *Router) startMetrics() {
 	if rt.MetricsFile != "" && rt.metrics == nil {
 		rt.metrics = NewMetrics(rt.MetricsFile)
@@ -64,8 +52,6 @@ func (rt *Router) startMetrics() {
 	}
 }
 
-// customDomains returns the current host→app map from DomainsFile, cached for a
-// couple of seconds to avoid a read per request.
 func (rt *Router) customDomains() map[string]string {
 	if rt.DomainsFile == "" {
 		return nil
@@ -90,9 +76,6 @@ func hostOnly(host string) string {
 	return host
 }
 
-// panelUpstream resolves where dash.<domain> should proxy to. When a pointer
-// file is configured it wins (cached briefly to avoid a read per request),
-// otherwise the static Panel address is used.
 func (rt *Router) panelUpstream() string {
 	if rt.PanelPointer == "" {
 		return rt.Panel
@@ -121,8 +104,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serve routes a request and returns the app label it was accounted to (empty
-// when the host matched nothing, so it isn't recorded).
+// serve routes a request and returns the app label it's accounted to (empty when nothing matched, so it isn't recorded).
 func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	// A custom domain pointed at one of the apps wins over subdomain routing.
 	if app, ok := rt.customDomains()[hostOnly(r.Host)]; ok {
@@ -159,11 +141,7 @@ func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	return app
 }
 
-// proxyToApp forwards the request to one of the named app's live containers,
-// round-robining across its replicas.
-// routes returns the current app→hostport mappings, cached for a short window so
-// a burst of requests to a deployed app doesn't fork `docker ps` (plus a `docker
-// port` per replica) on every single request.
+// routes returns the current app→hostport mappings, cached briefly so a burst doesn't fork `docker ps` (plus a `docker port` per replica) on every request.
 func (rt *Router) routes() ([]docker.Route, error) {
 	rt.routesMu.Lock()
 	defer rt.routesMu.Unlock()
@@ -214,9 +192,7 @@ func proxyTo(w http.ResponseWriter, r *http.Request, hostport string) {
 	rp.ServeHTTP(w, r)
 }
 
-// subFor classifies a host under a served domain: "" for the apex, otherwise the
-// leading label ("dash", "status", "www", "blog"). ok is false when the host is
-// not under any served domain.
+// subFor returns a served host's leading label ("" for the apex); ok is false when the host is under no served domain.
 func (rt *Router) subFor(host string) (string, bool) {
 	if i := strings.IndexByte(host, ':'); i >= 0 {
 		host = host[:i]
@@ -232,10 +208,7 @@ func (rt *Router) subFor(host string) (string, bool) {
 	return "", false
 }
 
-// edgeServer builds an internet-facing HTTP server with conservative limits:
-// ReadHeaderTimeout closes Slowloris slow-header attacks and IdleTimeout reaps
-// idle keep-alives, while Read/Write timeouts stay unset so proxied SSE and
-// WebSocket streams (deploy logs, the console) aren't cut off mid-stream.
+// edgeServer sets ReadHeaderTimeout (closes Slowloris slow-header attacks) and IdleTimeout, but leaves Read/Write timeouts unset so proxied SSE/WebSocket streams aren't cut off mid-stream.
 func edgeServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -246,14 +219,11 @@ func edgeServer(addr string, h http.Handler) *http.Server {
 	}
 }
 
-// ServeHTTPOnly runs the router over plain HTTP (for local testing, no TLS).
 func (rt *Router) ServeHTTPOnly(addr string) error {
 	rt.startMetrics()
 	return edgeServer(addr, rt).ListenAndServe()
 }
 
-// ServeTLS runs :443 with Let's Encrypt certs and :80 for ACME challenges +
-// an HTTP→HTTPS redirect.
 func (rt *Router) ServeTLS(cacheDir string) error {
 	rt.startMetrics()
 	m := &autocert.Manager{
@@ -266,7 +236,7 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 				}
 			}
 			if _, ok := rt.customDomains()[host]; ok {
-				return nil // a registered custom domain — allow its cert
+				return nil
 			}
 			return fmt.Errorf("host not allowed: %s", host)
 		},

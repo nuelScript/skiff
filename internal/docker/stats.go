@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-// ContainerResource is a live CPU/memory sample for one app container, tagged
-// with the skiff.app it belongs to.
 type ContainerResource struct {
 	App       string
 	Container string
@@ -16,9 +14,6 @@ type ContainerResource struct {
 	Restarts  int
 }
 
-// AppResourceStats samples every running app container in a single `docker stats`
-// read, tags each by its skiff.app label, and folds in the container restart
-// count. Returns nil (no error) when nothing is running.
 func (e *Engine) AppResourceStats() ([]ContainerResource, error) {
 	out, err := e.command("ps", "--filter", "label=skiff.app", "--format", `{{.Names}} {{.Label "skiff.app"}}`).Output()
 	if err != nil {
@@ -71,7 +66,6 @@ func (e *Engine) AppResourceStats() ([]ContainerResource, error) {
 	return res, nil
 }
 
-// restartCounts reads each container's cumulative restart count in one inspect.
 func (e *Engine) restartCounts(names []string) map[string]int {
 	counts := map[string]int{}
 	out, err := e.command(append([]string{"inspect", "--format", "{{.Name}}\t{{.RestartCount}}"}, names...)...).Output()
@@ -89,15 +83,12 @@ func (e *Engine) restartCounts(names []string) map[string]int {
 	return counts
 }
 
-// parsePercent turns docker's "12.34%" into 12.34.
 func parsePercent(s string) float64 {
 	s = strings.TrimSuffix(strings.TrimSpace(s), "%")
 	v, _ := strconv.ParseFloat(s, 64)
 	return v
 }
 
-// parseSize turns docker's human byte sizes ("12.3MiB", "7.63GiB", "512kB")
-// into bytes. Binary and decimal unit suffixes are both accepted.
 func parseSize(s string) int64 {
 	s = strings.TrimSpace(s)
 	i := 0

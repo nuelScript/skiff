@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-// The audit log is a per-team, append-only trail of who did what: every deploy,
-// rollback, secret change, membership change, and teardown, attributed to the
-// person (or "push", for a webhook) who triggered it. Recording is fire-and-
-// forget at each mutation's success point; the Activity page reads it back.
-
 type AuditEntry struct {
 	ID      int64  `json:"id"`
 	Actor   string `json:"actor"`
@@ -20,9 +15,6 @@ type AuditEntry struct {
 	Created int64  `json:"created"`
 }
 
-// recordAudit appends an entry to a team's trail (Actor/Action/Target/Detail of
-// the AuditEntry; ID/Created are ignored). Use for system / webhook actions that
-// have no session, e.g. actor "push".
 func recordAudit(team string, e AuditEntry) {
 	if team == "" || sqlDB == nil {
 		return
@@ -32,7 +24,6 @@ func recordAudit(team string, e AuditEntry) {
 		team, e.Actor, e.Action, e.Target, e.Detail, time.Now().Unix())
 }
 
-// audit appends an entry attributed to the request's signed-in user.
 func (p *Panel) audit(r *http.Request, action, target, detail string) {
 	s, ok := p.session(r)
 	if !ok {

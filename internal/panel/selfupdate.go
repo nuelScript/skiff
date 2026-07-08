@@ -19,9 +19,8 @@ const (
 	portGreen = "7071"
 )
 
-// SelfUpdateOpts parameterizes a control-plane rebuild.
 type SelfUpdateOpts struct {
-	Repo     string // owner/name of Skiff's own repository
+	Repo     string
 	Branch   string
 	Commit   string
 	DeployID string
@@ -74,7 +73,6 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	}
 	defer func() { _ = lf.Close(); _ = os.Remove(lock) }()
 
-	// 1. Fresh checkout of the pushed ref.
 	src := filepath.Join(skiffDir(), "self-src")
 	_ = os.RemoveAll(src)
 	cloneURL := "https://github.com/" + opts.Repo + ".git"
@@ -88,21 +86,17 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 		return fail("clone failed: %s", cloneError(out))
 	}
 
-	// 2. Build the dashboard (in a node container — the box has no toolchain) and
-	//    sync it into the embed dir so the binary ships the fresh UI.
 	log("→ building dashboard")
 	if e := runLogged(f, "docker", "run", "--rm",
 		"-v", src+":/w", "-v", "skiff-npm:/root/.npm", "-w", "/w/web/dash",
 		"node:22", "sh", "-c",
-		// Prefer a reproducible clean install; fall back to a plain install so a
-		// drifted lock file can't wedge a self-deploy.
+		// npm ci for reproducibility, falling back to npm install so a drifted lock file can't wedge a self-deploy.
 		"(npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && "+
 			"npm run build && rm -rf ../../internal/panel/dist && cp -r dist ../../internal/panel/dist",
 	); e != nil {
 		return fail("dashboard build failed (see log)")
 	}
 
-	// 3. Compile the binary (pure-Go SQLite → static, no CGO) in a go container.
 	log("→ compiling binary")
 	if e := runLogged(f, "docker", "run", "--rm",
 		"-e", "CGO_ENABLED=0", "-e", "GOTOOLCHAIN=local", "-e", "GOFLAGS=-buildvcs=false",
@@ -116,7 +110,6 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 		return fail("new binary failed its smoke test: %s", tailLine(out))
 	}
 
-	// 4. Blue-green swap behind the router.
 	bin := selfBinPath()
 	active := activePort()
 	next := otherPort(active)
@@ -139,7 +132,6 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 		return fail("new panel never became healthy — rolled back, still serving :%s", active)
 	}
 
-	// Flip the router onto the new process, let it drain, then stop the old one.
 	log("→ flipping router :%s → :%s", active, next)
 	if e := os.WriteFile(pointerPath(), []byte("127.0.0.1:"+next+"\n"), 0o644); e != nil {
 		_, _ = run("systemctl", "stop", "skiff-panel@"+next)
@@ -149,8 +141,8 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	time.Sleep(4 * time.Second) // router cache TTL + in-flight drain
 	log("→ draining old panel :%s", active)
 	_, _ = run("systemctl", "stop", "skiff-panel@"+active)
-	_, _ = run("systemctl", "enable", "skiff-panel@"+next)    // start this one on reboot
-	_, _ = run("systemctl", "disable", "skiff-panel@"+active) // not that one
+	_, _ = run("systemctl", "enable", "skiff-panel@"+next)
+	_, _ = run("systemctl", "disable", "skiff-panel@"+active)
 
 	log("✓ live on :%s — zero downtime, sessions preserved", next)
 	setDeployStatus("panel", id, "live")
@@ -160,9 +152,7 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	return nil
 }
 
-// launchSelfUpdate starts a self-deploy as a detached child. The skiff-panel
-// units use KillMode=process, so stopping the old panel (which we're a child of)
-// leaves this process running to finish the swap; init reaps it afterward.
+// launchSelfUpdate runs the self-deploy as a detached child; KillMode=process on the panel units lets it survive the old panel's stop to finish the swap.
 func (p *Panel) launchSelfUpdate(id, commit string) {
 	self, err := os.Executable()
 	if err != nil || self == "" {
@@ -175,12 +165,10 @@ func (p *Panel) launchSelfUpdate(id, commit string) {
 		setDeployStatus("panel", id, "failed")
 		return
 	}
-	go func() { _ = cmd.Wait() }() // reap; harmless if we're stopped mid-swap
+	go func() { _ = cmd.Wait() }()
 }
 
-// pushTouchesSelf reports whether a push changed anything that affects the
-// control-plane binary — i.e. any path outside the marketing site. Unknown
-// (empty/truncated) file lists conservatively count as a change.
+// pushTouchesSelf reports whether a push changed anything outside the marketing site (web/site/); an unknown/empty file list conservatively counts as a change.
 func (p *Panel) pushTouchesSelf(paths []string) bool {
 	if len(paths) == 0 {
 		return true
@@ -193,9 +181,7 @@ func (p *Panel) pushTouchesSelf(paths []string) bool {
 	return false
 }
 
-// touched reports whether a push changed anything under an app's root directory,
-// so a webhook only rebuilds apps whose sources actually changed. Unknown file
-// lists conservatively count as a change.
+// touched reports whether a push changed anything under rootDir; an unknown/empty file list conservatively counts as a change.
 func touched(paths []string, rootDir string) bool {
 	if len(paths) == 0 {
 		return true
@@ -212,8 +198,6 @@ func touched(paths []string, rootDir string) bool {
 	return false
 }
 
-// ---- swap helpers ----
-
 func selfBinPath() string {
 	if v := os.Getenv("SKIFF_BIN"); v != "" {
 		return v
@@ -223,7 +207,6 @@ func selfBinPath() string {
 
 func pointerPath() string { return filepath.Join(skiffDir(), "panel.addr") }
 
-// activePort reads which instance the router is currently pointed at.
 func activePort() string {
 	if b, err := os.ReadFile(pointerPath()); err == nil {
 		v := strings.TrimSpace(string(b))
@@ -244,8 +227,7 @@ func otherPort(p string) string {
 	return portBlue
 }
 
-// installBinary atomically replaces the live binary (safe while the old one is
-// still executing — the running processes keep their in-memory copy).
+// installBinary atomically replaces the live binary — safe while the old one runs, since running processes keep their in-memory copy.
 func installBinary(newBin, dst string) error {
 	tmp := dst + ".next"
 	if out, err := run("cp", newBin, tmp); err != nil {
@@ -263,7 +245,6 @@ func restoreBinary(dst string) {
 	}
 }
 
-// healthy polls a panel instance's /api/me until it answers 200 or times out.
 func healthy(port string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 3 * time.Second}
