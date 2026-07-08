@@ -1,5 +1,5 @@
 import { ChevronRight, ExternalLink, GitBranch, RotateCcw, RotateCw } from 'lucide-react'
-import { type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ConsoleTerminal } from '@/components/console-terminal'
 import { Drawer } from '@/components/drawer'
@@ -11,9 +11,10 @@ import { ErrorState } from '@/components/error-state'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsole } from '@/hooks/use-console'
 import { useProject } from '@/hooks/use-project'
+import { useAppDeploys } from '@/hooks/use-app-deploys'
 import { relTime } from '@/lib/format'
 import { useConfirm } from '@/providers/confirm-provider'
-import { projectsService } from '@/services/api.service'
+import { projectsService, type Deploy } from '@/services/api.service'
 import { JobsPanel } from './project/jobs-panel'
 import { WorkersPanel } from './project/workers-panel'
 import { SettingsForm } from './project/settings-form'
@@ -26,6 +27,19 @@ export default function ProjectDetailPage() {
   const { project, isPending, reload } = useProject(name)
   const term = useConsole(reload)
   const confirm = useConfirm()
+
+  const deployPages = useAppDeploys(name)
+  const appDeploys = useMemo(() => {
+    const seen = new Set<string>()
+    const out: Deploy[] = []
+    for (const d of deployPages.data?.pages.flat() ?? []) {
+      if (!seen.has(d.id)) {
+        seen.add(d.id)
+        out.push(d)
+      }
+    }
+    return out
+  }, [deployPages.data])
 
   if (isPending) {
     return (
@@ -240,10 +254,10 @@ export default function ProjectDetailPage() {
         {/* Deployments */}
         <TabsContent value="deployments" className="pb-[46vh]">
           <div className="overflow-hidden rounded-xl border border-white/8">
-            {project.deploys.length === 0 ? (
+            {appDeploys.length === 0 ? (
               <p className="text-muted-foreground p-8 text-center text-sm">No deployments yet.</p>
             ) : (
-              project.deploys.map((d) => (
+              appDeploys.map((d) => (
                 <div
                   key={d.id}
                   className="group flex items-center gap-2 border-b border-white/5 pr-3 transition-colors last:border-0 hover:bg-white/[0.03]"
@@ -291,6 +305,18 @@ export default function ProjectDetailPage() {
               ))
             )}
           </div>
+          {deployPages.hasNextPage && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                loading={deployPages.isFetchingNextPage}
+                onClick={() => deployPages.fetchNextPage()}
+              >
+                Load more
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         {/* Previews */}

@@ -10,8 +10,12 @@ export type AuditEntry = {
 }
 
 class AuditService extends BaseService {
-  list() {
-    return this.get<AuditEntry[]>('/audit')
+  // Keyset-paginated newest-first. Omit `before` for the first page; pass the
+  // last entry's id to page into older history.
+  list(before?: number, limit = 30) {
+    return this.get<AuditEntry[]>('/audit', {
+      params: before ? { limit, before } : { limit },
+    })
   }
 }
 

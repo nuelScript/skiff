@@ -1,6 +1,6 @@
 import { relTime } from '@/lib/format'
-import type { ComponentType } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, type ComponentType } from 'react'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import {
   Rocket,
   RotateCcw,
@@ -20,6 +20,9 @@ import { auditService, type AuditEntry } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { FeedSkeleton } from '@/components/skeletons'
 import { ErrorState } from '@/components/error-state'
+import { Button } from '@/components/ui/button'
+
+const ACTIVITY_PAGE = 30
 
 type Kind = { icon: ComponentType<{ className?: string }>; verb: string; tone: string }
 
@@ -46,15 +49,27 @@ const KINDS: Record<string, Kind> = {
 }
 
 export default function ActivityPage() {
-  const {
-    data: entries = [],
-    isPending,
-    isError,
-  } = useQuery<AuditEntry[]>({
-    queryKey: queryKeys.audit,
-    queryFn: () => auditService.list(),
-    refetchInterval: 15000,
-  })
+  const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: queryKeys.audit,
+      queryFn: ({ pageParam }) => auditService.list(pageParam, ACTIVITY_PAGE),
+      initialPageParam: undefined as number | undefined,
+      getNextPageParam: (last) =>
+        last.length === ACTIVITY_PAGE ? last[last.length - 1].id : undefined,
+      refetchInterval: 15000,
+    })
+
+  const entries = useMemo(() => {
+    const seen = new Set<number>()
+    const out: AuditEntry[] = []
+    for (const e of data?.pages.flat() ?? []) {
+      if (!seen.has(e.id)) {
+        seen.add(e.id)
+        out.push(e)
+      }
+    }
+    return out
+  }, [data])
 
   return (
     <div className="px-8 py-8">
@@ -75,11 +90,25 @@ export default function ActivityPage() {
           <span>No activity yet — actions across the team will show up here.</span>
         </div>
       ) : (
-        <ol className="overflow-hidden rounded-xl border border-white/8">
-          {entries.map((e, i) => (
-            <Row key={e.id} e={e} last={i === entries.length - 1} />
-          ))}
-        </ol>
+        <>
+          <ol className="overflow-hidden rounded-xl border border-white/8">
+            {entries.map((e, i) => (
+              <Row key={e.id} e={e} last={i === entries.length - 1} />
+            ))}
+          </ol>
+          {hasNextPage && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                loading={isFetchingNextPage}
+                onClick={() => fetchNextPage()}
+              >
+                Load more
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

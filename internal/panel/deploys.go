@@ -288,26 +288,33 @@ func (p *Panel) handleDeployLog(w http.ResponseWriter, r *http.Request) {
 
 func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
-	team := p.teamID(r)
+	before, limit := pageBounds(r)
+	beforeID := r.URL.Query().Get("beforeId")
 	w.Header().Set("Content-Type", "application/json")
 	if app == "" {
-		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
-		beforeID := r.URL.Query().Get("beforeId")
-		limit := 30
-		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
-			if n > 100 {
-				n = 100
-			}
-			limit = n
-		}
-		_ = json.NewEncoder(w).Encode(teamDeploys(team, before, beforeID, limit))
+		_ = json.NewEncoder(w).Encode(teamDeploys(p.teamID(r), before, beforeID, limit))
 		return
 	}
 	if !p.canViewDeploys(r, app) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(appDeploys(app))
+	deploys := appDeploysPage(app, before, beforeID, limit)
+	p.markRollbackable(app, deploys)
+	_ = json.NewEncoder(w).Encode(deploys)
+}
+
+// pageBounds reads a ?before cursor and a clamped ?limit (default 30, max 100).
+func pageBounds(r *http.Request) (before int64, limit int) {
+	before, _ = strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+	limit = 30
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		if n > 100 {
+			n = 100
+		}
+		limit = n
+	}
+	return
 }
 
 func readLogLines(path string) []string {

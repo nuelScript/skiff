@@ -38,10 +38,16 @@ func (p *Panel) audit(r *http.Request, action, target, detail string) {
 	recordAudit(s.teamID, AuditEntry{Actor: actor, Action: action, Target: target, Detail: detail})
 }
 
-func teamAudit(team string, limit int) []AuditEntry {
-	rows, err := sqlDB.Query(
-		`SELECT id,actor,action,target,detail,created FROM audit WHERE team=? ORDER BY id DESC LIMIT ?`,
-		team, limit)
+func teamAudit(team string, before int64, limit int) []AuditEntry {
+	q := `SELECT id,actor,action,target,detail,created FROM audit WHERE team=?`
+	args := []any{team}
+	if before > 0 {
+		q += ` AND id < ?`
+		args = append(args, before)
+	}
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := sqlDB.Query(q, args...)
 	if err != nil {
 		return nil
 	}
@@ -60,6 +66,7 @@ func teamAudit(team string, limit int) []AuditEntry {
 }
 
 func (p *Panel) handleAudit(w http.ResponseWriter, r *http.Request) {
+	before, limit := pageBounds(r)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(teamAudit(p.teamID(r), 200))
+	_ = json.NewEncoder(w).Encode(teamAudit(p.teamID(r), before, limit))
 }

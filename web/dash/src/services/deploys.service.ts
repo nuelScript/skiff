@@ -15,8 +15,12 @@ export type Deploy = {
 export type DeployCursor = { before: number; beforeId: string }
 
 class DeploysService extends BaseService {
-  list(app: string) {
-    return this.get<Deploy[]>('/deploys', { params: { app } })
+  list(app: string, cursor?: DeployCursor, limit = 30) {
+    return this.get<Deploy[]>('/deploys', {
+      params: cursor
+        ? { app, limit, before: cursor.before, beforeId: cursor.beforeId }
+        : { app, limit },
+    })
   }
 
   // Global build feed across every app, keyset-paginated newest-first. Omit the

@@ -159,9 +159,18 @@ func setDeployStatus(app, id, status string) {
 	_, _ = sqlDB.Exec(`UPDATE deploys SET status=? WHERE id=? AND app=?`, status, id, app)
 }
 
-func appDeploys(app string) []Deploy {
-	rows, err := sqlDB.Query(
-		`SELECT id,app,commit_sha,message,trigger,status,started FROM deploys WHERE app=? ORDER BY started DESC LIMIT 20`, app)
+func appDeploys(app string) []Deploy { return appDeploysPage(app, 0, "", 20) }
+
+func appDeploysPage(app string, before int64, beforeID string, limit int) []Deploy {
+	q := `SELECT id,app,commit_sha,message,trigger,status,started FROM deploys WHERE app=?`
+	args := []any{app}
+	if before > 0 {
+		q += ` AND (started < ? OR (started = ? AND id < ?))`
+		args = append(args, before, before, beforeID)
+	}
+	q += ` ORDER BY started DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := sqlDB.Query(q, args...)
 	if err != nil {
 		return nil
 	}
