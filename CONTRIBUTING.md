@@ -117,6 +117,37 @@ explain *why* when it isn't obvious.
 Please don't include unrelated formatting churn or secrets/credentials in a
 diff. Maintainers may squash-merge.
 
+## Releasing
+
+Releases are cut by pushing a version tag (needs push access):
+
+```bash
+git tag v0.1.3
+git push origin v0.1.3
+```
+
+That triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which:
+
+1. Builds the dashboard and embeds it into the binary.
+2. Cross-compiles `skiff` for `linux` and `darwin` × `amd64` and `arm64`,
+   stamping the version from the tag.
+3. Publishes a GitHub Release with those four binaries and generated notes.
+4. Updates the [Homebrew tap](https://github.com/nuelScript/homebrew-tap)
+   formula, regenerating it from `.github/homebrew/skiff.rb.tmpl` with `sha256`
+   checksums taken from the exact artifacts it just built.
+
+Use a fresh version each time — tags are immutable once released. The version
+the binary reports comes from the tag, so don't hand-edit it.
+
+The Homebrew step (4) only runs if a `HOMEBREW_TAP_TOKEN` repository secret is
+set: a fine-grained PAT with *Contents: read and write* on
+`nuelScript/homebrew-tap`. Without it the step logs a skip and the formula must
+be updated by hand. Whenever you touch the formula manually, take the `sha256`
+values from the **published release assets** — never a local `go build`. Local
+binaries aren't byte-identical to the CI ones, and a mismatch makes
+`brew install` fail its integrity check.
+
 ## Reporting security issues
 
 Never file a public issue for a vulnerability. Follow the private disclosure
