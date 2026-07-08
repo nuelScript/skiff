@@ -132,6 +132,9 @@ func (p *Panel) createPreview(parent Source, branch, commit, message string) (na
 	}
 	_ = putSource(pv)
 	_ = setEnv(name, getEnv(parent.App)) // start from the project's environment
+	if rebindBranchDomains(parent.App, branch, name) {
+		writeDomainsFile() // a pinned branch domain now resolves to this preview
+	}
 	id = newDeployID()
 	go p.runDeploy(pv, "", commit, message, "preview", id)
 	return name, id, true

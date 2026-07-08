@@ -121,6 +121,19 @@ func deleteAppDomains(app string) bool {
 	return n > 0
 }
 
+// rebindBranchDomains points every managed domain tracking (parent, branch) at
+// the given preview app, so a branch's custom hostnames follow its preview
+// across (re)deploys — including the first deploy of a domain added before the
+// preview existed. Reports whether any row matched, so the caller can re-mirror.
+func rebindBranchDomains(parent, branch, app string) bool {
+	res, err := sqlDB.Exec(`UPDATE domains SET app=? WHERE parent=? AND branch=?`, app, parent, branch)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
 // handleDomains manages a team's custom domains: list (GET), add (POST), remove
 // (DELETE). Each is scoped to apps the caller can access.
 func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +146,7 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(domainsResponse{ServerIP: ip, Domains: domains})
 
 	case http.MethodPost:
-		var body struct{ App, Host string }
+		var body struct{ App, Host, Branch string }
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
@@ -142,6 +155,23 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 		if !p.canAccess(r, app) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
+		}
+		// With a branch, `app` names the parent project and the host is bound to
+		// that project's branch preview; the preview lifecycle keeps it in sync.
+		// Without one, it's a plain domain pinned to the app itself.
+		parent, branch, target := "", strings.TrimSpace(body.Branch), app
+		if branch != "" {
+			src, ok := getSource(app)
+			if !ok || src.Parent != "" {
+				http.Error(w, "unknown project", http.StatusNotFound)
+				return
+			}
+			name := previewName(app, branch)
+			if name == "" || name == app {
+				http.Error(w, "couldn't derive a preview name from that branch", http.StatusBadRequest)
+				return
+			}
+			parent, target = app, name
 		}
 		host, ok := normalizeHost(body.Host, p.domain)
 		if !ok {
@@ -153,15 +183,16 @@ func (p *Panel) handleDomains(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := sqlDB.Exec(
-			`INSERT INTO domains(host,app,team,created) VALUES(?,?,?,?)`,
-			host, app, p.teamID(r), time.Now().Unix()); err != nil {
+			`INSERT INTO domains(host,app,team,parent,branch,created) VALUES(?,?,?,?,?,?)`,
+			host, target, p.teamID(r), parent, branch, time.Now().Unix()); err != nil {
 			http.Error(w, "could not add domain", http.StatusInternalServerError)
 			return
 		}
 		writeDomainsFile()
-		p.audit(r, "domain.add", host, app)
+		p.audit(r, "domain.add", host, target)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(Domain{Host: host, App: app, Created: time.Now().Unix()})
+		_ = json.NewEncoder(w).Encode(Domain{
+			Host: host, App: target, Parent: parent, Branch: branch, Created: time.Now().Unix()})
 
 	case http.MethodDelete:
 		host, ok := normalizeHost(r.URL.Query().Get("host"), p.domain)

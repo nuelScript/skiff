@@ -1,8 +1,13 @@
 package panel
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/auth"
 )
 
 // TestDeleteAppDomainsKeepsManaged verifies teardown drops a plain custom domain
@@ -38,5 +43,84 @@ func TestDeleteAppDomainsKeepsManaged(t *testing.T) {
 	// A second teardown removes nothing (no plain rows left) — no needless re-mirror.
 	if deleteAppDomains("myapp-staging") {
 		t.Fatal("expected no further deletions on a managed-only app")
+	}
+}
+
+// TestRebindBranchDomains verifies a managed domain is re-pointed at the current
+// preview app (correcting a stale target, e.g. a domain added before the preview
+// first deployed) while plain domains are left untouched.
+func TestRebindBranchDomains(t *testing.T) {
+	openTestDB(t)
+	now := time.Now().Unix()
+	// Managed row with a stale app target, plus a plain domain that must not move.
+	if _, err := sqlDB.Exec(
+		`INSERT INTO domains(host,app,team,parent,branch,created) VALUES('staging.acme.com','stale','t1','web','staging',?)`,
+		now); err != nil {
+		t.Fatalf("insert managed: %v", err)
+	}
+	if _, err := sqlDB.Exec(
+		`INSERT INTO domains(host,app,team,parent,branch,created) VALUES('acme.com','web','t1','','',?)`,
+		now); err != nil {
+		t.Fatalf("insert plain: %v", err)
+	}
+
+	if !rebindBranchDomains("web", "staging", "web-staging") {
+		t.Fatal("expected the managed row to be rebound")
+	}
+	byHost := map[string]Domain{}
+	for _, d := range teamDomains("t1") {
+		byHost[d.Host] = d
+	}
+	if got := byHost["staging.acme.com"].App; got != "web-staging" {
+		t.Fatalf("managed row not rebound: app=%q", got)
+	}
+	if got := byHost["acme.com"].App; got != "web" {
+		t.Fatalf("plain domain wrongly touched: app=%q", got)
+	}
+	if rebindBranchDomains("web", "prod", "web-prod") {
+		t.Fatal("expected no match for a branch with no bound domains")
+	}
+}
+
+// TestAddBranchDomainBindsToPreview drives the POST endpoint: a domain added with
+// a branch is stored as a managed row bound to that branch's preview app.
+func TestAddBranchDomainBindsToPreview(t *testing.T) {
+	openTestDB(t)
+	t.Setenv("HOME", t.TempDir()) // isolate writeDomainsFile from the real ~/.skiff
+
+	store := auth.NewStore(sqlDB)
+	u, team, err := store.CreateUser("dev@acme.dev", "Dev", "password123")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	putSource(Source{App: "web", Team: team.ID, Repo: "acme/web", Branch: "main", Port: "3000"})
+	putSession("s", u.ID, team.ID)
+
+	p := &Panel{auth: store, domain: "skiff.test"}
+	req := httptest.NewRequest("POST", "/api/domains",
+		strings.NewReader(`{"app":"web","host":"staging.acme.com","branch":"staging"}`))
+	req.AddCookie(&http.Cookie{Name: "skiff_session", Value: "s"})
+	w := httptest.NewRecorder()
+	p.handleDomains(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST branch domain: status %d, body %s", w.Code, w.Body.String())
+	}
+	got := teamDomains(team.ID)
+	if len(got) != 1 {
+		t.Fatalf("want 1 domain, got %d: %+v", len(got), got)
+	}
+	if d := got[0]; d.Host != "staging.acme.com" || d.App != "web-staging" || d.Parent != "web" || d.Branch != "staging" {
+		t.Fatalf("branch domain not bound to the preview app: %+v", d)
+	}
+
+	// Binding a branch of a non-existent project is rejected.
+	req2 := httptest.NewRequest("POST", "/api/domains",
+		strings.NewReader(`{"app":"ghost","host":"x.acme.com","branch":"staging"}`))
+	req2.AddCookie(&http.Cookie{Name: "skiff_session", Value: "s"})
+	w2 := httptest.NewRecorder()
+	p.handleDomains(w2, req2)
+	if w2.Code == http.StatusOK {
+		t.Fatalf("expected rejection for a branch domain on an unknown project, got 200")
 	}
 }
