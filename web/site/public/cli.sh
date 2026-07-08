@@ -30,20 +30,21 @@ curl -fsSL "https://github.com/$REPO/releases/latest/download/$asset" -o "$tmp" 
   || { echo "error: download failed — is a release published yet?" >&2; rm -f "$tmp"; exit 1; }
 chmod +x "$tmp"
 
-# Install to /usr/local/bin if we can, otherwise ~/.local/bin.
-dest="/usr/local/bin"
-if [ -w "$dest" ]; then
-  mv "$tmp" "$dest/skiff"
-elif command -v sudo >/dev/null 2>&1; then
-  echo "→ installing to $dest (needs sudo)"
-  sudo mv "$tmp" "$dest/skiff"
-else
-  dest="$HOME/.local/bin"
-  mkdir -p "$dest"
-  mv "$tmp" "$dest/skiff"
-fi
+# Install into ~/.local/bin by default — no sudo, and no clash with a Homebrew
+# skiff (which lives in /usr/local/bin on Intel or /opt/homebrew/bin on Apple
+# Silicon). Override the location with SKIFF_INSTALL_DIR if you'd rather.
+dest="${SKIFF_INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$dest"
+mv "$tmp" "$dest/skiff"
 
 echo "✓ installed $("$dest/skiff" version 2>/dev/null || echo skiff) to $dest/skiff"
+
+# If a different skiff already shadows this one (e.g. one from Homebrew), say so.
+existing="$(command -v skiff 2>/dev/null || true)"
+if [ -n "$existing" ] && [ "$existing" != "$dest/skiff" ]; then
+  echo "  note: another skiff on your PATH ($existing) may take precedence." >&2
+fi
+
 case ":$PATH:" in
   *":$dest:"*) echo "  run: skiff --help" ;;
   *) echo "  add it to your PATH:  export PATH=\"$dest:\$PATH\"" ;;
