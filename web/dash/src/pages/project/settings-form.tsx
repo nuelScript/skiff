@@ -99,7 +99,7 @@ export function SettingsForm({
     <div className="flex flex-col gap-6">
       <section className="rounded-xl border border-white/8 p-5">
         <h2 className="mb-4 text-sm font-semibold">Build &amp; deploy</h2>
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+        <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Field>
             <FieldLabel htmlFor="s-branch">Branch</FieldLabel>
             <Input id="s-branch" placeholder="main" className="font-mono" {...register('branch')} />
