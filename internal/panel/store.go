@@ -8,52 +8,42 @@ import (
 	"time"
 )
 
-// Source is a deployable app's git origin (per team), so a webhook or redeploy
-// can rebuild it without the user re-entering anything.
 type Source struct {
 	App         string `json:"app"`
 	Team        string `json:"team"`
-	Repo        string `json:"repo"` // owner/name
+	Repo        string `json:"repo"`
 	Branch      string `json:"branch"`
-	RootDir     string `json:"rootDir"` // subdirectory to build (monorepos)
+	RootDir     string `json:"rootDir"`
 	Port        string `json:"port"`
 	CloneURL    string `json:"cloneUrl"`
 	Auto        bool   `json:"auto"`
-	Parent      string `json:"parent,omitempty"`      // set on preview environments: the production app they branch from
-	PreviewAuto bool   `json:"previewAuto,omitempty"` // auto-create a preview for pushes to other branches
-	Replicas    int    `json:"replicas,omitempty"`    // identical containers to run behind the router (default 1)
-	Release     string `json:"release,omitempty"`     // command run once (e.g. migrations) before each release goes live
-	// Autoscaling: when on, the panel adds/retires replicas to hold each one near
-	// ScaleCPU (percent of one core), bounded by ScaleMin..ScaleMax.
-	Autoscale bool `json:"autoscale,omitempty"`
-	ScaleMin  int  `json:"scaleMin,omitempty"`
-	ScaleMax  int  `json:"scaleMax,omitempty"`
-	ScaleCPU  int  `json:"scaleCpu,omitempty"`
+	Parent      string `json:"parent,omitempty"`
+	PreviewAuto bool   `json:"previewAuto,omitempty"`
+	Replicas    int    `json:"replicas,omitempty"`
+	Release     string `json:"release,omitempty"`
+	Autoscale   bool   `json:"autoscale,omitempty"`
+	ScaleMin    int    `json:"scaleMin,omitempty"`
+	ScaleMax    int    `json:"scaleMax,omitempty"`
+	ScaleCPU    int    `json:"scaleCpu,omitempty"`
 }
 
-// Deploy is one build/release, with a persisted log the dashboard can replay.
 type Deploy struct {
-	ID      string `json:"id"`
-	App     string `json:"app"`
-	Commit  string `json:"commit"`
-	Message string `json:"message"`
-	Trigger string `json:"trigger"`
-	Status  string `json:"status"`
-	Started int64  `json:"started"`
-	// Rollbackable is computed (not persisted): the build's image is still
-	// retained and it isn't the version currently serving.
-	Rollbackable bool `json:"rollbackable,omitempty"`
+	ID           string `json:"id"`
+	App          string `json:"app"`
+	Commit       string `json:"commit"`
+	Message      string `json:"message"`
+	Trigger      string `json:"trigger"`
+	Status       string `json:"status"`
+	Started      int64  `json:"started"`
+	Rollbackable bool   `json:"rollbackable,omitempty"`
 }
 
-// EnvVar is a project environment variable. Build vars land in the image build
-// ([env]); non-build vars are runtime-only secrets ([secrets]).
 type EnvVar struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 	Build bool   `json:"build"`
 }
 
-// sqlDB is the panel's shared handle to the SQLite database (set in New).
 var sqlDB *sql.DB
 
 func skiffDir() string {
@@ -101,7 +91,6 @@ func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	return s, true
 }
 
-// productionAppsForRepo returns the top-level (non-preview) apps built from a repo.
 func productionAppsForRepo(repo string) []Source {
 	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent=''`, repo)
 	if err != nil {
@@ -124,9 +113,8 @@ func getSource(app string) (Source, bool) {
 	return scanSource(sqlDB.QueryRow(`SELECT `+sourceCols+` FROM sources WHERE app=?`, app))
 }
 
-// deleteSource removes a project and everything keyed to its name in one
-// transaction — the app-code stand-in for the FK cascade we deliberately don't
-// declare, so a mid-delete failure can't leave half the rows orphaned.
+// deleteSource cascades a project's rows in one transaction — the FK cascade we
+// deliberately don't declare, so a mid-delete failure can't orphan half of them.
 func deleteSource(app string) {
 	tx, err := sqlDB.Begin()
 	if err != nil {
@@ -142,7 +130,6 @@ func deleteSource(app string) {
 	}
 }
 
-// sourcesForRepo returns auto-deploy sources matching a pushed repo + branch.
 func sourcesForRepo(repo, branch string) []Source {
 	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources
 		WHERE auto=1 AND repo=? AND (branch='' OR branch=?)`, repo, branch)
@@ -192,13 +179,9 @@ func appDeploys(app string) []Deploy {
 	return out
 }
 
-// allDeploys is the global build feed across every app, newest first.
-// teamDeploys is the global build feed scoped to one team (plus the control
-// plane's own builds), newest first, keyset-paginated on (started, id). Pass
-// before=0 for the first page; for older pages pass the last row's started+id
-// as the cursor. Team-scoping the LIMIT in SQL (rather than filtering after a
-// fixed LIMIT) keeps every page full and reachable no matter how the team's
-// builds are interleaved with others'.
+// teamDeploys is the global build feed for one team (plus the control plane),
+// keyset-paginated on (started, id). Team-scoping the LIMIT in SQL keeps every
+// page full no matter how the team's builds interleave with others'.
 func teamDeploys(team string, before int64, beforeID string, limit int) []Deploy {
 	q := `SELECT d.id, d.app, d.commit_sha, d.message, d.trigger, d.status, d.started
 	      FROM deploys d
@@ -230,10 +213,8 @@ func teamDeploys(team string, before int64, beforeID string, limit int) []Deploy
 	return out
 }
 
-// reconcileStuckDeploys clears deploys left "building" by a previous process
-// (e.g. the panel restarted mid-build), so an orphaned build doesn't hang around
-// forever. Only ones older than the cutoff, so a build running on the other
-// color during a blue-green swap isn't disturbed.
+// reconcileStuckDeploys clears builds an earlier process left "building", but
+// only past the cutoff so an in-flight blue-green build isn't disturbed.
 func reconcileStuckDeploys() {
 	cutoff := time.Now().Unix() - 15*60
 	_, _ = sqlDB.Exec(`UPDATE deploys SET status='canceled' WHERE status='building' AND started < ?`, cutoff)
@@ -297,7 +278,6 @@ func setEnv(app string, vars []EnvVar) error {
 	return tx.Commit()
 }
 
-// sharedEnv returns a team's shared environment variables, applied to every app.
 func sharedEnv(team string) []EnvVar {
 	rows, err := sqlDB.Query(`SELECT key,value,build FROM shared_env WHERE team=? ORDER BY key`, team)
 	if err != nil {
@@ -342,8 +322,8 @@ func setSharedEnv(team string, vars []EnvVar) error {
 	return tx.Commit()
 }
 
-// deployEnv is the full environment for a deploy: the team's shared vars with
-// the app's own vars layered on top (the app wins on any key conflict).
+// deployEnv merges the team's shared vars with the app's own; the app wins on a
+// key conflict.
 func deployEnv(src Source) []EnvVar {
 	merged := map[string]EnvVar{}
 	for _, e := range sharedEnv(src.Team) {
@@ -360,7 +340,6 @@ func deployEnv(src Source) []EnvVar {
 	return out
 }
 
-// sanitizeID keeps deploy ids filesystem-safe (used for log file paths).
 func sanitizeID(s string) string {
 	out := make([]byte, 0, len(s))
 	for _, r := range s {
@@ -371,7 +350,6 @@ func sanitizeID(s string) string {
 	return string(out)
 }
 
-// sanitizeEnvKey keeps env keys to valid TOML bare keys.
 func sanitizeEnvKey(s string) string {
 	out := make([]byte, 0, len(s))
 	for _, r := range s {
@@ -396,8 +374,6 @@ func putSession(token, userID, teamID string) error {
 	return err
 }
 
-// sessionMaxAge bounds how long a session stays valid regardless of use, so a
-// leaked cookie doesn't live forever.
 const sessionMaxAge = 30 * 24 * 60 * 60 // 30 days
 
 func getSession(token string) (sess, bool) {
