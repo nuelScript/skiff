@@ -1,0 +1,66 @@
+name: homebrew
+
+# Regenerate the Homebrew tap (nuelScript/homebrew-tap) formula for a released
+# version, with sha256 checksums taken from the published release assets (never a
+# local build). Called by the release workflow after a version is published, and
+# runnable on its own for any existing tag — e.g. to re-run after fixing the tap
+# token, without cutting a new release.
+#
+# Requires a HOMEBREW_TAP_TOKEN secret: a fine-grained PAT with Contents read AND
+# write on nuelScript/homebrew-tap. (Read alone lets the clone succeed but the
+# push fails with "Permission denied", exit 128.)
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to update the formula for (e.g. v0.1.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Update the tap formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — needs a PAT with Contents: read and write on the tap." >&2
+            exit 1
+          fi
+          tag="${{ inputs.tag }}"; ver="${tag#v}"
+          echo "Updating Homebrew formula for $tag"
+
+          mkdir dl
+          for a in darwin-arm64 darwin-amd64 linux-arm64 linux-amd64; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" -p "skiff-$a" --dir dl
+          done
+          sha() { sha256sum "dl/skiff-$1" | cut -d' ' -f1; }
+
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/nuelScript/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          sed -e "s/__VERSION__/$ver/" -e "s/__TAG__/$tag/g" \
+              -e "s/__SHA_DARWIN_ARM64__/$(sha darwin-arm64)/" \
+              -e "s/__SHA_DARWIN_AMD64__/$(sha darwin-amd64)/" \
+              -e "s/__SHA_LINUX_ARM64__/$(sha linux-arm64)/" \
+              -e "s/__SHA_LINUX_AMD64__/$(sha linux-amd64)/" \
+              .github/homebrew/skiff.rb.tmpl > tap/Formula/skiff.rb
+          cd tap
+          git config user.name "Parseval"
+          git config user.email "igwee3333@gmail.com"
+          git add Formula/skiff.rb
+          git commit -m "skiff $tag" || { echo "formula already up to date"; exit 0; }
+          git push
