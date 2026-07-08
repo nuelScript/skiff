@@ -219,10 +219,15 @@ export function SettingsForm({
         </div>
         <Field className="mt-4">
           <FieldLabel htmlFor="s-release">Release command</FieldLabel>
-          <Input id="s-release" placeholder="e.g. npm run migrate" className="font-mono" {...register('release')} />
+          <Input
+            id="s-release"
+            placeholder="e.g. npm run migrate"
+            className="font-mono"
+            {...register('release')}
+          />
           <FieldDescription>
-            Runs once in a one-off container before each new version goes live — a non-zero exit aborts
-            the deploy, so the old version keeps serving.
+            Runs once in a one-off container before each new version goes live — a non-zero exit
+            aborts the deploy, so the old version keeps serving.
           </FieldDescription>
         </Field>
         <div className="mt-5 flex items-center justify-end gap-3">
@@ -254,4 +259,3 @@ export function SettingsForm({
     </div>
   )
 }
-

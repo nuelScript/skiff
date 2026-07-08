@@ -23,7 +23,12 @@ type StatusStyle = { dot: string; ring: string; edge: string; pulse: boolean }
 function statusStyle(state: string): StatusStyle {
   switch (state) {
     case 'running':
-      return { dot: 'bg-emerald-400', ring: 'bg-emerald-400/15', edge: 'bg-emerald-400/50', pulse: false }
+      return {
+        dot: 'bg-emerald-400',
+        ring: 'bg-emerald-400/15',
+        edge: 'bg-emerald-400/50',
+        pulse: false,
+      }
     case 'exited':
     case 'missing':
       return { dot: 'bg-rose-400', ring: 'bg-rose-400/15', edge: 'bg-rose-400/50', pulse: false }

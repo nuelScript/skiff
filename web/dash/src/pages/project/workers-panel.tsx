@@ -46,7 +46,10 @@ export function WorkersPanel({ app }: { app: string }) {
   })
 
   const del = async (id: string) => {
-    if (!(await confirm({ title: 'Delete this worker?', confirmText: 'Delete', destructive: true }))) return
+    if (
+      !(await confirm({ title: 'Delete this worker?', confirmText: 'Delete', destructive: true }))
+    )
+      return
     await projectsService.deleteWorker(id)
     reload()
   }
@@ -140,7 +143,9 @@ export function WorkersPanel({ app }: { app: string }) {
                 <Cog className="text-muted-foreground h-4 w-4 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{wk.name}</p>
-                  <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">{wk.command}</p>
+                  <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
+                    {wk.command}
+                  </p>
                 </div>
                 <span
                   className={
@@ -166,4 +171,3 @@ export function WorkersPanel({ app }: { app: string }) {
     </div>
   )
 }
-

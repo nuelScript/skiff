@@ -29,7 +29,10 @@ export default function MembersDialog({
       setLink('')
       setEmail('')
       setError('')
-      authService.members().then(setMembers).catch(() => setMembers([]))
+      authService
+        .members()
+        .then(setMembers)
+        .catch(() => setMembers([]))
     }
   }, [open])
 
@@ -38,7 +41,10 @@ export default function MembersDialog({
     try {
       const r = await authService.invite(email.trim(), 'member')
       setLink(r.link)
-      authService.members().then(setMembers).catch(() => {})
+      authService
+        .members()
+        .then(setMembers)
+        .catch(() => {})
     } catch (e) {
       setError(errText(e, 'Could not create invite'))
     }
@@ -64,8 +70,7 @@ export default function MembersDialog({
                 className="flex items-center justify-between border-b px-4 py-2.5 text-sm last:border-0"
               >
                 <span className="truncate">
-                  {m.user.name}{' '}
-                  <span className="text-muted-foreground">· {m.user.email}</span>
+                  {m.user.name} <span className="text-muted-foreground">· {m.user.email}</span>
                 </span>
                 <span className="text-muted-foreground font-mono text-[11px] uppercase">
                   {m.role}
@@ -90,9 +95,7 @@ export default function MembersDialog({
           {error && <p className="text-destructive text-xs">{error}</p>}
           {link && (
             <div className="bg-muted/30 rounded-md border p-2.5">
-              <p className="text-muted-foreground mb-1 text-xs">
-                Share this invite link:
-              </p>
+              <p className="text-muted-foreground mb-1 text-xs">Share this invite link:</p>
               <code className="text-xs break-all">{link}</code>
             </div>
           )}

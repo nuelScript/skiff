@@ -13,10 +13,7 @@ export function useDomains() {
   const domains = data?.domains ?? []
   const serverIp = data?.serverIp ?? ''
 
-  const reload = useCallback(
-    () => qc.invalidateQueries({ queryKey: queryKeys.domains }),
-    [qc],
-  )
+  const reload = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.domains }), [qc])
 
   const add = useCallback(
     async (app: string, host: string, branch?: string) => {

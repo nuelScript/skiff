@@ -22,10 +22,7 @@ export function useAuth() {
         ? 'setup'
         : 'out'
 
-  const refresh = useCallback(
-    () => qc.invalidateQueries({ queryKey: queryKeys.me }),
-    [qc],
-  )
+  const refresh = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.me }), [qc])
 
   const setup = useCallback(
     async (secret: string, email: string, name: string, password: string) => {

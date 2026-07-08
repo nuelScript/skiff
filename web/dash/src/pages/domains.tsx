@@ -56,7 +56,9 @@ export default function DomainsPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return q ? domains.filter((d) => d.host.includes(q) || d.app.toLowerCase().includes(q)) : domains
+    return q
+      ? domains.filter((d) => d.host.includes(q) || d.app.toLowerCase().includes(q))
+      : domains
   }, [domains, query])
 
   const addMut = useMutation({
@@ -110,10 +112,10 @@ export default function DomainsPage() {
           onCancel={
             domains.length > 0
               ? () => {
-                setAdding(false)
-                setHost('')
-                addMut.reset()
-              }
+                  setAdding(false)
+                  setHost('')
+                  addMut.reset()
+                }
               : undefined
           }
           busy={addMut.isPending}
@@ -140,7 +142,9 @@ export default function DomainsPage() {
 
           <div className="overflow-hidden rounded-xl border border-white/8">
             {filtered.length === 0 ? (
-              <p className="text-muted-foreground p-8 text-center text-sm">No domains match “{query}”.</p>
+              <p className="text-muted-foreground p-8 text-center text-sm">
+                No domains match “{query}”.
+              </p>
             ) : (
               filtered.map((d, i) => (
                 <DomainRow
@@ -149,7 +153,13 @@ export default function DomainsPage() {
                   serverIp={serverIp}
                   appHost={targetHost(apps, d.app)}
                   onRemove={async () => {
-                    if (await confirm({ title: `Remove ${d.host}?`, confirmText: 'Remove', destructive: true }))
+                    if (
+                      await confirm({
+                        title: `Remove ${d.host}?`,
+                        confirmText: 'Remove',
+                        destructive: true,
+                      })
+                    )
                       remove(d.host)
                   }}
                   delay={i * 40}
@@ -221,7 +231,8 @@ function DomainRow({
         )}
         <ChevronDown
           className={
-            'text-muted-foreground h-4 w-4 shrink-0 transition-transform ' + (open ? 'rotate-180' : '')
+            'text-muted-foreground h-4 w-4 shrink-0 transition-transform ' +
+            (open ? 'rotate-180' : '')
           }
         />
       </button>
@@ -264,8 +275,9 @@ function DomainRow({
                   {resolves.length > 0 && (
                     <span className="text-muted-foreground">
                       {' '}
-                      — resolves to <span className="font-mono">{resolves.join(', ')}</span>, expected{' '}
-                      <span className="font-mono text-foreground/70">{serverIp || '—'}</span>
+                      — resolves to <span className="font-mono">{resolves.join(', ')}</span>,
+                      expected{' '}
+                      <span className="text-foreground/70 font-mono">{serverIp || '—'}</span>
                     </span>
                   )}
                 </span>
@@ -289,7 +301,7 @@ function DomainRow({
               href={'https://' + domain.host}
               target="_blank"
               rel="noreferrer"
-              className="hover:border-white/25 hover:text-foreground text-muted-foreground flex items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition"
+              className="hover:text-foreground text-muted-foreground flex items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition hover:border-white/25"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               Visit
@@ -311,7 +323,9 @@ function DomainRow({
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">{label}</p>
+      <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">
+        {label}
+      </p>
       <div className="text-xs">{children}</div>
     </div>
   )
@@ -368,7 +382,7 @@ function AddComposer({
           <button
             type="button"
             onClick={onCancel}
-            className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 p-1"
+            className="text-muted-foreground hover:text-foreground -mt-1 -mr-1 p-1"
           >
             <X className="h-4 w-4" />
           </button>

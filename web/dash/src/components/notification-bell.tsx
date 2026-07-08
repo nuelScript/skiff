@@ -41,9 +41,7 @@ export default function NotificationBell() {
   const [filter, setFilter] = useState<Filter>('all')
 
   const unread = deploys.slice(0, 8).filter((d) => d.started > seen).length
-  const recent = deploys
-    .filter((d) => filter === 'all' || d.status === filter)
-    .slice(0, 12)
+  const recent = deploys.filter((d) => filter === 'all' || d.status === filter).slice(0, 12)
 
   const markSeen = () => {
     const latest = recent[0]?.started ?? Math.floor(Date.now() / 1000)
@@ -64,7 +62,7 @@ export default function NotificationBell() {
         >
           <Bell className="h-4 w-4" />
           {unread > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-background" />
+            <span className="ring-background absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-400 ring-2" />
           )}
         </button>
       </DropdownMenuTrigger>

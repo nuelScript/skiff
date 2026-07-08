@@ -30,12 +30,7 @@ type Props = {
   ) => void
 }
 
-export function DeployModal({
-  open,
-  onOpenChange,
-  onDeployUrl,
-  onDeployRepo,
-}: Props) {
+export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo }: Props) {
   const gh = useGithub(open)
   const [urlMode, setUrlMode] = useState(false)
   const [selected, setSelected] = useState<Repo | null>(null)
@@ -57,9 +52,7 @@ export function DeployModal({
 
   const filtered = useMemo(
     () =>
-      gh.repos
-        .filter((r) => r.full_name.toLowerCase().includes(search.toLowerCase()))
-        .slice(0, 40),
+      gh.repos.filter((r) => r.full_name.toLowerCase().includes(search.toLowerCase())).slice(0, 40),
     [gh.repos, search],
   )
 
@@ -207,7 +200,7 @@ export function DeployModal({
                     <button
                       key={r.full_name}
                       onClick={() => pick(r)}
-                      className="hover:bg-white/[0.04] flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04]"
                     >
                       <span className="min-w-0 truncate font-mono text-sm">{r.full_name}</span>
                       {r.private && (
@@ -234,15 +227,7 @@ export function DeployModal({
   )
 }
 
-function ConnectCard({
-  hint,
-  label,
-  href,
-}: {
-  hint: string
-  label: string
-  href: string
-}) {
+function ConnectCard({ hint, label, href }: { hint: string; label: string; href: string }) {
   return (
     <div className="flex flex-col items-center gap-4 py-8 text-center">
       <GitBranch className="text-muted-foreground h-8 w-8" />

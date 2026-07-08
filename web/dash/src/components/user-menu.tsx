@@ -10,13 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export default function UserMenu({
-  me,
-  logout,
-}: {
-  me: Me
-  logout: () => void
-}) {
+export default function UserMenu({ me, logout }: { me: Me; logout: () => void }) {
   const navigate = useNavigate()
   const name = me.user?.name || me.user?.email || 'You'
   const email = me.user?.email ?? ''
@@ -43,7 +37,10 @@ export default function UserMenu({
           <Settings className="h-3.5 w-3.5" />
           Settings
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void logout()} className="gap-2 text-rose-400 focus:text-rose-400">
+        <DropdownMenuItem
+          onClick={() => void logout()}
+          className="gap-2 text-rose-400 focus:text-rose-400"
+        >
           <LogOut className="h-3.5 w-3.5" />
           Sign out
         </DropdownMenuItem>

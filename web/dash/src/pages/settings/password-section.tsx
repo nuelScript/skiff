@@ -44,7 +44,9 @@ export function PasswordSection() {
           }}
         />
         {save.isError && (
-          <p className="text-xs text-rose-300">{errText(save.error, 'Could not change your password.')}</p>
+          <p className="text-xs text-rose-300">
+            {errText(save.error, 'Could not change your password.')}
+          </p>
         )}
         <div className="flex justify-end">
           <Button

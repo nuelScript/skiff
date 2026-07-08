@@ -1,11 +1,6 @@
 export function LogoMark({ className = '' }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      fill="none"
-      aria-hidden
-      className={'text-foreground ' + className}
-    >
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden className={'text-foreground ' + className}>
       {/* mainsail — also reads as a forward "ship it" chevron */}
       <path d="M17.5 3 Q25.5 16 27 24 H17.5 Z" fill="currentColor" />
       {/* jib */}

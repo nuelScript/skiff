@@ -44,8 +44,7 @@ export function ControlPlaneCard({
         >
           <span
             className={
-              'h-1.5 w-1.5 rounded-full ' +
-              (building ? 'bg-amber-400 pulse-dot' : 'bg-emerald-400')
+              'h-1.5 w-1.5 rounded-full ' + (building ? 'pulse-dot bg-amber-400' : 'bg-emerald-400')
             }
           />
           {building ? 'deploying' : 'running'}

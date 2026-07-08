@@ -26,7 +26,7 @@ export function ConnectionsSection({ gh }: { gh?: GithubStatus }) {
         ) : (
           <a
             href="/server"
-            className="text-muted-foreground hover:border-white/25 hover:text-foreground shrink-0 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition"
+            className="text-muted-foreground hover:text-foreground shrink-0 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition hover:border-white/25"
           >
             Set up
           </a>

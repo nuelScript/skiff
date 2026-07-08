@@ -20,7 +20,9 @@ export function useLogStream(app: string | null) {
     setLive(true)
     const es = openStream(logsUrl(app), {
       onLine: (line) =>
-        setLines((ls) => (ls.length >= MAX_LINES ? [...ls.slice(1 - MAX_LINES), line] : [...ls, line])),
+        setLines((ls) =>
+          ls.length >= MAX_LINES ? [...ls.slice(1 - MAX_LINES), line] : [...ls, line],
+        ),
       onDone: () => setLive(false),
     })
     esRef.current = es

@@ -1,11 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthContext } from '@/context/auth-context'
-import {
-  authService,
-  githubService,
-  type Member,
-  type GithubStatus,
-} from '@/services/api.service'
+import { authService, githubService, type Member, type GithubStatus } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { ProfileSection } from './settings/profile-section'
 import { PasswordSection } from './settings/password-section'

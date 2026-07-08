@@ -93,7 +93,9 @@ export function TeamSection({
         </button>
       </div>
       {rename.isError && (
-        <p className="mt-2 text-xs text-rose-300">{errText(rename.error, 'Could not rename the team.')}</p>
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(rename.error, 'Could not rename the team.')}
+        </p>
       )}
       {danger.isError && (
         <p className="mt-2 text-xs text-rose-300">

@@ -41,7 +41,9 @@ class DatabasesService extends BaseService {
   }
 
   setPublic(id: string, on: boolean) {
-    return this.post<Database>('/databases/public', undefined, { params: { id, on: on ? '1' : '0' } })
+    return this.post<Database>('/databases/public', undefined, {
+      params: { id, on: on ? '1' : '0' },
+    })
   }
 
   detach(id: string, app: string) {

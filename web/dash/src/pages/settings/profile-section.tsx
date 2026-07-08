@@ -34,7 +34,9 @@ export function ProfileSection({ user, onSaved }: { user: User; onSaved: () => P
           <input className={inputCls} value={user.email} disabled readOnly />
         </Field>
         {save.isError && (
-          <p className="text-xs text-rose-300">{errText(save.error, 'Could not save your profile.')}</p>
+          <p className="text-xs text-rose-300">
+            {errText(save.error, 'Could not save your profile.')}
+          </p>
         )}
         <div className="flex justify-end">
           <SaveButton busy={save.isPending} saved={save.isSuccess} disabled={!dirty} />

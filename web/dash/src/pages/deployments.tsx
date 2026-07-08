@@ -33,13 +33,12 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'failed', label: 'Failed' },
 ]
 
-const matchesFilter = (d: Deploy, f: Filter): boolean =>
-  f === 'all' ? true : d.status === f
+const matchesFilter = (d: Deploy, f: Filter): boolean => (f === 'all' ? true : d.status === f)
 
 export default function DeploymentsPage() {
   const { data: deploys = [], isPending, isError } = useAllDeploys()
   const qc = useQueryClient()
-  const term = useConsole(() => { })
+  const term = useConsole(() => {})
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 

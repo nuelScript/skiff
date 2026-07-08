@@ -49,7 +49,7 @@ function Field({
       data-slot="field"
       data-orientation={orientation}
       className={cn(
-        'group/field flex w-full gap-2 data-[invalid=true]:text-destructive',
+        'group/field data-[invalid=true]:text-destructive flex w-full gap-2',
         'data-[orientation=vertical]:flex-col',
         'data-[orientation=horizontal]:flex-row data-[orientation=horizontal]:items-center',
         className,
@@ -80,9 +80,7 @@ function FieldLabel({ className, ...props }: React.ComponentProps<typeof Label>)
 }
 
 function FieldTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div data-slot="field-title" className={cn('text-sm font-medium', className)} {...props} />
-  )
+  return <div data-slot="field-title" className={cn('text-sm font-medium', className)} {...props} />
 }
 
 function FieldDescription({ className, ...props }: React.ComponentProps<'p'>) {
@@ -114,7 +112,12 @@ function FieldError({ className, children, errors, ...props }: FieldErrorProps) 
     ))
   if (!content) return null
   return (
-    <p role="alert" data-slot="field-error" className={cn('text-xs text-rose-300', className)} {...props}>
+    <p
+      role="alert"
+      data-slot="field-error"
+      className={cn('text-xs text-rose-300', className)}
+      {...props}
+    >
       {content}
     </p>
   )
@@ -129,7 +132,9 @@ function FieldSeparator({ className, children, ...props }: React.ComponentProps<
     >
       <span className="bg-border absolute inset-x-0 top-1/2 h-px" />
       {children && (
-        <span className="bg-background text-muted-foreground relative px-2 text-xs">{children}</span>
+        <span className="bg-background text-muted-foreground relative px-2 text-xs">
+          {children}
+        </span>
       )}
     </div>
   )

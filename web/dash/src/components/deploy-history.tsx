@@ -1,18 +1,9 @@
 import { relTime } from '@/lib/format'
 import type { Deploy } from '@/services/api.service'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const statusDot = (s: string): string =>
-  s === 'live'
-    ? 'bg-emerald-500'
-    : s === 'failed'
-      ? 'bg-red-500'
-      : 'bg-amber-500'
+  s === 'live' ? 'bg-emerald-500' : s === 'failed' ? 'bg-red-500' : 'bg-amber-500'
 
 export function DeployHistory({
   app,
@@ -35,9 +26,7 @@ export function DeployHistory({
         </DialogHeader>
         <div className="max-h-80 overflow-auto rounded-md border">
           {deploys.length === 0 ? (
-            <p className="text-muted-foreground p-6 text-center text-sm">
-              No deploys yet.
-            </p>
+            <p className="text-muted-foreground p-6 text-center text-sm">No deploys yet.</p>
           ) : (
             deploys.map((d) => (
               <button

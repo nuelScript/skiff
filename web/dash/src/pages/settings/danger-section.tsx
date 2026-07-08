@@ -19,8 +19,8 @@ export function DangerSection() {
     <section className="rounded-xl border border-rose-500/20 bg-rose-500/3 p-5">
       <h2 className="text-sm font-semibold text-rose-200">Delete account</h2>
       <p className="text-muted-foreground mt-1 text-xs">
-        Permanently remove your account. Personal teams with no projects, databases, or other members are
-        removed too. This can't be undone.
+        Permanently remove your account. Personal teams with no projects, databases, or other
+        members are removed too. This can't be undone.
       </p>
       {!open ? (
         <button
@@ -63,7 +63,9 @@ export function DangerSection() {
         </div>
       )}
       {del.isError && (
-        <p className="mt-2 text-xs text-rose-300">{errText(del.error, 'Could not delete your account.')}</p>
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(del.error, 'Could not delete your account.')}
+        </p>
       )}
     </section>
   )

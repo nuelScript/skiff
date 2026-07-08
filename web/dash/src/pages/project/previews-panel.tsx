@@ -35,8 +35,8 @@ export function PreviewsPanel({
       >
         <h2 className="text-sm font-medium">New preview environment</h2>
         <p className="text-muted-foreground mt-1 mb-3 text-xs">
-          Deploy any branch of <span className="text-foreground/70 font-mono">{project}</span> to its
-          own live URL with its own certificate. Pushes to the branch redeploy it automatically.
+          Deploy any branch of <span className="text-foreground/70 font-mono">{project}</span> to
+          its own live URL with its own certificate. Pushes to the branch redeploy it automatically.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
@@ -133,7 +133,7 @@ function PreviewRow({
           onClick={() => setAdding((a) => !a)}
           title="Add a custom domain for this branch"
           className={
-            'shrink-0 p-1 transition hover:text-foreground ' +
+            'hover:text-foreground shrink-0 p-1 transition ' +
             (adding ? 'text-foreground' : 'text-muted-foreground opacity-0 group-hover:opacity-100')
           }
         >
@@ -152,14 +152,17 @@ function PreviewRow({
               onTeardown()
           }}
           title="Tear down preview"
-          className="text-muted-foreground shrink-0 p-1 opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
+          className="text-muted-foreground shrink-0 p-1 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {adding && (
-        <form onSubmit={submit} className="animate-rise border-t border-white/5 bg-black/20 px-4 py-3 pl-9.5">
+        <form
+          onSubmit={submit}
+          className="animate-rise border-t border-white/5 bg-black/20 px-4 py-3 pl-9.5"
+        >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               value={domain}
@@ -190,8 +193,8 @@ function PreviewRow({
           ) : (
             <p className="text-muted-foreground mt-2 text-xs">
               Binds the hostname to the{' '}
-              <span className="text-foreground/70 font-mono">{pv.branch}</span> branch — it follows this
-              preview across deploys and gets automatic HTTPS. Point its DNS at your server.
+              <span className="text-foreground/70 font-mono">{pv.branch}</span> branch — it follows
+              this preview across deploys and gets automatic HTTPS. Point its DNS at your server.
             </p>
           )}
         </form>

@@ -113,7 +113,10 @@ export default function AnalyticsPage() {
       ) : !a ? (
         <ErrorState message="Couldn't load analytics — retrying…" />
       ) : a.total === 0 ? (
-        <EmptyState icon={<Activity className="h-6 w-6 opacity-40" />} label="No traffic in this range." />
+        <EmptyState
+          icon={<Activity className="h-6 w-6 opacity-40" />}
+          label="No traffic in this range."
+        />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <EdgeRequests a={a} />
@@ -220,7 +223,10 @@ function EdgeRequests({ a }: { a: Analytics }) {
         </span>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {STATUS.map((s) => (
-            <span key={s.key} className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+            <span
+              key={s.key}
+              className="text-muted-foreground flex items-center gap-1.5 text-[11px]"
+            >
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
               {s.label} {a.status[s.key].toLocaleString()}
             </span>
@@ -239,14 +245,24 @@ function EdgeRequests({ a }: { a: Analytics }) {
             tickLine={false}
             axisLine={false}
           />
-          <YAxis allowDecimals={false} width={34} tick={axisTick} tickLine={false} axisLine={false} />
+          <YAxis
+            allowDecimals={false}
+            width={34}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+          />
           <Tooltip
             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
             content={
               <ChartTip
                 build={(row) => ({
                   title: timeRange(row.t, a.bucketSecs),
-                  rows: STATUS.map((s) => ({ label: s.label, color: s.color, value: String(row[s.key]) })),
+                  rows: STATUS.map((s) => ({
+                    label: s.label,
+                    color: s.color,
+                    value: String(row[s.key]),
+                  })),
                 })}
               />
             }
@@ -297,7 +313,13 @@ function DataTransfer({ a }: { a: Analytics }) {
             tickLine={false}
             axisLine={false}
           />
-          <YAxis width={44} tickFormatter={fmtBytes} tick={axisTick} tickLine={false} axisLine={false} />
+          <YAxis
+            width={44}
+            tickFormatter={fmtBytes}
+            tick={axisTick}
+            tickLine={false}
+            axisLine={false}
+          />
           <Tooltip
             cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
             content={
@@ -312,8 +334,20 @@ function DataTransfer({ a }: { a: Analytics }) {
               />
             }
           />
-          <Area dataKey="bo" stroke="#38bdf8" strokeWidth={1.5} fill="url(#bo)" isAnimationActive={false} />
-          <Area dataKey="bi" stroke="#fbbf24" strokeWidth={1.5} fill="url(#bi)" isAnimationActive={false} />
+          <Area
+            dataKey="bo"
+            stroke="#38bdf8"
+            strokeWidth={1.5}
+            fill="url(#bo)"
+            isAnimationActive={false}
+          />
+          <Area
+            dataKey="bi"
+            stroke="#fbbf24"
+            strokeWidth={1.5}
+            fill="url(#bi)"
+            isAnimationActive={false}
+          />
         </AreaChart>
       </ResponsiveContainer>
     </Panel>
@@ -357,7 +391,13 @@ function Latency({ a }: { a: Analytics }) {
               />
             }
           />
-          <Area dataKey="lat" stroke="#a78bfa" strokeWidth={1.5} fill="url(#lat)" isAnimationActive={false} />
+          <Area
+            dataKey="lat"
+            stroke="#a78bfa"
+            strokeWidth={1.5}
+            fill="url(#lat)"
+            isAnimationActive={false}
+          />
         </AreaChart>
       </ResponsiveContainer>
     </Panel>
@@ -482,7 +522,9 @@ function CpuChart({ r }: { r: Resources }) {
   return (
     <Panel title="CPU">
       <div className="mb-3 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tracking-tight tabular-nums">{fmtPct(r.curCpu)}</span>
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {fmtPct(r.curCpu)}
+        </span>
         <span className="text-muted-foreground text-xs">now · peak {fmtPct(r.peakCpu)}</span>
       </div>
       <ResourceChart

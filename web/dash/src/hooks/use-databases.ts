@@ -5,16 +5,17 @@ import { queryKeys } from '@/constants/query-keys'
 
 export function useDatabases() {
   const qc = useQueryClient()
-  const { data: databases = [], isPending, isError } = useQuery<Database[]>({
+  const {
+    data: databases = [],
+    isPending,
+    isError,
+  } = useQuery<Database[]>({
     queryKey: queryKeys.databases,
     queryFn: () => databasesService.list(),
     refetchInterval: 8000,
   })
 
-  const reload = useCallback(
-    () => qc.invalidateQueries({ queryKey: queryKeys.databases }),
-    [qc],
-  )
+  const reload = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.databases }), [qc])
 
   const create = useCallback(
     async (engine: DbEngine, name: string) => {

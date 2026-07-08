@@ -54,7 +54,8 @@ export function ConsoleTerminal({ app, path }: { app?: string; path?: string }) 
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'in', d }))
     })
     const onResize = term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'resize', c: cols, r: rows }))
+      if (ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ t: 'resize', c: cols, r: rows }))
     })
 
     const ro = new ResizeObserver(() => {

@@ -29,11 +29,7 @@ function InviteRoute() {
 function AuthGate() {
   const auth = useAuthContext()
   if (auth.state === 'checking')
-    return (
-      <div className="text-muted-foreground flex h-screen items-center justify-center">
-        …
-      </div>
-    )
+    return <div className="text-muted-foreground flex h-screen items-center justify-center">…</div>
   if (auth.state === 'setup') return <Setup onSetup={auth.setup} />
   if (auth.state === 'out') return <Login onLogin={auth.login} />
   return <Outlet />

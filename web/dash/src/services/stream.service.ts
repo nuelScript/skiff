@@ -20,14 +20,8 @@ export function openStream(url: string, h: StreamHandlers): EventSource {
 
 const q = (s: string) => encodeURIComponent(s)
 
-export const deployUrl = (
-  git: string,
-  name: string,
-  port: string,
-  token = '',
-) =>
-  `/api/deploy?git=${q(git)}&name=${q(name)}&port=${q(port)}` +
-  (token ? `&token=${q(token)}` : '')
+export const deployUrl = (git: string, name: string, port: string, token = '') =>
+  `/api/deploy?git=${q(git)}&name=${q(name)}&port=${q(port)}` + (token ? `&token=${q(token)}` : '')
 
 export const logsUrl = (name: string) => `/api/logs?app=${q(name)}`
 
@@ -48,8 +42,7 @@ export const deployLogUrl = (app: string, id: string) =>
 
 export const redeployUrl = (name: string) => `/api/redeploy?app=${q(name)}`
 
-export const rollbackUrl = (app: string, id: string) =>
-  `/api/rollback?app=${q(app)}&id=${q(id)}`
+export const rollbackUrl = (app: string, id: string) => `/api/rollback?app=${q(app)}&id=${q(id)}`
 
 export const previewUrl = (app: string, branch: string) =>
   `/api/preview?app=${q(app)}&branch=${q(branch)}`

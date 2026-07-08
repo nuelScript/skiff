@@ -39,9 +39,7 @@ export default function ProjectsPage() {
     const needle = q.trim().toLowerCase()
     if (!needle) return apps
     return apps.filter(
-      (a) =>
-        a.name.toLowerCase().includes(needle) ||
-        (a.repo ?? '').toLowerCase().includes(needle),
+      (a) => a.name.toLowerCase().includes(needle) || (a.repo ?? '').toLowerCase().includes(needle),
     )
   }, [apps, q])
 

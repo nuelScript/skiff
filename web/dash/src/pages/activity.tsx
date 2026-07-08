@@ -26,7 +26,11 @@ type Kind = { icon: ComponentType<{ className?: string }>; verb: string; tone: s
 const KINDS: Record<string, Kind> = {
   deploy: { icon: Rocket, verb: 'deployed', tone: 'text-emerald-400' },
   rollback: { icon: RotateCcw, verb: 'rolled back', tone: 'text-amber-400' },
-  'settings.update': { icon: Settings, verb: 'updated settings for', tone: 'text-muted-foreground' },
+  'settings.update': {
+    icon: Settings,
+    verb: 'updated settings for',
+    tone: 'text-muted-foreground',
+  },
   'env.update': { icon: KeyRound, verb: 'changed environment for', tone: 'text-violet-400' },
   'project.delete': { icon: Trash2, verb: 'deleted project', tone: 'text-rose-400' },
   'database.create': { icon: Database, verb: 'created database', tone: 'text-emerald-400' },
@@ -82,11 +86,19 @@ export default function ActivityPage() {
 }
 
 function Row({ e, last }: { e: AuditEntry; last: boolean }) {
-  const k = KINDS[e.action] ?? { icon: GitCommitHorizontal, verb: e.action, tone: 'text-muted-foreground' }
+  const k = KINDS[e.action] ?? {
+    icon: GitCommitHorizontal,
+    verb: e.action,
+    tone: 'text-muted-foreground',
+  }
   const Icon = k.icon
   return (
     <li className={'flex items-start gap-3 px-4 py-3 ' + (last ? '' : 'border-b border-white/6')}>
-      <span className={'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/5 ' + k.tone}>
+      <span
+        className={
+          'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/5 ' + k.tone
+        }
+      >
         <Icon className="h-3.5 w-3.5" />
       </span>
       <div className="min-w-0 flex-1">
@@ -96,7 +108,9 @@ function Row({ e, last }: { e: AuditEntry; last: boolean }) {
         </p>
         {e.detail && <p className="text-muted-foreground mt-0.5 text-xs">{e.detail}</p>}
       </div>
-      <time className="text-muted-foreground shrink-0 text-xs tabular-nums">{relTime(e.created)}</time>
+      <time className="text-muted-foreground shrink-0 text-xs tabular-nums">
+        {relTime(e.created)}
+      </time>
     </li>
   )
 }

@@ -50,7 +50,6 @@ export function TokensSection() {
     qc.invalidateQueries({ queryKey: queryKeys.tokens })
   }
 
-
   return (
     <Section
       title="API tokens"
@@ -94,7 +93,9 @@ export function TokensSection() {
         </Button>
       </form>
       {create.isError && (
-        <p className="mt-2 text-xs text-rose-300">{errText(create.error, 'Could not create token.')}</p>
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(create.error, 'Could not create token.')}
+        </p>
       )}
 
       {tokens.length > 0 && (
@@ -104,7 +105,8 @@ export function TokensSection() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{t.name}</p>
                 <p className="text-muted-foreground text-xs">
-                  created {relTime(t.created)} · {t.lastUsed ? `last used ${relTime(t.lastUsed)}` : 'never used'}
+                  created {relTime(t.created)} ·{' '}
+                  {t.lastUsed ? `last used ${relTime(t.lastUsed)}` : 'never used'}
                 </p>
               </div>
               <button

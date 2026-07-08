@@ -59,7 +59,8 @@ export function JobsPanel({ app }: { app: string }) {
   }
 
   const del = async (id: string) => {
-    if (!(await confirm({ title: 'Delete this job?', confirmText: 'Delete', destructive: true }))) return
+    if (!(await confirm({ title: 'Delete this job?', confirmText: 'Delete', destructive: true })))
+      return
     await projectsService.deleteJob(id)
     reload()
   }
@@ -148,9 +149,13 @@ export function JobsPanel({ app }: { app: string }) {
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{j.name}</p>
-                    <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">{j.command}</p>
+                    <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
+                      {j.command}
+                    </p>
                   </div>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">{j.schedule}</span>
+                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+                    {j.schedule}
+                  </span>
                   <button
                     onClick={() => run(j.id)}
                     disabled={busy === j.id}
@@ -205,7 +210,6 @@ export function JobsPanel({ app }: { app: string }) {
   )
 }
 
-
 function fmtWhen(unix: number): string {
   if (!unix) return '—'
   return new Date(unix * 1000).toLocaleString([], {
@@ -215,4 +219,3 @@ function fmtWhen(unix: number): string {
     minute: '2-digit',
   })
 }
-

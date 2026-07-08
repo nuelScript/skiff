@@ -17,17 +17,7 @@ function fmtUptime(sec: number): string {
 const barColor = (pct: number): string =>
   pct >= 90 ? 'bg-rose-400' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-400'
 
-function Meter({
-  label,
-  big,
-  pct,
-  sub,
-}: {
-  label: string
-  big: string
-  pct: number
-  sub: string
-}) {
+function Meter({ label, big, pct, sub }: { label: string; big: string; pct: number; sub: string }) {
   return (
     <section className="rounded-xl border border-white/8 bg-linear-to-b from-white/2.5 to-transparent p-5">
       <h2 className="text-muted-foreground font-mono text-[11px] tracking-wider uppercase">
@@ -152,7 +142,8 @@ export default function ServerPage() {
                 <span className="text-muted-foreground truncate font-mono text-xs">{c.image}</span>
                 <span className="text-right font-mono tabular-nums">{c.cpuPct.toFixed(1)}%</span>
                 <span className="text-muted-foreground text-right font-mono text-xs tabular-nums">
-                  {fmtBytes(c.memUsed)} <span className="text-white/25">·</span> {c.memPct.toFixed(1)}%
+                  {fmtBytes(c.memUsed)} <span className="text-white/25">·</span>{' '}
+                  {c.memPct.toFixed(1)}%
                 </span>
               </div>
             ))

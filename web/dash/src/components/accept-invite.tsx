@@ -4,13 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LogoMark } from '@/components/logo'
 import { errText } from '@/lib/errors'
 
@@ -38,24 +32,17 @@ export default function AcceptInvite({ token }: { token: string }) {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <LogoMark className="mb-1 h-7 w-7" />
-          <CardTitle className="text-lg tracking-tight">
-            Join the team on Skiff
-          </CardTitle>
+          <CardTitle className="text-lg tracking-tight">Join the team on Skiff</CardTitle>
           <CardDescription>
-            Set a password to accept your invite — or use your existing password
-            if you already have an account.
+            Set a password to accept your invite — or use your existing password if you already have
+            an account.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              <Input id="name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>

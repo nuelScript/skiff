@@ -16,7 +16,6 @@ export type DomainsResponse = {
 }
 
 class DomainsService extends BaseService {
-
   list() {
     return this.get<DomainsResponse>('/domains')
   }

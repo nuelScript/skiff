@@ -49,7 +49,8 @@ const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[
 
 export default function DatabasesPage() {
   const { apps } = useApps()
-  const { databases, isPending, isError, create, remove, attach, detach, setPublic } = useDatabases()
+  const { databases, isPending, isError, create, remove, attach, detach, setPublic } =
+    useDatabases()
   const confirm = useConfirm()
 
   const [adding, setAdding] = useState(false)
@@ -105,7 +106,7 @@ export default function DatabasesPage() {
                   setName('')
                   createMut.reset()
                 }}
-                className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 p-1"
+                className="text-muted-foreground hover:text-foreground -mt-1 -mr-1 p-1"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -153,7 +154,8 @@ export default function DatabasesPage() {
             </p>
           ) : (
             <p className="text-muted-foreground mt-2 text-xs">
-              Provisions a container with a persistent volume; attach it to an app to inject its connection URL.
+              Provisions a container with a persistent volume; attach it to an app to inject its
+              connection URL.
             </p>
           )}
         </form>
@@ -211,7 +213,10 @@ function DatabaseCard({
   const [pubBusy, setPubBusy] = useState(false)
   const meta = engineMeta(db.engine)
   const running = db.state === 'running'
-  const unattached = useMemo(() => apps.filter((a) => !db.attached.includes(a)), [apps, db.attached])
+  const unattached = useMemo(
+    () => apps.filter((a) => !db.attached.includes(a)),
+    [apps, db.attached],
+  )
 
   const togglePublic = async () => {
     setPubBusy(true)
@@ -252,14 +257,16 @@ function DatabaseCard({
           }
         >
           <span
-            className={'h-1.5 w-1.5 rounded-full ' + (running ? 'bg-emerald-400' : 'pulse-dot bg-amber-400')}
+            className={
+              'h-1.5 w-1.5 rounded-full ' + (running ? 'bg-emerald-400' : 'pulse-dot bg-amber-400')
+            }
           />
           {running ? 'Running' : db.state === 'missing' ? 'Stopped' : db.state}
         </span>
         {db.engine !== 'redis' && (
           <button
             onClick={() => setBackups(true)}
-            className="text-muted-foreground hover:border-white/25 hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition"
+            className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition hover:border-white/25"
           >
             <Archive className="h-3.5 w-3.5" />
             Backups
@@ -268,7 +275,7 @@ function DatabaseCard({
         <button
           onClick={() => setShell(true)}
           disabled={!running}
-          className="text-muted-foreground hover:border-white/25 hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition disabled:opacity-40"
+          className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-white/12 px-2.5 py-1 text-xs transition hover:border-white/25 disabled:opacity-40"
         >
           <TerminalSquare className="h-3.5 w-3.5" />
           Shell
@@ -295,7 +302,9 @@ function DatabaseCard({
               <Globe className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
               <div>
                 <p className="text-xs font-medium">Public access</p>
-                <p className="text-muted-foreground text-[11px]">Let external clients connect over the internet.</p>
+                <p className="text-muted-foreground text-[11px]">
+                  Let external clients connect over the internet.
+                </p>
               </div>
             </div>
             <Toggle on={db.public} busy={pubBusy} onClick={togglePublic} />
@@ -305,7 +314,9 @@ function DatabaseCard({
               {db.publicUrl ? (
                 <Copyable text={db.publicUrl} />
               ) : (
-                <p className="text-muted-foreground text-[11px]">Publishing… the public address will appear shortly.</p>
+                <p className="text-muted-foreground text-[11px]">
+                  Publishing… the public address will appear shortly.
+                </p>
               )}
               {db.engine === 'redis' ? (
                 <p className="flex items-start gap-1.5 text-[11px] text-amber-300/80">
@@ -316,8 +327,8 @@ function DatabaseCard({
               ) : (
                 <p className="flex items-start gap-1.5 text-[11px] text-emerald-300/80">
                   <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" />
-                  Connections are encrypted with TLS. Anyone who reaches this address can still connect
-                  with the password above — keep it safe.
+                  Connections are encrypted with TLS. Anyone who reaches this address can still
+                  connect with the password above — keep it safe.
                 </p>
               )}
             </div>
@@ -363,7 +374,9 @@ function DatabaseCard({
               </Select>
             )}
             {db.attached.length === 0 && unattached.length === 0 && (
-              <span className="text-muted-foreground text-xs">Deploy an app first, then attach it here.</span>
+              <span className="text-muted-foreground text-xs">
+                Deploy an app first, then attach it here.
+              </span>
             )}
           </div>
           {db.attached.length > 0 && (
@@ -543,7 +556,7 @@ function Copyable({ text }: { text: string }) {
     <button
       type="button"
       onClick={() => copy(text)}
-      className="group/copy hover:border-white/20 flex w-full items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 text-left transition"
+      className="group/copy flex w-full items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 text-left transition hover:border-white/20"
       title="Copy"
     >
       <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">{text}</span>

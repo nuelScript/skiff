@@ -86,11 +86,7 @@ export default function ProjectDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {project.repo && (
-            <Button
-              size="sm"
-              variant="outline"
-              asChild
-            >
+            <Button size="sm" variant="outline" asChild>
               <a href={'https://github.com/' + project.repo} target="_blank" rel="noreferrer">
                 <GitBranch />
                 Repository
@@ -111,7 +107,10 @@ export default function ProjectDetailPage() {
       </header>
 
       <Tabs defaultValue="overview">
-        <TabsList variant="line" className="mb-6 w-full justify-start gap-6 border-b border-white/8">
+        <TabsList
+          variant="line"
+          className="mb-6 w-full justify-start gap-6 border-b border-white/8"
+        >
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="deployments">Deployments</TabsTrigger>
           <TabsTrigger value="previews">
@@ -182,7 +181,9 @@ export default function ProjectDetailPage() {
                         on {project.branch || 'main'} · {latest.trigger} · {relTime(latest.started)}
                       </span>
                     </div>
-                    {latest.message && <p className="text-foreground/90 text-sm">{latest.message}</p>}
+                    {latest.message && (
+                      <p className="text-foreground/90 text-sm">{latest.message}</p>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -374,4 +375,3 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
     </div>
   )
 }
-

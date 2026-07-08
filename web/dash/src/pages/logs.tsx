@@ -50,8 +50,8 @@ export default function LogsPage() {
                   className={
                     'flex items-center gap-2.5 rounded-[6px] px-2.5 py-1.5 text-left text-sm transition-colors ' +
                     (selected === a.name
-                      ? 'bg-white/8 text-foreground'
-                      : 'text-muted-foreground hover:bg-white/3 hover:text-foreground')
+                      ? 'text-foreground bg-white/8'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-white/3')
                   }
                 >
                   <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + runningDot(a.state)} />
@@ -76,7 +76,10 @@ export default function LogsPage() {
             {selected && (
               <span className="flex items-center gap-1.5 font-mono text-[11px]">
                 <span
-                  className={'h-1.5 w-1.5 rounded-full ' + (live ? 'bg-emerald-400 pulse-dot' : 'bg-white/25')}
+                  className={
+                    'h-1.5 w-1.5 rounded-full ' +
+                    (live ? 'pulse-dot bg-emerald-400' : 'bg-white/25')
+                  }
                 />
                 <span className={live ? 'text-emerald-300/80' : 'text-muted-foreground'}>
                   {live ? 'live' : 'ended'}
@@ -111,7 +114,7 @@ export default function LogsPage() {
               <p className="text-muted-foreground">Waiting for output…</p>
             ) : (
               lines.map((line, i) => (
-                <div key={i} className="text-white/70 whitespace-pre-wrap wrap-break-word">
+                <div key={i} className="wrap-break-word whitespace-pre-wrap text-white/70">
                   {line || ' '}
                 </div>
               ))

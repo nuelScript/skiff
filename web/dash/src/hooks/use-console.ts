@@ -13,29 +13,23 @@ import { useCallback, useRef, useState } from 'react'
 
 export type Stream = { title: string; lines: string[]; app?: string }
 
-// Owns the live build/log drawer: one active SSE stream at a time.
 export function useConsole(onDeployed: () => void) {
   const [stream, setStream] = useState<Stream | null>(null)
   const es = useRef<EventSource | null>(null)
   const stopApp = useRef<string | undefined>(undefined)
 
-  // stopApp, when set, is the app whose build this stream is running — it makes
-  // the drawer offer a Stop control.
-  const start = useCallback(
-    (title: string, url: string, onDone?: () => void, app?: string) => {
-      es.current?.close()
-      stopApp.current = app
-      setStream({ title, lines: [], app })
-      es.current = openStream(url, {
-        onLine: (line) => setStream((s) => (s ? { ...s, lines: [...s.lines, line] } : s)),
-        onDone: (ok) => {
-          setStream((s) => (s ? { ...s, lines: [...s.lines, ok ? '✓ done' : '✗ failed'] } : s))
-          onDone?.()
-        },
-      })
-    },
-    [],
-  )
+  const start = useCallback((title: string, url: string, onDone?: () => void, app?: string) => {
+    es.current?.close()
+    stopApp.current = app
+    setStream({ title, lines: [], app })
+    es.current = openStream(url, {
+      onLine: (line) => setStream((s) => (s ? { ...s, lines: [...s.lines, line] } : s)),
+      onDone: (ok) => {
+        setStream((s) => (s ? { ...s, lines: [...s.lines, ok ? '✓ done' : '✗ failed'] } : s))
+        onDone?.()
+      },
+    })
+  }, [])
 
   const close = useCallback(() => {
     es.current?.close()
@@ -98,5 +92,16 @@ export function useConsole(onDeployed: () => void) {
     [start],
   )
 
-  return { stream, close, stop, deploy, deployRepo, redeploy, rollback, preview, showLogs, showBuildLog }
+  return {
+    stream,
+    close,
+    stop,
+    deploy,
+    deployRepo,
+    redeploy,
+    rollback,
+    preview,
+    showLogs,
+    showBuildLog,
+  }
 }

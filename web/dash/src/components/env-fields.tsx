@@ -90,7 +90,7 @@ export function EnvFields({
                   'rounded-[5px] border px-2 py-1 font-mono text-[10px] tracking-wide uppercase transition-colors ' +
                   (v.build
                     ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                    : 'border-white/12 text-muted-foreground hover:text-foreground')
+                    : 'text-muted-foreground hover:text-foreground border-white/12')
                 }
               >
                 build

@@ -9,12 +9,7 @@ import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
 import { CardListSkeleton } from '@/components/skeletons'
 import { ErrorState } from '@/components/error-state'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import type { Bucket } from '@/services/api.service'
 
 export default function StoragePage() {
@@ -150,7 +145,7 @@ function BucketCard({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="grid h-9 w-9 place-items-center rounded-lg border border-white/8 bg-black/30">
-            <Boxes className="text-teal-300 h-4 w-4" />
+            <Boxes className="h-4 w-4 text-teal-300" />
           </div>
           <div>
             <p className="font-mono text-sm font-medium">{b.name}</p>
@@ -163,15 +158,17 @@ function BucketCard({
               'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ' +
               (running
                 ? 'border-emerald-400/20 text-emerald-300'
-                : 'border-white/10 text-muted-foreground')
+                : 'text-muted-foreground border-white/10')
             }
           >
-            <span className={'h-1.5 w-1.5 rounded-full ' + (running ? 'bg-emerald-400' : 'bg-white/30')} />
+            <span
+              className={'h-1.5 w-1.5 rounded-full ' + (running ? 'bg-emerald-400' : 'bg-white/30')}
+            />
             {running ? 'Running' : b.state}
           </span>
           <button
             onClick={onDelete}
-            className="text-muted-foreground hover:text-rose-300 p-1"
+            className="text-muted-foreground p-1 hover:text-rose-300"
             title="Delete bucket"
           >
             <Trash2 className="h-4 w-4" />
@@ -188,7 +185,8 @@ function BucketCard({
         </div>
         <p className="text-muted-foreground text-[11px]">
           Attaching an app injects <span className="font-mono">S3_ENDPOINT</span>,{' '}
-          <span className="font-mono">S3_BUCKET</span>, <span className="font-mono">S3_ACCESS_KEY</span>,{' '}
+          <span className="font-mono">S3_BUCKET</span>,{' '}
+          <span className="font-mono">S3_ACCESS_KEY</span>,{' '}
           <span className="font-mono">S3_SECRET_KEY</span>, and{' '}
           <span className="font-mono">S3_REGION</span> into its environment.
         </p>
@@ -232,7 +230,9 @@ function BucketCard({
               </Select>
             )}
             {b.attached.length === 0 && unattached.length === 0 && (
-              <span className="text-muted-foreground text-xs">Deploy an app first, then attach it here.</span>
+              <span className="text-muted-foreground text-xs">
+                Deploy an app first, then attach it here.
+              </span>
             )}
           </div>
           {b.attached.length > 0 && (
@@ -252,9 +252,13 @@ function Detail({ label, value, secret }: { label: string; value: string; secret
   const shown = secret && !show ? '•'.repeat(20) : value
   return (
     <div>
-      <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">{label}</p>
-      <div className="hover:border-white/20 flex items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 transition">
-        <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">{shown}</span>
+      <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">
+        {label}
+      </p>
+      <div className="flex items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2 transition hover:border-white/20">
+        <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">
+          {shown}
+        </span>
         {secret && (
           <button
             type="button"
@@ -271,7 +275,11 @@ function Detail({ label, value, secret }: { label: string; value: string; secret
           className="text-muted-foreground hover:text-foreground shrink-0"
           title="Copy"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
         </button>
       </div>
     </div>

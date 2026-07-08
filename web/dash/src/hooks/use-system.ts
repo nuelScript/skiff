@@ -13,10 +13,7 @@ export function useSystem() {
     refetchInterval: 20000,
   })
 
-  const reload = useCallback(
-    () => qc.invalidateQueries({ queryKey: queryKeys.system }),
-    [qc],
-  )
+  const reload = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.system }), [qc])
 
   return { info, reload }
 }

@@ -3,25 +3,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LogoMark } from '@/components/logo'
 import { errText } from '@/lib/errors'
 
 export default function Setup({
   onSetup,
 }: {
-  onSetup: (
-    secret: string,
-    email: string,
-    name: string,
-    password: string,
-  ) => Promise<void>
+  onSetup: (secret: string, email: string, name: string, password: string) => Promise<void>
 }) {
   const [secret, setSecret] = useState('')
   const [name, setName] = useState('')
@@ -48,9 +37,7 @@ export default function Setup({
         <CardHeader>
           <LogoMark className="mb-1 h-7 w-7" />
           <CardTitle className="text-lg tracking-tight">Set up Skiff</CardTitle>
-          <CardDescription>
-            Create the owner account for this instance.
-          </CardDescription>
+          <CardDescription>Create the owner account for this instance.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-3">

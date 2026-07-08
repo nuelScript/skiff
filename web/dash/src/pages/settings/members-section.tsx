@@ -74,7 +74,7 @@ export function MembersSection({
               className={
                 'rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase ' +
                 (m.role === 'owner'
-                  ? 'border-white/15 text-foreground/80'
+                  ? 'text-foreground/80 border-white/15'
                   : 'text-muted-foreground border-white/10')
               }
             >
@@ -118,7 +118,9 @@ export function MembersSection({
           </div>
           {link && (
             <div className="flex items-center gap-2 rounded-[6px] border border-white/8 bg-black/30 px-3 py-2">
-              <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">{link}</span>
+              <span className="text-foreground/80 min-w-0 flex-1 truncate font-mono text-xs">
+                {link}
+              </span>
               <button
                 type="button"
                 onClick={() => navigator.clipboard?.writeText(link)}
