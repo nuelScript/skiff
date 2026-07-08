@@ -193,7 +193,16 @@ function DomainRow({
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-sm font-medium">{domain.host}</p>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
-            Connected to <span className="text-foreground/70">{domain.app}</span>
+            {domain.branch ? (
+              <>
+                <span className="text-foreground/70 font-mono">{domain.branch}</span> branch of{' '}
+                <span className="text-foreground/70">{domain.parent}</span>
+              </>
+            ) : (
+              <>
+                Connected to <span className="text-foreground/70">{domain.app}</span>
+              </>
+            )}
           </p>
         </div>
         {domain.pointsHere ? (

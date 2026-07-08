@@ -19,8 +19,8 @@ export function useDomains() {
   )
 
   const add = useCallback(
-    async (app: string, host: string) => {
-      await domainsService.add(app, host)
+    async (app: string, host: string, branch?: string) => {
+      await domainsService.add(app, host, branch)
       reload()
     },
     [reload],

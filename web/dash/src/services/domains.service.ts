@@ -3,6 +3,8 @@ import { BaseService } from '@/services/base.service'
 export type Domain = {
   host: string
   app: string
+  parent?: string
+  branch?: string
   created: number
   pointsHere?: boolean
   resolvesTo?: string[]
@@ -19,8 +21,8 @@ class DomainsService extends BaseService {
     return this.get<DomainsResponse>('/domains')
   }
 
-  add(app: string, host: string) {
-    return this.post<Domain>('/domains', { app, host })
+  add(app: string, host: string, branch?: string) {
+    return this.post<Domain>('/domains', branch ? { app, host, branch } : { app, host })
   }
 
   remove(host: string) {
