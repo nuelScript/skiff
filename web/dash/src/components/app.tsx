@@ -16,6 +16,7 @@ import DatabasesPage from '@/pages/databases'
 import StoragePage from '@/pages/storage'
 import EnvPage from '@/pages/env'
 import SettingsPage from '@/pages/settings'
+import { AnalyticsSkeleton } from '@/components/skeletons'
 
 const AnalyticsPage = lazy(() => import('@/pages/analytics'))
 
@@ -54,7 +55,7 @@ export default function App() {
               <Route
                 path="analytics"
                 element={
-                  <Suspense fallback={<div className="text-muted-foreground px-8 py-8 text-sm">Loading…</div>}>
+                  <Suspense fallback={<AnalyticsSkeleton />}>
                     <AnalyticsPage />
                   </Suspense>
                 }

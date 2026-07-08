@@ -57,6 +57,26 @@ export function CardListSkeleton({ count = 3 }: { count?: number }) {
   )
 }
 
+// Full-page placeholder for the Analytics route while its (lazy) recharts chunk
+// downloads — mirrors the page so the chunk-load → data-load transition is
+// seamless instead of a "Loading…" flash.
+export function AnalyticsSkeleton() {
+  return (
+    <div className="px-8 py-8">
+      <div className="mb-6 space-y-2">
+        <Skeleton className="h-6 w-28" />
+        <Skeleton className="h-3.5 w-72 max-w-[70%]" />
+      </div>
+      <Skeleton className="mb-4 h-3 w-24" />
+      <ChartGridSkeleton count={4} />
+      <div className="mt-10">
+        <Skeleton className="mb-4 h-3 w-20" />
+        <ChartGridSkeleton count={4} />
+      </div>
+    </div>
+  )
+}
+
 // A grid of chart-card placeholders — for the analytics panels.
 export function ChartGridSkeleton({ count = 4 }: { count?: number }) {
   return (
