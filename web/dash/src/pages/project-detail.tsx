@@ -352,21 +352,21 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         {/* Environment */}
-        <TabsContent value="environment" className="max-w-2xl pb-[46vh]">
+        <TabsContent value="environment" className="pb-[46vh]">
           <EnvEditor app={project.name} />
         </TabsContent>
 
         {/* Jobs */}
-        <TabsContent value="jobs" className="max-w-3xl pb-[46vh]">
+        <TabsContent value="jobs" className="pb-[46vh]">
           <JobsPanel app={project.name} />
         </TabsContent>
 
-        <TabsContent value="workers" className="max-w-3xl pb-[46vh]">
+        <TabsContent value="workers" className="pb-[46vh]">
           <WorkersPanel app={project.name} />
         </TabsContent>
 
         {/* Settings */}
-        <TabsContent value="settings" className="max-w-2xl pb-[46vh]">
+        <TabsContent value="settings" className="pb-[46vh]">
           <SettingsForm
             name={project.name}
             branch={project.branch}

@@ -28,7 +28,7 @@ export function PreviewsPanel({
     setBranch('')
   }
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <form
         onSubmit={create}
         className="rounded-xl border border-white/10 bg-linear-to-b from-white/3 to-transparent p-4"
