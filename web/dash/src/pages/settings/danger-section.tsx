@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { authService } from '@/services/api.service'
 import { errText } from '@/lib/errors'
 import { RevealInput } from './ui'
@@ -6,20 +7,12 @@ import { RevealInput } from './ui'
 export function DangerSection() {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const remove = async () => {
-    setError('')
-    setBusy(true)
-    try {
-      await authService.deleteAccount(password)
+  const del = useMutation({
+    mutationFn: () => authService.deleteAccount(password),
+    onSuccess: () => {
       window.location.href = '/'
-    } catch (err) {
-      setError(errText(err, 'Could not delete your account.'))
-      setBusy(false)
-    }
-  }
+    },
+  })
 
   return (
     <section className="rounded-xl border border-rose-500/20 bg-rose-500/3 p-5">
@@ -41,21 +34,24 @@ export function DangerSection() {
             placeholder="Confirm your password"
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              del.reset()
+            }}
           />
           <div className="flex items-center gap-3">
             <button
-              onClick={remove}
-              disabled={busy || !password}
+              onClick={() => del.mutate()}
+              disabled={del.isPending || !password}
               className="rounded-[6px] bg-rose-500/90 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
             >
-              {busy ? 'Deleting…' : 'Permanently delete'}
+              {del.isPending ? 'Deleting…' : 'Permanently delete'}
             </button>
             <button
               onClick={() => {
                 setOpen(false)
                 setPassword('')
-                setError('')
+                del.reset()
               }}
               className="text-muted-foreground hover:text-foreground text-xs"
             >
@@ -64,7 +60,9 @@ export function DangerSection() {
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+      {del.isError && (
+        <p className="mt-2 text-xs text-rose-300">{errText(del.error, 'Could not delete your account.')}</p>
+      )}
     </section>
   )
 }

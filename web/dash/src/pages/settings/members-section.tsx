@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Trash2, X } from 'lucide-react'
 import { authService, type Member } from '@/services/api.service'
 import { errText } from '@/lib/errors'
@@ -19,25 +20,26 @@ export function MembersSection({
 }) {
   const [email, setEmail] = useState('')
   const [link, setLink] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const confirm = useConfirm()
 
-  const invite = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLink('')
-    setBusy(true)
-    try {
-      const r = await authService.invite(email.trim(), 'member')
+  const inviteMut = useMutation({
+    mutationFn: () => authService.invite(email.trim(), 'member'),
+    onSuccess: (r) => {
       setLink(r.link)
       setEmail('')
       onChange()
-    } catch (err) {
-      setError(errText(err, 'Could not create an invite.'))
-    } finally {
-      setBusy(false)
-    }
+    },
+  })
+
+  const removeMut = useMutation({
+    mutationFn: (id: string) => authService.removeMember(id),
+    onSuccess: () => onChange(),
+  })
+
+  const submitInvite = (e: FormEvent) => {
+    e.preventDefault()
+    setLink('')
+    inviteMut.mutate()
   }
 
   const remove = async (m: Member) => {
@@ -50,12 +52,7 @@ export function MembersSection({
       }))
     )
       return
-    try {
-      await authService.removeMember(m.user.id)
-      onChange()
-    } catch (err) {
-      setError(errText(err, 'Could not remove that member.'))
-    }
+    removeMut.mutate(m.user.id)
   }
 
   return (
@@ -97,7 +94,7 @@ export function MembersSection({
       </div>
 
       {isOwner && (
-        <form onSubmit={invite} className="mt-3 space-y-2">
+        <form onSubmit={submitInvite} className="mt-3 space-y-2">
           <div className="flex gap-2">
             <input
               className={inputCls}
@@ -106,10 +103,15 @@ export function MembersSection({
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value)
-                setError('')
+                inviteMut.reset()
               }}
             />
-            <Button type="submit" size="sm" disabled={busy || !email.trim()} className="shrink-0">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={inviteMut.isPending || !email.trim()}
+              className="shrink-0"
+            >
               Invite
             </Button>
           </div>
@@ -134,7 +136,16 @@ export function MembersSection({
           )}
         </form>
       )}
-      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+      {inviteMut.isError && (
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(inviteMut.error, 'Could not create an invite.')}
+        </p>
+      )}
+      {removeMut.isError && (
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(removeMut.error, 'Could not remove that member.')}
+        </p>
+      )}
     </Section>
   )
 }

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { authService, type Team } from '@/services/api.service'
 import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
@@ -14,31 +15,28 @@ export function TeamSection({
   onSaved: () => Promise<unknown>
 }) {
   const [name, setName] = useState(team?.name ?? '')
-  const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
-  const [dangerBusy, setDangerBusy] = useState(false)
   const confirm = useConfirm()
   const dirty = name.trim() !== '' && name.trim() !== (team?.name ?? '')
+  const verb = isOwner ? 'Delete' : 'Leave'
 
-  const submit = async (e: FormEvent) => {
+  const rename = useMutation({
+    mutationFn: () => authService.renameTeam(name.trim()),
+    onSuccess: () => onSaved(),
+  })
+
+  const danger = useMutation({
+    mutationFn: () => (isOwner ? authService.deleteTeam() : authService.leaveTeam()),
+    onSuccess: () => {
+      window.location.href = '/'
+    },
+  })
+
+  const submit = (e: FormEvent) => {
     e.preventDefault()
-    setError('')
-    setBusy(true)
-    try {
-      await authService.renameTeam(name.trim())
-      await onSaved()
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    } catch (err) {
-      setError(errText(err, 'Could not rename the team.'))
-    } finally {
-      setBusy(false)
-    }
+    rename.mutate()
   }
 
   const leaveOrDelete = async () => {
-    const verb = isOwner ? 'Delete' : 'Leave'
     if (
       !(await confirm({
         title: `${verb} ${team?.name ?? 'this team'}?`,
@@ -48,15 +46,7 @@ export function TeamSection({
       }))
     )
       return
-    setError('')
-    setDangerBusy(true)
-    try {
-      await (isOwner ? authService.deleteTeam() : authService.leaveTeam())
-      window.location.href = '/'
-    } catch (err) {
-      setError(errText(err, `Could not ${verb.toLowerCase()} the team.`))
-      setDangerBusy(false)
-    }
+    danger.mutate()
   }
 
   return (
@@ -67,7 +57,10 @@ export function TeamSection({
             className={inputCls}
             value={name}
             disabled={!isOwner}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              rename.reset()
+            }}
           />
         </Field>
         <div className="flex items-center justify-between gap-3">
@@ -75,7 +68,7 @@ export function TeamSection({
             Slug <span className="text-foreground/70 font-mono">{team?.slug}</span>
           </span>
           {isOwner ? (
-            <SaveButton busy={busy} saved={saved} disabled={!dirty} />
+            <SaveButton busy={rename.isPending} saved={rename.isSuccess} disabled={!dirty} />
           ) : (
             <span className="text-muted-foreground text-xs">Only owners can rename the team.</span>
           )}
@@ -91,13 +84,20 @@ export function TeamSection({
         <button
           type="button"
           onClick={leaveOrDelete}
-          disabled={dangerBusy}
+          disabled={danger.isPending}
           className="shrink-0 rounded-[6px] border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
         >
           {isOwner ? 'Delete team' : 'Leave team'}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+      {rename.isError && (
+        <p className="mt-2 text-xs text-rose-300">{errText(rename.error, 'Could not rename the team.')}</p>
+      )}
+      {danger.isError && (
+        <p className="mt-2 text-xs text-rose-300">
+          {errText(danger.error, `Could not ${verb.toLowerCase()} the team.`)}
+        </p>
+      )}
     </Section>
   )
 }

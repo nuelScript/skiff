@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell } from 'lucide-react'
 import { alertsService } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
@@ -13,11 +13,6 @@ export function AlertsSection() {
   const [email, setEmail] = useState('')
   const [slackUrl, setSlackUrl] = useState('')
   const [webhookUrl, setWebhookUrl] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
-  const [testing, setTesting] = useState(false)
-  const [testMsg, setTestMsg] = useState('')
   const hydrated = useRef(false)
 
   useEffect(() => {
@@ -36,42 +31,29 @@ export function AlertsSection() {
       webhookUrl.trim() !== data.webhookUrl)
   const hasChannels = !!data && !!(data.email || data.slackUrl || data.webhookUrl)
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setTestMsg('')
-    setBusy(true)
-    try {
-      await alertsService.save({
+  const save = useMutation({
+    mutationFn: () =>
+      alertsService.save({
         email: email.trim(),
         slackUrl: slackUrl.trim(),
         webhookUrl: webhookUrl.trim(),
-      })
-      await qc.invalidateQueries({ queryKey: queryKeys.alerts })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    } catch (err) {
-      setError(errText(err, 'Could not save alerts.'))
-    } finally {
-      setBusy(false)
-    }
-  }
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.alerts }),
+  })
 
-  const runTest = async () => {
-    setTesting(true)
-    setTestMsg('')
-    try {
-      const { results } = await alertsService.test()
-      setTestMsg(
-        results.length === 0
-          ? 'No channels configured.'
-          : results.map((r) => `${r.channel} ${r.ok ? '✓' : '✗'}`).join('  ·  '),
-      )
-    } catch {
-      setTestMsg('Test failed.')
-    } finally {
-      setTesting(false)
-    }
+  const test = useMutation({ mutationFn: () => alertsService.test() })
+  const testMsg = test.isError
+    ? 'Test failed.'
+    : test.data
+      ? test.data.results.length === 0
+        ? 'No channels configured.'
+        : test.data.results.map((r) => `${r.channel} ${r.ok ? '✓' : '✗'}`).join('  ·  ')
+      : ''
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    test.reset()
+    save.mutate()
   }
 
   return (
@@ -86,7 +68,10 @@ export function AlertsSection() {
             type="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              save.reset()
+            }}
           />
         </Field>
         <Field label="Slack">
@@ -94,7 +79,10 @@ export function AlertsSection() {
             className={inputCls}
             placeholder="https://hooks.slack.com/services/…"
             value={slackUrl}
-            onChange={(e) => setSlackUrl(e.target.value)}
+            onChange={(e) => {
+              setSlackUrl(e.target.value)
+              save.reset()
+            }}
           />
         </Field>
         <Field label="Webhook">
@@ -102,7 +90,10 @@ export function AlertsSection() {
             className={inputCls}
             placeholder="https://your-service/hook"
             value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
+            onChange={(e) => {
+              setWebhookUrl(e.target.value)
+              save.reset()
+            }}
           />
         </Field>
         {email.trim() !== '' && data && !data.smtp && (
@@ -111,20 +102,22 @@ export function AlertsSection() {
             <span className="font-mono">SKIFF_SMTP_*</span>).
           </p>
         )}
-        {error && <p className="text-xs text-rose-300">{error}</p>}
+        {save.isError && (
+          <p className="text-xs text-rose-300">{errText(save.error, 'Could not save alerts.')}</p>
+        )}
         <div className="flex items-center justify-end gap-3">
           {testMsg && <span className="text-muted-foreground font-mono text-xs">{testMsg}</span>}
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={runTest}
-            disabled={!hasChannels || dirty || testing}
+            onClick={() => test.mutate()}
+            disabled={!hasChannels || dirty || test.isPending}
           >
             <Bell className="h-4 w-4" />
-            {testing ? 'Sending…' : 'Send test'}
+            {test.isPending ? 'Sending…' : 'Send test'}
           </Button>
-          <SaveButton busy={busy} saved={saved} disabled={!dirty} />
+          <SaveButton busy={save.isPending} saved={save.isSuccess} disabled={!dirty} />
         </div>
       </form>
     </Section>

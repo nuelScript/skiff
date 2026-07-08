@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Plus, Trash2 } from 'lucide-react'
 import { relTime } from '@/lib/format'
 import { tokensService, type ApiToken } from '@/services/api.service'
@@ -18,26 +18,21 @@ export function TokensSection() {
     queryFn: () => tokensService.list(),
   })
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState<ApiToken | null>(null)
   const { copied, copy } = useCopy(1500)
-  const [error, setError] = useState('')
 
-  const create = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!name.trim()) return
-    setError('')
-    setBusy(true)
-    try {
-      const t = await tokensService.create(name.trim())
+  const create = useMutation({
+    mutationFn: () => tokensService.create(name.trim()),
+    onSuccess: (t) => {
       setCreated(t)
       setName('')
-      await qc.invalidateQueries({ queryKey: queryKeys.tokens })
-    } catch (err) {
-      setError(errText(err, 'Could not create token.'))
-    } finally {
-      setBusy(false)
-    }
+      qc.invalidateQueries({ queryKey: queryKeys.tokens })
+    },
+  })
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (name.trim()) create.mutate()
   }
 
   const revoke = async (t: ApiToken) => {
@@ -83,19 +78,24 @@ export function TokensSection() {
         </div>
       )}
 
-      <form onSubmit={create} className="flex gap-2">
+      <form onSubmit={submit} className="flex gap-2">
         <input
           className={inputCls}
           placeholder="Token name (e.g. ci-deploy)"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            create.reset()
+          }}
         />
-        <Button type="submit" size="sm" disabled={busy || !name.trim()}>
+        <Button type="submit" size="sm" disabled={create.isPending || !name.trim()}>
           <Plus className="h-4 w-4" />
           Create
         </Button>
       </form>
-      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+      {create.isError && (
+        <p className="mt-2 text-xs text-rose-300">{errText(create.error, 'Could not create token.')}</p>
+      )}
 
       {tokens.length > 0 && (
         <ul className="mt-4 divide-y divide-white/6 overflow-hidden rounded-lg border border-white/8">

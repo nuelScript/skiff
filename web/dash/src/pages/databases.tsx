@@ -3,7 +3,7 @@ import { fmtBytes } from '@/lib/format'
 import { errText } from '@/lib/errors'
 import { useCopy } from '@/hooks/use-copy'
 import { useMemo, useState, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Database,
   Plus,
@@ -55,23 +55,17 @@ export default function DatabasesPage() {
   const [adding, setAdding] = useState(false)
   const [engine, setEngine] = useState<DbEngine>('postgres')
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!name.trim()) return
-    setBusy(true)
-    try {
-      await create(engine, name.trim())
+  const createMut = useMutation({
+    mutationFn: () => create(engine, name.trim()),
+    onSuccess: () => {
       setName('')
       setAdding(false)
-    } catch (err) {
-      setError(errText(err, 'Could not create that database.'))
-    } finally {
-      setBusy(false)
-    }
+    },
+  })
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (name.trim()) createMut.mutate()
   }
 
   return (
@@ -109,7 +103,7 @@ export default function DatabasesPage() {
                 onClick={() => {
                   setAdding(false)
                   setName('')
-                  setError('')
+                  createMut.reset()
                 }}
                 className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 p-1"
               >
@@ -137,18 +131,25 @@ export default function DatabasesPage() {
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
-                setError('')
+                createMut.reset()
               }}
               autoFocus
               placeholder="name (e.g. main)"
               className="h-9 min-w-0 flex-1 rounded-[6px] border border-white/12 bg-black/30 px-3 font-mono text-sm outline-none placeholder:text-white/25 focus-visible:border-white/30"
             />
-            <Button type="submit" size="sm" disabled={busy || !name.trim()} className="shrink-0">
-              {busy ? 'Creating…' : 'Create'}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={createMut.isPending || !name.trim()}
+              className="shrink-0"
+            >
+              {createMut.isPending ? 'Creating…' : 'Create'}
             </Button>
           </div>
-          {error ? (
-            <p className="mt-2 text-xs text-rose-300">{error}</p>
+          {createMut.isError ? (
+            <p className="mt-2 text-xs text-rose-300">
+              {errText(createMut.error, 'Could not create that database.')}
+            </p>
           ) : (
             <p className="text-muted-foreground mt-2 text-xs">
               Provisions a container with a persistent volume; attach it to an app to inject its connection URL.
