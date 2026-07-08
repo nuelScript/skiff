@@ -37,7 +37,7 @@ export function ConsoleMock() {
 
   return (
     <div ref={scope}>
-      <BrowserFrame url="app.useskiff.xyz" right="skiff" className="glow-amber">
+      <BrowserFrame url="app.yourdomain.com" right="skiff" className="glow-amber">
         <div className="space-y-2 p-5 font-mono text-[12.5px] leading-relaxed">
           <p className="log-line text-muted">
             <span className="text-fg">➜</span>{" "}
@@ -71,7 +71,7 @@ export function ConsoleMock() {
           <p className="live-line text-fg">
             ✓ live ·{" "}
             <span className="text-fg underline underline-offset-2">
-              https://app.useskiff.xyz
+              https://app.yourdomain.com
             </span>{" "}
             <span className="text-subtle">(12.9s)</span>
           </p>

@@ -4,9 +4,9 @@ import { ConsoleMock } from "@/components/console-mock";
 
 function PreviewVisual() {
   const branches = [
-    { b: "main", u: "app.useskiff.xyz" },
-    { b: "feat-auth", u: "feat-auth.useskiff.xyz" },
-    { b: "fix-cache", u: "fix-cache.useskiff.xyz" },
+    { b: "main", u: "app.yourdomain.com" },
+    { b: "feat-auth", u: "feat-auth.yourdomain.com" },
+    { b: "fix-cache", u: "fix-cache.yourdomain.com" },
   ];
   return (
     <div className="border-line bg-surface/70 glow-amber space-y-2.5 rounded-2xl border p-5">

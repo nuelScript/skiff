@@ -5,7 +5,6 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ArrowRight, Copy } from "lucide-react";
 import { HeroOrbit } from "@/components/hero-orbit";
-import { DASHBOARD_URL } from "@/lib/site";
 
 gsap.registerPlugin(useGSAP);
 
@@ -48,10 +47,10 @@ export function Hero() {
 
         <div className="hero-item mt-8 flex flex-wrap items-center gap-3">
           <a
-            href={DASHBOARD_URL}
+            href="/docs"
             className="btn-brand rounded-lg px-5 py-2.5 text-sm font-semibold"
           >
-            Launch the console
+            Get started
           </a>
           <a
             href="#features"
@@ -64,14 +63,16 @@ export function Hero() {
 
         <div className="hero-item border-line bg-surface/70 text-muted mt-8 flex max-w-sm items-center justify-between gap-3 rounded-lg border px-4 py-2.5 font-mono text-[13px]">
           <span className="truncate">
-            <span className="text-brand">$</span> curl -fsSL useskiff.xyz/boot |
-            sh
+            <span className="text-brand">$</span> curl -fsSL useskiff.xyz/install
+            | sh -s -- --domain example.com
           </span>
           <button
             type="button"
             aria-label="Copy install command"
             onClick={() =>
-              navigator.clipboard?.writeText("curl -fsSL useskiff.xyz/boot | sh")
+              navigator.clipboard?.writeText(
+                "curl -fsSL useskiff.xyz/install | sh -s -- --domain example.com",
+              )
             }
             className="text-subtle hover:text-fg shrink-0 transition-colors"
           >

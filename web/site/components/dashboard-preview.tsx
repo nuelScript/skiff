@@ -2,9 +2,9 @@ import { BrowserFrame } from "@/components/browser-frame";
 import { LogoMark } from "@/components/logo";
 
 const apps = [
-  { name: "api", state: "running", url: "api.useskiff.xyz" },
-  { name: "web", state: "running", url: "web.useskiff.xyz" },
-  { name: "worker", state: "building", url: "worker.useskiff.xyz" },
+  { name: "api", state: "running", url: "api.yourdomain.com" },
+  { name: "web", state: "running", url: "web.yourdomain.com" },
+  { name: "worker", state: "building", url: "worker.yourdomain.com" },
 ];
 
 const dot: Record<string, string> = {
@@ -14,7 +14,7 @@ const dot: Record<string, string> = {
 
 export function DashboardPreview() {
   return (
-    <BrowserFrame url="dash.useskiff.xyz" className="glow-amber">
+    <BrowserFrame url="dash.yourdomain.com" className="glow-amber">
       <div className="bg-bg/40">
         <div className="border-line flex items-center justify-between border-b px-5 py-3.5">
           <span className="font-display flex items-center gap-2 text-sm font-bold">

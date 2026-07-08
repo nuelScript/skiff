@@ -1,5 +1,3 @@
-import { DASHBOARD_URL } from "@/lib/site";
-
 export function FinalCta() {
   return (
     <section className="mx-auto max-w-6xl px-6 pb-24">
@@ -19,10 +17,10 @@ export function FinalCta() {
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
             <a
-              href={DASHBOARD_URL}
+              href="/docs"
               className="btn-brand rounded-lg px-5 py-2.5 text-sm font-semibold"
             >
-              Launch the console
+              Get started
             </a>
             <a
               href="#how"

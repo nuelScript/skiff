@@ -1,6 +1,5 @@
 import { Logo } from "@/components/logo";
 import { GitHubStars } from "@/components/github-star";
-import { DASHBOARD_URL } from "@/lib/site";
 
 const links = [
   { href: "/#features", label: "FEATURES" },
@@ -24,10 +23,10 @@ export function SiteNav() {
         <div className="flex items-center gap-3">
           <GitHubStars />
           <a
-            href={DASHBOARD_URL}
+            href="/docs"
             className="btn-brand rounded-lg px-4 py-2 text-sm font-semibold"
           >
-            Launch console
+            Get started
           </a>
         </div>
       </div>
