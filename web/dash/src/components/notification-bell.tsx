@@ -35,7 +35,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 export default function NotificationBell() {
-  const { data: deploys = [] } = useAllDeploys()
+  const { data } = useAllDeploys()
+  const deploys = data?.pages[0] ?? [] // newest page is plenty for the bell
   const navigate = useNavigate()
   const [seen, setSeen] = useState<number>(() => Number(localStorage.getItem(SEEN_KEY) || 0))
   const [filter, setFilter] = useState<Filter>('all')

@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS deploys (
   started    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_deploys_app ON deploys(app, started DESC);
+CREATE INDEX IF NOT EXISTS idx_deploys_started ON deploys(started DESC, id DESC);
 CREATE TABLE IF NOT EXISTS env_vars (
   app   TEXT NOT NULL,
   key   TEXT NOT NULL,

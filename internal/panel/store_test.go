@@ -84,3 +84,53 @@ func TestDeployFeedTeamScoped(t *testing.T) {
 		t.Fatal("another team's deploys wrongly allowed")
 	}
 }
+
+// TestTeamDeploysPagination checks the keyset feed: team-scoped (plus the control
+// plane), newest-first, and a cursor page that reaches the rest without overlap
+// or leaking another team's builds.
+func TestTeamDeploysPagination(t *testing.T) {
+	openTestDB(t)
+	putSource(Source{App: "mine", Team: "t1", Port: "3000"})
+	putSource(Source{App: "theirs", Team: "other", Port: "3000"})
+	for _, d := range []Deploy{
+		{ID: "m0", App: "mine", Status: "live", Started: 100},
+		{ID: "m1", App: "mine", Status: "live", Started: 102},
+		{ID: "m2", App: "mine", Status: "live", Started: 104},
+		{ID: "m3", App: "mine", Status: "live", Started: 106},
+		{ID: "m4", App: "mine", Status: "live", Started: 108},
+		{ID: "o0", App: "theirs", Status: "live", Started: 103},
+		{ID: "o1", App: "theirs", Status: "live", Started: 105},
+		{ID: "p0", App: controlPlaneApp, Status: "live", Started: 200},
+	} {
+		addDeploy(d)
+	}
+
+	// First page: newest-first, this team + control plane only.
+	p1 := teamDeploys("t1", 0, "", 3)
+	if len(p1) != 3 || p1[0].ID != "p0" || p1[1].ID != "m4" || p1[2].ID != "m3" {
+		t.Fatalf("page1 wrong: %+v", p1)
+	}
+
+	// Cursor page from the last row: the remaining rows, no overlap.
+	last := p1[len(p1)-1]
+	p2 := teamDeploys("t1", last.Started, last.ID, 3)
+	seen := map[string]bool{}
+	for _, d := range append(p1, p2...) {
+		if d.App == "theirs" {
+			t.Fatalf("leaked another team's deploy: %+v", d)
+		}
+		if seen[d.ID] {
+			t.Fatalf("row %s appears on both pages", d.ID)
+		}
+		seen[d.ID] = true
+	}
+	if len(seen) != 6 { // 5 mine + control plane, never the 2 "theirs"
+		t.Fatalf("want 6 reachable rows, got %d: %v", len(seen), seen)
+	}
+
+	// Past the oldest row → empty.
+	oldest := p2[len(p2)-1]
+	if extra := teamDeploys("t1", oldest.Started, oldest.ID, 3); len(extra) != 0 {
+		t.Fatalf("expected nothing past the end, got %+v", extra)
+	}
+}

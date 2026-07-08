@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -327,18 +328,18 @@ func (p *Panel) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if app == "" {
 		// The global feed: this team's builds plus the control plane's own — never
-		// another team's builds.
-		out := []Deploy{}
-		for _, d := range allDeploys() {
-			if d.App == controlPlaneApp {
-				out = append(out, d)
-				continue
+		// another team's builds — keyset-paginated on (started, id). The client
+		// pages into older history by passing the last row's started + id.
+		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+		beforeID := r.URL.Query().Get("beforeId")
+		limit := 30
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
 			}
-			if src, ok := getSource(d.App); ok && src.Team == team {
-				out = append(out, d)
-			}
+			limit = n
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.NewEncoder(w).Encode(teamDeploys(team, before, beforeID, limit))
 		return
 	}
 	if !p.canViewDeploys(r, app) {

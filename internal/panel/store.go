@@ -193,9 +193,26 @@ func appDeploys(app string) []Deploy {
 }
 
 // allDeploys is the global build feed across every app, newest first.
-func allDeploys() []Deploy {
-	rows, err := sqlDB.Query(
-		`SELECT id,app,commit_sha,message,trigger,status,started FROM deploys ORDER BY started DESC LIMIT 100`)
+// teamDeploys is the global build feed scoped to one team (plus the control
+// plane's own builds), newest first, keyset-paginated on (started, id). Pass
+// before=0 for the first page; for older pages pass the last row's started+id
+// as the cursor. Team-scoping the LIMIT in SQL (rather than filtering after a
+// fixed LIMIT) keeps every page full and reachable no matter how the team's
+// builds are interleaved with others'.
+func teamDeploys(team string, before int64, beforeID string, limit int) []Deploy {
+	q := `SELECT d.id, d.app, d.commit_sha, d.message, d.trigger, d.status, d.started
+	      FROM deploys d
+	      LEFT JOIN sources s ON s.app = d.app
+	      WHERE (d.app = ? OR s.team = ?)`
+	args := []any{controlPlaneApp, team}
+	if before > 0 {
+		q += ` AND (d.started < ? OR (d.started = ? AND d.id < ?))`
+		args = append(args, before, before, beforeID)
+	}
+	q += ` ORDER BY d.started DESC, d.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := sqlDB.Query(q, args...)
 	if err != nil {
 		return nil
 	}
