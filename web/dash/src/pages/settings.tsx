@@ -39,7 +39,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1 text-sm">Your account, team, and connections.</p>
       </header>
 
-      <div className="max-w-3xl space-y-4">
+      <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
         {me?.user && <ProfileSection user={me.user} onSaved={refresh} />}
         <PasswordSection />
         <TeamSection team={team} isOwner={isOwner} onSaved={refresh} />

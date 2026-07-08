@@ -31,7 +31,7 @@ export default function EnvPage() {
         </p>
       </header>
 
-      <div className="flex max-w-2xl flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <EnvFields
           vars={vars}
           onChange={(v) => {

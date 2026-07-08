@@ -63,7 +63,7 @@ export default function ActivityPage() {
           <span>No activity yet — actions across the team will show up here.</span>
         </div>
       ) : (
-        <ol className="max-w-2xl overflow-hidden rounded-xl border border-white/8">
+        <ol className="overflow-hidden rounded-xl border border-white/8">
           {entries.map((e, i) => (
             <Row key={e.id} e={e} last={i === entries.length - 1} />
           ))}
