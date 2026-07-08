@@ -34,6 +34,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CardListSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import type { Database as Db, DbEngine } from '@/services/api.service'
 
 const ENGINES: { value: DbEngine; label: string; dot: string; accent: string }[] = [
@@ -47,7 +49,7 @@ const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[
 
 export default function DatabasesPage() {
   const { apps } = useApps()
-  const { databases, create, remove, attach, detach, setPublic } = useDatabases()
+  const { databases, isPending, isError, create, remove, attach, detach, setPublic } = useDatabases()
   const confirm = useConfirm()
 
   const [adding, setAdding] = useState(false)
@@ -89,7 +91,12 @@ export default function DatabasesPage() {
         )}
       </header>
 
-      {(adding || databases.length === 0) && (
+      {isPending && <CardListSkeleton count={3} />}
+      {!isPending && isError && databases.length === 0 && (
+        <ErrorState message="Couldn't load databases — retrying…" />
+      )}
+
+      {!isPending && (adding || (databases.length === 0 && !isError)) && (
         <form
           onSubmit={submit}
           className="animate-rise rounded-xl border border-white/10 bg-linear-to-b from-white/3 to-transparent p-4"

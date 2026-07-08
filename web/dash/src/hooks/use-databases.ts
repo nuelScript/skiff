@@ -5,7 +5,7 @@ import { queryKeys } from '@/constants/query-keys'
 
 export function useDatabases() {
   const qc = useQueryClient()
-  const { data: databases = [], isLoading } = useQuery<Database[]>({
+  const { data: databases = [], isPending, isError } = useQuery<Database[]>({
     queryKey: queryKeys.databases,
     queryFn: () => databasesService.list(),
     refetchInterval: 8000,
@@ -56,5 +56,5 @@ export function useDatabases() {
     [reload],
   )
 
-  return { databases, isLoading, create, remove, attach, detach, setPublic }
+  return { databases, isPending, isError, create, remove, attach, detach, setPublic }
 }

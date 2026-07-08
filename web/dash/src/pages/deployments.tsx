@@ -7,6 +7,8 @@ import { useConsole } from '@/hooks/use-console'
 import { deploysService, type Deploy } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { Drawer } from '@/components/drawer'
+import { FeedSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import { relTime } from '@/lib/format'
 
 const deployDot = (status: string): string =>
@@ -34,7 +36,7 @@ const matchesFilter = (d: Deploy, f: Filter): boolean =>
   f === 'all' ? true : d.status === f
 
 export default function DeploymentsPage() {
-  const { data: deploys = [], isLoading } = useAllDeploys()
+  const { data: deploys = [], isPending, isError } = useAllDeploys()
   const qc = useQueryClient()
   const term = useConsole(() => {})
   const [q, setQ] = useState('')
@@ -98,17 +100,20 @@ export default function DeploymentsPage() {
       </div>
 
       {/* feed */}
-      <div className="overflow-hidden rounded-xl border border-white/8">
-        {isLoading ? (
-          <p className="text-muted-foreground p-8 text-center text-sm">Loading deployments…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-muted-foreground p-10 text-center text-sm">
-            {deploys.length === 0
-              ? 'No deployments yet — deploy a project to see its build history here.'
-              : 'No deployments match your filters.'}
-          </p>
-        ) : (
-          rows.map((d) => (
+      {isPending ? (
+        <FeedSkeleton rows={7} />
+      ) : isError && deploys.length === 0 ? (
+        <ErrorState message="Couldn't load deployments — retrying…" />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-white/8">
+          {rows.length === 0 ? (
+            <p className="text-muted-foreground p-10 text-center text-sm">
+              {deploys.length === 0
+                ? 'No deployments yet — deploy a project to see its build history here.'
+                : 'No deployments match your filters.'}
+            </p>
+          ) : (
+            rows.map((d) => (
             <div
               key={d.app + d.id}
               className="group flex items-center border-b border-white/5 pr-3 transition-colors last:border-0 hover:bg-white/3"
@@ -169,7 +174,8 @@ export default function DeploymentsPage() {
             </div>
           ))
         )}
-      </div>
+        </div>
+      )}
 
       {term.stream && <Drawer stream={term.stream} onClose={term.close} onStop={term.stop} />}
     </div>

@@ -7,8 +7,10 @@ import { DeployHistory } from '@/components/deploy-history'
 import { DeployModal } from '@/components/deploy-modal'
 import { Drawer } from '@/components/drawer'
 import { EnvDialog } from '@/components/env-dialog'
+import { ErrorState } from '@/components/error-state'
 import { LogoMark } from '@/components/logo'
 import { OnboardingChecklist } from '@/components/onboarding-checklist'
+import { CardGridSkeleton } from '@/components/skeletons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthContext } from '@/context/auth-context'
@@ -19,7 +21,7 @@ import { useSystem } from '@/hooks/use-system'
 
 export default function ProjectsPage() {
   const { me } = useAuthContext()
-  const { apps, reload, stop } = useApps()
+  const { apps, isPending, isError, reload, stop } = useApps()
   const term = useConsole(reload)
   const history = useDeploys()
   const { info: system } = useSystem()
@@ -52,8 +54,8 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {apps.length} {apps.length === 1 ? 'app' : 'apps'} deployed from Git in{' '}
-            <span className="text-foreground/70">{teamName}</span>.
+            {isPending ? '…' : `${apps.length} ${apps.length === 1 ? 'app' : 'apps'}`} deployed from
+            Git in <span className="text-foreground/70">{teamName}</span>.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -76,49 +78,59 @@ export default function ProjectsPage() {
       <OnboardingChecklist appsCount={apps.length} onDeploy={() => setOpen(true)} />
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pb-[46vh]">
-        {showControlPlane && (
-          <ControlPlaneCard
-            info={system!}
-            onHistory={history.open}
-            onLogs={(app, id) => {
-              history.close()
-              term.showBuildLog(app, id)
-            }}
-          />
-        )}
-
-        {filtered.map((a, i) => (
-          <AppCard
-            key={a.name}
-            app={a}
-            index={i + cpOffset}
-            onLogs={term.showLogs}
-            onHistory={history.open}
-            onEnv={setEnvApp}
-            onStop={stop}
-          />
-        ))}
-
-        {apps.length === 0 && !q.trim() && (
-          <div className="col-span-full flex flex-col items-center gap-4 rounded-xl border border-dashed border-white/10 py-16 text-center">
-            <LogoMark className="h-9 w-9 opacity-30" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">No projects yet</p>
-              <p className="text-muted-foreground text-sm">
-                Deploy your first app straight from a Git repository.
-              </p>
-            </div>
-            <Button size="sm" onClick={() => setOpen(true)}>
-              <GitBranch />
-              Deploy from Git
-            </Button>
+        {isPending ? (
+          <CardGridSkeleton count={6} />
+        ) : isError && apps.length === 0 ? (
+          <div className="col-span-full">
+            <ErrorState message="Couldn't load your projects — retrying…" />
           </div>
-        )}
+        ) : (
+          <>
+            {showControlPlane && (
+              <ControlPlaneCard
+                info={system!}
+                onHistory={history.open}
+                onLogs={(app, id) => {
+                  history.close()
+                  term.showBuildLog(app, id)
+                }}
+              />
+            )}
 
-        {apps.length > 0 && filtered.length === 0 && (
-          <p className="text-muted-foreground col-span-full py-12 text-center text-sm">
-            No projects match “{q}”.
-          </p>
+            {filtered.map((a, i) => (
+              <AppCard
+                key={a.name}
+                app={a}
+                index={i + cpOffset}
+                onLogs={term.showLogs}
+                onHistory={history.open}
+                onEnv={setEnvApp}
+                onStop={stop}
+              />
+            ))}
+
+            {apps.length === 0 && !q.trim() && (
+              <div className="col-span-full flex flex-col items-center gap-4 rounded-xl border border-dashed border-white/10 py-16 text-center">
+                <LogoMark className="h-9 w-9 opacity-30" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">No projects yet</p>
+                  <p className="text-muted-foreground text-sm">
+                    Deploy your first app straight from a Git repository.
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <GitBranch />
+                  Deploy from Git
+                </Button>
+              </div>
+            )}
+
+            {apps.length > 0 && filtered.length === 0 && (
+              <p className="text-muted-foreground col-span-full py-12 text-center text-sm">
+                No projects match “{q}”.
+              </p>
+            )}
+          </>
         )}
       </div>
 

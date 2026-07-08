@@ -7,7 +7,7 @@ import { useConfirm } from '@/providers/confirm-provider'
 export function useApps() {
   const qc = useQueryClient()
   const confirm = useConfirm()
-  const { data: apps = [] } = useQuery<App[]>({
+  const { data: apps = [], isPending, isError } = useQuery<App[]>({
     queryKey: queryKeys.apps,
     queryFn: () => projectsService.list(),
     refetchInterval: 4000,
@@ -27,5 +27,5 @@ export function useApps() {
     [reload, confirm],
   )
 
-  return { apps, reload, stop }
+  return { apps, isPending, isError, reload, stop }
 }

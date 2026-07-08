@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import { auditService, type AuditEntry } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
+import { FeedSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 
 type Kind = { icon: ComponentType<{ className?: string }>; verb: string; tone: string }
 
@@ -40,7 +42,11 @@ const KINDS: Record<string, Kind> = {
 }
 
 export default function ActivityPage() {
-  const { data: entries } = useQuery({
+  const {
+    data: entries = [],
+    isPending,
+    isError,
+  } = useQuery<AuditEntry[]>({
     queryKey: queryKeys.audit,
     queryFn: () => auditService.list(),
     refetchInterval: 15000,
@@ -55,8 +61,10 @@ export default function ActivityPage() {
         </p>
       </header>
 
-      {!entries ? (
-        <p className="text-muted-foreground text-sm">Loading activity…</p>
+      {isPending ? (
+        <FeedSkeleton rows={6} />
+      ) : isError && entries.length === 0 ? (
+        <ErrorState message="Couldn't load activity — retrying…" />
       ) : entries.length === 0 ? (
         <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-white/8 py-20 text-sm">
           <History className="h-6 w-6 opacity-40" />
