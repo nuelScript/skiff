@@ -62,14 +62,12 @@ export function SaveButton({
   disabled: boolean
 }) {
   return (
-    <Button type="submit" size="sm" disabled={disabled || busy}>
+    <Button type="submit" size="sm" loading={busy} disabled={disabled}>
       {saved ? (
         <>
           <Check className="h-4 w-4" />
           Saved
         </>
-      ) : busy ? (
-        'Saving…'
       ) : (
         'Save'
       )}

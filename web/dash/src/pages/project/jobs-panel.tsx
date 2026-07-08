@@ -129,8 +129,8 @@ export function JobsPanel({ app }: { app: string }) {
             >
               Cancel
             </button>
-            <Button size="sm" type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Adding…' : 'Add job'}
+            <Button size="sm" type="submit" loading={form.formState.isSubmitting}>
+              Add job
             </Button>
           </div>
         </form>

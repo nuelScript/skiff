@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 import { authService } from '@/services/api.service'
 import { errText } from '@/lib/errors'
 import { RevealInput } from './ui'
@@ -43,8 +44,9 @@ export function DangerSection() {
             <button
               onClick={() => del.mutate()}
               disabled={del.isPending || !password}
-              className="rounded-[6px] bg-rose-500/90 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-[6px] bg-rose-500/90 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
             >
+              {del.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
               {del.isPending ? 'Deleting…' : 'Permanently delete'}
             </button>
             <button

@@ -140,10 +140,11 @@ export default function DatabasesPage() {
             <Button
               type="submit"
               size="sm"
-              disabled={createMut.isPending || !name.trim()}
+              loading={createMut.isPending}
+              disabled={!name.trim()}
               className="shrink-0"
             >
-              {createMut.isPending ? 'Creating…' : 'Create'}
+              Create
             </Button>
           </div>
           {createMut.isError ? (

@@ -5,6 +5,9 @@ import { ConsoleTerminal } from '@/components/console-terminal'
 import { Drawer } from '@/components/drawer'
 import { EnvEditor } from '@/components/env-editor'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { FeedSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsole } from '@/hooks/use-console'
 import { useProject } from '@/hooks/use-project'
@@ -20,13 +23,31 @@ import { runningPill, deployDot } from './project/status'
 export default function ProjectDetailPage() {
   const { name = '' } = useParams()
   const navigate = useNavigate()
-  const { project, reload } = useProject(name)
+  const { project, isPending, reload } = useProject(name)
   const term = useConsole(reload)
   const confirm = useConfirm()
 
+  if (isPending) {
+    return (
+      <div className="px-8 py-8">
+        <Skeleton className="mb-4 h-4 w-40" />
+        <div className="mb-6 flex items-center gap-3">
+          <Skeleton className="h-11 w-11 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3.5 w-56" />
+          </div>
+        </div>
+        <FeedSkeleton rows={4} />
+      </div>
+    )
+  }
+
   if (!project) {
     return (
-      <div className="text-muted-foreground flex h-full items-center justify-center">…</div>
+      <div className="px-8 py-8">
+        <ErrorState message="Couldn't load this project — it may have been removed." />
+      </div>
     )
   }
 

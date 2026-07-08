@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Boxes, Plus, Trash2, X, Copy, Check, Link2, Eye, EyeOff } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useStorage } from '@/hooks/use-storage'
@@ -6,6 +7,8 @@ import { useCopy } from '@/hooks/use-copy'
 import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
+import { CardListSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import {
   Select,
   SelectContent,
@@ -16,28 +19,23 @@ import type { Bucket } from '@/services/api.service'
 
 export default function StoragePage() {
   const { apps } = useApps()
-  const { buckets, create, remove, attach, detach } = useStorage()
+  const { buckets, isPending, isError, create, remove, attach, detach } = useStorage()
   const confirm = useConfirm()
 
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!name.trim()) return
-    setBusy(true)
-    try {
-      await create(name.trim())
+  const createMut = useMutation({
+    mutationFn: () => create(name.trim()),
+    onSuccess: () => {
       setName('')
       setAdding(false)
-    } catch (err) {
-      setError(errText(err, 'Could not create that bucket.'))
-    } finally {
-      setBusy(false)
-    }
+    },
+  })
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (name.trim()) createMut.mutate()
   }
 
   return (
@@ -65,12 +63,15 @@ export default function StoragePage() {
           <input
             autoFocus
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              createMut.reset()
+            }}
             placeholder="bucket name (e.g. uploads)"
             className="h-9 min-w-0 flex-1 rounded-[6px] border border-white/12 bg-black/30 px-3 font-mono text-sm outline-none placeholder:text-white/25 focus-visible:border-white/30"
           />
-          <Button type="submit" size="sm" disabled={busy || !name.trim()}>
-            {busy ? 'Creating…' : 'Create'}
+          <Button type="submit" size="sm" loading={createMut.isPending} disabled={!name.trim()}>
+            Create
           </Button>
           <Button
             type="button"
@@ -78,16 +79,24 @@ export default function StoragePage() {
             variant="outline"
             onClick={() => {
               setAdding(false)
-              setError('')
+              createMut.reset()
             }}
           >
             Cancel
           </Button>
-          {error && <p className="w-full text-xs text-rose-300">{error}</p>}
+          {createMut.isError && (
+            <p className="w-full text-xs text-rose-300">
+              {errText(createMut.error, 'Could not create that bucket.')}
+            </p>
+          )}
         </form>
       )}
 
-      {buckets.length === 0 ? (
+      {isPending ? (
+        <CardListSkeleton count={2} />
+      ) : isError && buckets.length === 0 ? (
+        <ErrorState message="Couldn't load your buckets — retrying…" />
+      ) : buckets.length === 0 ? (
         <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-white/8 py-20 text-sm">
           <Boxes className="h-6 w-6 opacity-40" />
           <span>No buckets yet — create one for uploads, backups, or static assets.</span>

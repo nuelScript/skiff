@@ -57,6 +57,20 @@ export function CardListSkeleton({ count = 3 }: { count?: number }) {
   )
 }
 
+// A grid of chart-card placeholders — for the analytics panels.
+export function ChartGridSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-white/8 bg-white/1.5 p-4">
+          <Skeleton className="mb-4 h-3.5 w-32" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // A bordered list of shimmer rows — for activity / deployment / database feeds.
 export function FeedSkeleton({ rows = 6 }: { rows?: number }) {
   return (

@@ -5,7 +5,7 @@ import { queryKeys } from '@/constants/query-keys'
 
 export function useDomains() {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery<DomainsResponse>({
+  const { data, isPending, isError } = useQuery<DomainsResponse>({
     queryKey: queryKeys.domains,
     queryFn: () => domainsService.list(),
     refetchInterval: 15000, // pick up DNS/cert propagation
@@ -34,5 +34,5 @@ export function useDomains() {
     [reload],
   )
 
-  return { domains, serverIp, isLoading, add, remove }
+  return { domains, serverIp, isPending, isError, add, remove }
 }

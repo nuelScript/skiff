@@ -91,8 +91,8 @@ export default function Setup({
               />
             </div>
             {error && <p className="text-destructive text-xs">{error}</p>}
-            <Button type="submit" disabled={busy} className="mt-1 w-full">
-              {busy ? '…' : 'Create account'}
+            <Button type="submit" loading={busy} className="mt-1 w-full">
+              Create account
             </Button>
           </form>
         </CardContent>

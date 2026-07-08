@@ -22,6 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ChartGridSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import type { Analytics, Resources } from '@/services/api.service'
 
 const RANGES = [
@@ -62,8 +64,8 @@ export default function AnalyticsPage() {
   const { apps } = useApps()
   const [range, setRange] = useState(60)
   const [app, setApp] = useState('')
-  const { data: a } = useAnalytics(range, app)
-  const { data: r } = useResources(range, app)
+  const { data: a, isPending: aPending } = useAnalytics(range, app)
+  const { data: r, isPending: rPending } = useResources(range, app)
   const rangeLabel = RANGES.find((r) => r.v === range)?.label ?? 'Last hour'
   const appNames = a?.appOptions ?? r?.appOptions ?? apps.map((x) => x.name)
 
@@ -106,8 +108,10 @@ export default function AnalyticsPage() {
       </header>
 
       <SectionLabel>Edge traffic</SectionLabel>
-      {!a ? (
-        <p className="text-muted-foreground text-sm">Loading analytics…</p>
+      {aPending ? (
+        <ChartGridSkeleton count={4} />
+      ) : !a ? (
+        <ErrorState message="Couldn't load analytics — retrying…" />
       ) : a.total === 0 ? (
         <EmptyState icon={<Activity className="h-6 w-6 opacity-40" />} label="No traffic in this range." />
       ) : (
@@ -121,8 +125,10 @@ export default function AnalyticsPage() {
 
       <div className="mt-10">
         <SectionLabel>Compute</SectionLabel>
-        {!r ? (
-          <p className="text-muted-foreground text-sm">Loading resource metrics…</p>
+        {rPending ? (
+          <ChartGridSkeleton count={4} />
+        ) : !r ? (
+          <ErrorState message="Couldn't load resource metrics — retrying…" />
         ) : r.samples === 0 ? (
           <EmptyState
             icon={<Cpu className="h-6 w-6 opacity-40" />}

@@ -121,8 +121,8 @@ export function WorkersPanel({ app }: { app: string }) {
             >
               Cancel
             </button>
-            <Button size="sm" type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Saving…' : 'Add worker'}
+            <Button size="sm" type="submit" loading={form.formState.isSubmitting}>
+              Add worker
             </Button>
           </div>
         </form>

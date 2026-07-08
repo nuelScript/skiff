@@ -1,5 +1,8 @@
 import { fmtBytes } from '@/lib/format'
 import { useServer } from '@/hooks/use-server'
+import { Skeleton } from '@/components/ui/skeleton'
+import { FeedSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 
 function fmtUptime(sec: number): string {
   if (!sec) return '—'
@@ -48,11 +51,36 @@ function Meter({
 const Dot = () => <span className="text-white/20">·</span>
 
 export default function ServerPage() {
-  const { data: s } = useServer()
+  const { data: s, isPending } = useServer()
+
+  if (isPending) {
+    return (
+      <div className="px-8 py-8">
+        <div className="mb-6 space-y-2">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-3.5 w-72" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-white/8 bg-white/1.5 p-4">
+              <Skeleton className="mb-3 h-3 w-16" />
+              <Skeleton className="mb-3 h-6 w-28" />
+              <Skeleton className="h-2 w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6">
+          <FeedSkeleton rows={4} />
+        </div>
+      </div>
+    )
+  }
 
   if (!s) {
     return (
-      <div className="text-muted-foreground px-8 py-8 text-sm">Reading server metrics…</div>
+      <div className="px-8 py-8">
+        <ErrorState message="Couldn't read server metrics — retrying…" />
+      </div>
     )
   }
 

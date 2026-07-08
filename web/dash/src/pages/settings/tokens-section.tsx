@@ -88,7 +88,7 @@ export function TokensSection() {
             create.reset()
           }}
         />
-        <Button type="submit" size="sm" disabled={create.isPending || !name.trim()}>
+        <Button type="submit" size="sm" loading={create.isPending} disabled={!name.trim()}>
           <Plus className="h-4 w-4" />
           Create
         </Button>

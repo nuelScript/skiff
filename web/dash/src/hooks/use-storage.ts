@@ -5,7 +5,7 @@ import { queryKeys } from '@/constants/query-keys'
 
 export function useStorage() {
   const qc = useQueryClient()
-  const { data: buckets = [], isLoading } = useQuery<Bucket[]>({
+  const { data: buckets = [], isPending, isError } = useQuery<Bucket[]>({
     queryKey: queryKeys.storage,
     queryFn: () => storageService.list(),
     refetchInterval: 8000,
@@ -45,5 +45,5 @@ export function useStorage() {
     [reload],
   )
 
-  return { buckets, isLoading, create, remove, attach, detach }
+  return { buckets, isPending, isError, create, remove, attach, detach }
 }

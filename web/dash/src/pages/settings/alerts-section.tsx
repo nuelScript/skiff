@@ -111,11 +111,12 @@ export function AlertsSection() {
             type="button"
             size="sm"
             variant="outline"
+            loading={test.isPending}
             onClick={() => test.mutate()}
-            disabled={!hasChannels || dirty || test.isPending}
+            disabled={!hasChannels || dirty}
           >
             <Bell className="h-4 w-4" />
-            {test.isPending ? 'Sending…' : 'Send test'}
+            Send test
           </Button>
           <SaveButton busy={save.isPending} saved={save.isSuccess} disabled={!dirty} />
         </div>

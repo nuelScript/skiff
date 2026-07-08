@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { errText } from '@/lib/errors'
 import { useCopy } from '@/hooks/use-copy'
 import {
@@ -17,6 +18,8 @@ import { useApps } from '@/hooks/use-apps'
 import { useDomains } from '@/hooks/use-domains'
 import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
+import { FeedSkeleton } from '@/components/skeletons'
+import { ErrorState } from '@/components/error-state'
 import {
   Select,
   SelectContent,
@@ -41,15 +44,13 @@ function dnsRecord(host: string, serverIp: string, appHost: string) {
 
 export default function DomainsPage() {
   const { apps } = useApps()
-  const { domains, serverIp, add, remove } = useDomains()
+  const { domains, serverIp, isPending, isError, add, remove } = useDomains()
   const confirm = useConfirm()
 
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
   const [app, setApp] = useState('')
   const [host, setHost] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
   const chosenApp = app || apps[0]?.name || ''
 
@@ -58,20 +59,17 @@ export default function DomainsPage() {
     return q ? domains.filter((d) => d.host.includes(q) || d.app.toLowerCase().includes(q)) : domains
   }, [domains, query])
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!host.trim() || !chosenApp) return
-    setBusy(true)
-    try {
-      await add(chosenApp, host.trim())
+  const addMut = useMutation({
+    mutationFn: () => add(chosenApp, host.trim()),
+    onSuccess: () => {
       setHost('')
       setAdding(false)
-    } catch (err) {
-      setError(errText(err, 'Could not add that domain.'))
-    } finally {
-      setBusy(false)
-    }
+    },
+  })
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (host.trim() && chosenApp) addMut.mutate()
   }
 
   const active = domains.filter((d) => d.pointsHere).length
@@ -93,7 +91,12 @@ export default function DomainsPage() {
         )}
       </header>
 
-      {(adding || domains.length === 0) && (
+      {isPending && <FeedSkeleton rows={4} />}
+      {!isPending && isError && domains.length === 0 && (
+        <ErrorState message="Couldn't load your domains — retrying…" />
+      )}
+
+      {!isPending && (adding || (domains.length === 0 && !isError)) && (
         <AddComposer
           apps={apps}
           chosenApp={chosenApp}
@@ -101,7 +104,7 @@ export default function DomainsPage() {
           host={host}
           onHost={(v) => {
             setHost(v)
-            setError('')
+            addMut.reset()
           }}
           onSubmit={submit}
           onCancel={
@@ -109,12 +112,12 @@ export default function DomainsPage() {
               ? () => {
                 setAdding(false)
                 setHost('')
-                setError('')
+                addMut.reset()
               }
               : undefined
           }
-          busy={busy}
-          error={error}
+          busy={addMut.isPending}
+          error={addMut.isError ? errText(addMut.error, 'Could not add that domain.') : ''}
         />
       )}
 
@@ -392,7 +395,13 @@ function AddComposer({
             ))}
           </SelectContent>
         </Select>
-        <Button type="submit" size="sm" disabled={busy || !host.trim() || !chosenApp} className="shrink-0">
+        <Button
+          type="submit"
+          size="sm"
+          loading={busy}
+          disabled={!host.trim() || !chosenApp}
+          className="shrink-0"
+        >
           Add
         </Button>
       </div>

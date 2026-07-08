@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 import { authService, type Team } from '@/services/api.service'
 import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
@@ -85,8 +86,9 @@ export function TeamSection({
           type="button"
           onClick={leaveOrDelete}
           disabled={danger.isPending}
-          className="shrink-0 rounded-[6px] border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
         >
+          {danger.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
           {isOwner ? 'Delete team' : 'Leave team'}
         </button>
       </div>

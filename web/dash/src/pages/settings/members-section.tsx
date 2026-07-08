@@ -109,7 +109,8 @@ export function MembersSection({
             <Button
               type="submit"
               size="sm"
-              disabled={inviteMut.isPending || !email.trim()}
+              loading={inviteMut.isPending}
+              disabled={!email.trim()}
               className="shrink-0"
             >
               Invite

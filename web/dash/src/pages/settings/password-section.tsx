@@ -47,14 +47,17 @@ export function PasswordSection() {
           <p className="text-xs text-rose-300">{errText(save.error, 'Could not change your password.')}</p>
         )}
         <div className="flex justify-end">
-          <Button type="submit" size="sm" disabled={save.isPending || !current || next.length < 8}>
+          <Button
+            type="submit"
+            size="sm"
+            loading={save.isPending}
+            disabled={!current || next.length < 8}
+          >
             {save.isSuccess ? (
               <>
                 <Check className="h-4 w-4" />
                 Updated
               </>
-            ) : save.isPending ? (
-              'Updating…'
             ) : (
               'Update password'
             )}

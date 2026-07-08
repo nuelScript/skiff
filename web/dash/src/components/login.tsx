@@ -65,8 +65,8 @@ export default function Login({
               />
             </div>
             {error && <p className="text-destructive text-xs">{error}</p>}
-            <Button type="submit" disabled={busy} className="w-full">
-              {busy ? '…' : 'Sign in'}
+            <Button type="submit" loading={busy} className="w-full">
+              Sign in
             </Button>
           </form>
         </CardContent>

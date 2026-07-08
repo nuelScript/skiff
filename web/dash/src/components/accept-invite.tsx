@@ -66,8 +66,8 @@ export default function AcceptInvite({ token }: { token: string }) {
               />
             </div>
             {error && <p className="text-destructive text-xs">{error}</p>}
-            <Button type="submit" disabled={busy} className="w-full">
-              {busy ? '…' : 'Accept invite'}
+            <Button type="submit" loading={busy} className="w-full">
+              Accept invite
             </Button>
           </form>
         </CardContent>
