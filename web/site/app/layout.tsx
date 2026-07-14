@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,19 +18,80 @@ const description =
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://useskiff.xyz"),
-  title,
+  title: {
+    default: title,
+    template: "%s — Skiff",
+  },
   description,
+  applicationName: "Skiff",
+  category: "technology",
+  keywords: [
+    "self-hosted deployment platform",
+    "push to deploy",
+    "deploy to your own server",
+    "preview environments",
+    "managed databases",
+    "automatic HTTPS",
+    "Docker deployment",
+    "self-hosted PaaS",
+    "open source",
+  ],
+  authors: [{ name: "Skiff", url: "https://useskiff.xyz" }],
+  creator: "Skiff",
+  publisher: "Skiff",
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   openGraph: {
     title,
     description,
     url: "https://useskiff.xyz",
     siteName: "Skiff",
     type: "website",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
     title,
     description,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
+  colorScheme: "dark",
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Skiff",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Linux, macOS",
+  description,
+  url: "https://useskiff.xyz",
+  isAccessibleForFree: true,
+  license: "https://opensource.org/license/mit",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  author: {
+    "@type": "Organization",
+    name: "Skiff",
+    url: "https://useskiff.xyz",
   },
 };
 
@@ -40,11 +101,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${sans.variable} ${mono.variable} antialiased`}
-    >
-      <body>{children}</body>
+    <html lang="en" className={`${sans.variable} ${mono.variable} antialiased`}>
+      <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

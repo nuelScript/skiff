@@ -3,8 +3,9 @@ import { Callout, Steps, Step } from "@/components/docs-prose";
 import { CodeBlock } from "@/components/code-block";
 
 export const metadata: Metadata = {
-  title: "Self-hosting — Skiff",
+  title: "Self-hosting",
   description: "Stand up the Skiff dashboard and edge router on your own server with one command.",
+  alternates: { canonical: "/docs/self-hosting" },
 };
 
 export default function SelfHosting() {

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { ArrowRight, Server, Terminal } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Docs — Skiff",
+  title: "Docs",
   description: "Run Skiff on a server you own: push-to-deploy, automatic HTTPS, and preview environments.",
+  alternates: { canonical: "/docs" },
 };
 
 export default function DocsHome() {
