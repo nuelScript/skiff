@@ -191,7 +191,7 @@ func TestFormsOfEachKey(t *testing.T) {
 
 func TestProblemsAreReported(t *testing.T) {
 	for name, tc := range map[string]struct{ src, want string }{
-		"bind mount":      {"services:\n  a:\n    image: x\n    volumes: [./code:/app]\n", "folder on this machine"},
+		"bind mount":      {"services:\n  a:\n    image: x\n    volumes: [./code:/app]\n", "path on this machine"},
 		"no image":        {"services:\n  a:\n    command: hi\n", "needs an image or a build"},
 		"privileged":      {"services:\n  a:\n    image: x\n    privileged: true\n", "privileged"},
 		"host network":    {"services:\n  a:\n    image: x\n    network_mode: host\n", "network_mode"},

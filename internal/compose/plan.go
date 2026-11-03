@@ -51,6 +51,8 @@ type Plan struct {
 	Problems []string
 	// Notes are things that will work differently, or be ignored.
 	Notes []string
+	// Unset lists variables the file uses that have no value yet.
+	Unset []string
 }
 
 var managedEngines = map[string]string{"postgres": "postgres", "mysql": "mysql", "mongo": "mongodb", "redis": "redis"}
@@ -99,7 +101,8 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error)) *Pl
 	if p.Stack == "" {
 		p.Problems = append(p.Problems, "the stack needs a name made of letters, digits or dashes")
 	}
-	for _, v := range dedupe(f.Unset) {
+	p.Unset = dedupe(f.Unset)
+	for _, v := range p.Unset {
 		p.Notes = append(p.Notes, fmt.Sprintf("%s has no value, so it's left empty", v))
 	}
 
@@ -182,7 +185,7 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error)) *Pl
 		for _, m := range s.Volumes {
 			switch {
 			case m.Bind:
-				p.Problems = append(p.Problems, fmt.Sprintf("%s: %s is a folder on this machine, which won't exist on the server. Build it into the image or use a named volume", name, m.Source))
+				p.Problems = append(p.Problems, fmt.Sprintf("%s: %s is a path on this machine, which won't exist on the server. Build it into the image or use a named volume", name, m.Source))
 			default:
 				vol := safeName(m.Source)
 				if vol == "" {
@@ -300,7 +303,9 @@ func applyDatabase(it *Item, engine string, s Service, p *Plan) {
 			}
 		}
 	}
-	if it.DBPassword == "" {
+	if it.DBPassword == "" && engine == "redis" {
+		p.Notes = append(p.Notes, it.Service+": has no password, as in your file. Only this stack's services can reach it")
+	} else if it.DBPassword == "" {
 		p.Notes = append(p.Notes, it.Service+": has no password, so Skiff generates one. Apps that connect with a hardcoded URL need updating")
 	}
 	if len(s.Ports) > 0 {
