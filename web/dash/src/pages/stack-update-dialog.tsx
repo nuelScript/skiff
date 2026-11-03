@@ -184,8 +184,8 @@ export function StackUpdateDialog({
                 onChange={(e) => setAllow(e.target.checked)}
               />
               <span>
-                I understand this deletes a database or volume and its data from this server. A deleted
-                volume's backups on this server go with it, so download one first if you might need it.
+                I understand this deletes a database or volume, its data and its backups from this server.
+                Copies in an offsite bucket stay. Download a backup first if you might need it.
               </span>
             </label>
           )}

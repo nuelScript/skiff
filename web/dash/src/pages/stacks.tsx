@@ -235,7 +235,7 @@ function StackCard({ stack }: { stack: Stack }) {
       !(await confirm({
         title: `Delete ${stack.name}?`,
         description:
-          'This deletes every service in the stack, its volumes and its databases, including their data on this server. This cannot be undone.',
+          'This deletes every service in the stack, its volumes and its databases, including their data and backups on this server. Copies in an offsite bucket stay.',
         confirmText: 'Delete stack',
         destructive: true,
       }))

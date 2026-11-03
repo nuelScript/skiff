@@ -403,6 +403,7 @@ func (p *Panel) removeStackDB(d dbRow) {
 	_ = p.eng.Stop(d.Container)
 	_ = p.eng.Remove(d.Container)
 	_ = p.eng.RemoveVolume(d.volume())
+	removeDatabaseBackups(d.ID)
 	deleteDBRow(d.ID)
 }
 
