@@ -337,8 +337,232 @@ func TestComposeStackFromRepo(t *testing.T) {
 	if got := dockerExec(t, ctr, "wget -qO- http://web:3000/"); got != "hello-from-stack" {
 		t.Fatalf("over its own service name: %q", got)
 	}
+	// Pushing a changed Compose file shows up as a change, and applying it reaches the app.
+	file := filepath.Join(work, "deploy", "compose.yml")
+	current, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(strings.Replace(string(current), `environment: {FROM_DOTENV: "${FROM_DOTENV}", FROM_REQUEST: "${FROM_REQUEST}"}
+  jobs:`, `environment: {FROM_DOTENV: "${FROM_DOTENV}", FROM_REQUEST: "${FROM_REQUEST}", PUSHED: "later"}
+  jobs:`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	push("v2")
+	update := `{"name":"e2e-repo"}`
+	resp, err = c.Post(base+"/changes", "application/json", strings.NewReader(update))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(msg), "adds env: PUSHED") || !strings.Contains(string(msg), `"problems":[]`) {
+		t.Fatalf("changes after a push: %s", msg)
+	}
+	resp, err = c.Post(base+"/update", "application/json", strings.NewReader(update))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("update from the repository: %d %s", resp.StatusCode, msg)
+	}
+	eventually(t, 2*time.Minute, func() bool {
+		out, _ := exec.Command("sh", "-c", "docker exec $(docker ps -q --filter label=skiff.app=e2e-repo-web) printenv PUSHED").Output()
+		return strings.TrimSpace(string(out)) == "later"
+	})
+	out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.app=e2e-repo-web").Output()
+	ctr = strings.TrimSpace(string(out))
+
 	// Nothing secret reaches the image.
 	if out, _ := exec.Command("docker", "exec", ctr, "ls", "/app/skiff.toml").CombinedOutput(); !strings.Contains(string(out), "No such file") && !strings.Contains(string(out), "can't access") {
 		t.Fatalf("skiff.toml in the image: %s", out)
 	}
+}
+
+const updateV1 = `
+services:
+  api:
+    image: python:3.12-alpine
+    command: python -m http.server 8000
+    ports: ["8080:8000"]
+    environment: {DATABASE_URL: "postgres://app:${DB_PASSWORD}@db:5432/shop"}
+  worker:
+    image: python:3.12-alpine
+    command: python -c "import time; time.sleep(100000)"
+    environment: {DATABASE_URL: "postgres://app:${DB_PASSWORD}@db:5432/shop"}
+  probe:
+    image: alpine:3.20
+    command: sleep 100000
+    volumes: [files:/files]
+    environment: {MARK: one}
+  extra:
+    image: alpine:3.20
+    command: sleep 100000
+    volumes: [scratch:/scratch]
+  db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: app, POSTGRES_PASSWORD: "${DB_PASSWORD}", POSTGRES_DB: shop}
+`
+
+const updateV2 = `
+services:
+  api:
+    image: python:3.12-alpine
+    command: python -m http.server 8000
+    ports: ["8080:8000"]
+    environment: {DATABASE_URL: "postgres://app:${DB_PASSWORD}@db:5432/shop"}
+  worker:
+    image: python:3.12-alpine
+    command: python -c "import time; time.sleep(200000)"
+    environment: {DATABASE_URL: "postgres://app:${DB_PASSWORD}@db:5432/shop"}
+  probe:
+    image: alpine:3.20
+    command: sleep 100000
+    volumes: [files:/files]
+    environment: {MARK: two, ADDED: "yes"}
+  fresh:
+    image: alpine:3.20
+    command: sleep 100000
+  db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: app, POSTGRES_PASSWORD: "${DB_PASSWORD}", POSTGRES_DB: shop}
+`
+
+// TestComposeStackUpdate changes a running stack from its file and checks only what changed is touched.
+func TestComposeStackUpdate(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	bin := filepath.Join(root, "skiff")
+	run(t, "", nil, "go", "build", "-o", bin, "..")
+	protectExisting(t, home)
+	panel := freeAddr(t)
+	start(t, []string{"HOME=" + home, "SKIFF_PANEL_PASSWORD=e2e-setup"}, bin, "panel", "--addr", panel, "--domain", "localhost")
+	waitHTTP(t, "http://"+panel+"/api/me")
+	c := client(t)
+	post(t, c, "http://"+panel+"/api/auth/setup", `{"secret":"e2e-setup","email":"e2e@example.com","name":"E2E","password":"e2e-password-1"}`)
+
+	base := "http://" + panel + "/api/stacks"
+	const stack = "e2e-up"
+	t.Cleanup(func() {
+		req, _ := http.NewRequest(http.MethodDelete, base+"?name="+stack, nil)
+		if resp, err := c.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	})
+	body := func(file, extra string) string {
+		quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(file)
+		return fmt.Sprintf(`{"name":%q,"compose":"%s"%s}`, stack, quoted, extra)
+	}
+	send := func(url, b string) (int, string) {
+		t.Helper()
+		resp, err := c.Post(url, "application/json", strings.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		msg, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(msg)
+	}
+	ctr := func(service string) string {
+		out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.app="+stack+"-"+service).Output()
+		return strings.TrimSpace(string(out))
+	}
+	dbCtr := func() string {
+		out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.stack="+stack, "--filter", "label=skiff.kind=database").Output()
+		return strings.TrimSpace(string(out))
+	}
+
+	if code, msg := send(base, body(updateV1, `,"vars":{"DB_PASSWORD":"keep-me-secret"}`)); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, msg)
+	}
+	workerCtr := func() string {
+		out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.worker.app="+stack+"-api").Output()
+		return strings.TrimSpace(string(out))
+	}
+	eventually(t, 3*time.Minute, func() bool {
+		return ctr("api") != "" && ctr("probe") != "" && ctr("extra") != "" && dbCtr() != "" && workerCtr() != ""
+	})
+	dockerExec(t, ctr("probe"), "echo kept > /files/note")
+	apiBefore, dbBefore, workerBefore := ctr("api"), dbCtr(), workerCtr()
+
+	// The same file means no changes, and the password is remembered rather than asked for again.
+	code, msg := send(base+"/changes", body(updateV1, ""))
+	if code != 200 || !strings.Contains(msg, `"changes":[]`) || !strings.Contains(msg, `"unset":[]`) || !strings.Contains(msg, `"problems":[]`) {
+		t.Fatalf("no changes expected: %d %s", code, msg)
+	}
+
+	code, msg = send(base+"/changes", body(updateV2, ""))
+	if code != 200 || strings.Contains(msg, "keep-me-secret") {
+		t.Fatalf("changes: %d %s", code, msg)
+	}
+	for _, want := range []string{`"service":"fresh"`, `"action":"add"`, `"service":"extra"`, `"action":"remove"`, `"service":"probe"`, "adds env: ADDED", "changes env: MARK", `"service":"worker"`, `"deletesData":true`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("changes missing %s: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, `"service":"api"`) || strings.Contains(msg, `"service":"db"`) {
+		t.Errorf("unchanged services listed: %s", msg)
+	}
+
+	// Deleting data needs an explicit yes.
+	if code, _ := send(base+"/update", body(updateV2, "")); code != http.StatusUnprocessableEntity {
+		t.Fatalf("an update that deletes data went through without permission: %d", code)
+	}
+	if ctr("extra") == "" {
+		t.Fatal("a refused update still changed the stack")
+	}
+	if code, msg := send(base+"/update", body(updateV2, `,"allowDataLoss":true`)); code != 200 {
+		t.Fatalf("update: %d %s", code, msg)
+	}
+	eventually(t, 2*time.Minute, func() bool {
+		p := ctr("probe")
+		if p == "" || ctr("fresh") == "" || ctr("extra") != "" || workerCtr() == workerBefore || workerCtr() == "" {
+			return false
+		}
+		out, _ := exec.Command("docker", "exec", p, "printenv", "MARK").Output()
+		return strings.TrimSpace(string(out)) == "two"
+	})
+	if got := dockerExec(t, ctr("probe"), "printenv ADDED; cat /files/note"); got != "yes\nkept" {
+		t.Fatalf("probe after the update: %q", got)
+	}
+	if got := dockerExec(t, workerCtr(), "cat /proc/1/cmdline | tr '\\0' ' '"); !strings.Contains(got, "200000") {
+		t.Fatalf("the worker kept its old command: %q", got)
+	}
+	if ctr("api") != apiBefore {
+		t.Error("the update restarted an unchanged app")
+	}
+	if dbCtr() != dbBefore {
+		t.Error("the update restarted the database")
+	}
+	eventually(t, 30*time.Second, func() bool {
+		out, _ := exec.Command("docker", "volume", "ls", "-q", "--filter", "name=skiff-"+stack+"-extra").Output()
+		return strings.TrimSpace(string(out)) == ""
+	})
+
+	// A database's image or password can't change under its data.
+	changed := strings.Replace(updateV2, "postgres:16-alpine", "postgres:15-alpine", 1)
+	if code, msg := send(base+"/update", body(changed, `,"allowDataLoss":true`)); code != http.StatusUnprocessableEntity || !strings.Contains(msg, "isn't applied to existing data") {
+		t.Fatalf("an image change: %d %s", code, msg)
+	}
+	if code, msg := send(base+"/update", body(updateV2, `,"vars":{"DB_PASSWORD":"different"},"allowDataLoss":true`)); code != http.StatusUnprocessableEntity || !strings.Contains(msg, "changing the password") {
+		t.Fatalf("a password change: %d %s", code, msg)
+	}
+	if dbCtr() != dbBefore {
+		t.Error("a refused change restarted the database")
+	}
+
+	// Removing the database needs the same yes, then really removes it.
+	noDB := updateV2[:strings.Index(updateV2, "  db:\n")]
+	if code, _ := send(base+"/update", body(noDB, "")); code != http.StatusUnprocessableEntity {
+		t.Fatalf("removing a database without permission: %d", code)
+	}
+	if code, msg := send(base+"/update", body(noDB, `,"allowDataLoss":true`)); code != 200 {
+		t.Fatalf("removing the database: %d %s", code, msg)
+	}
+	eventually(t, time.Minute, func() bool { return dbCtr() == "" })
 }

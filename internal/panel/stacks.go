@@ -134,7 +134,7 @@ type stackSource struct {
 const maxComposeFile = 1 << 20
 
 // loadStack reads the request's Compose file and plans it. Variables come only from the request and the repo's .env, never from the panel's own environment.
-func loadStack(ctx context.Context, req stackRequest, team string) (*stackSource, error) {
+func loadStack(ctx context.Context, req stackRequest, team string, updating bool) (*stackSource, error) {
 	var name string
 	if name = strings.TrimSpace(req.Name); name == "" || sanitizeName(name) != name {
 		return nil, errors.New("name must be lowercase letters, digits or dashes")
@@ -213,7 +213,7 @@ func loadStack(ctx context.Context, req stackRequest, team string) (*stackSource
 		return nil, err
 	}
 	out.plan = compose.BuildPlan(name, f, read)
-	checkStack(out, team)
+	checkStack(out, team, updating)
 	return out, nil
 }
 
@@ -227,9 +227,9 @@ func readLimited(path string) ([]byte, error) {
 }
 
 // checkStack adds what only the panel can know: taken names, and limits every deploy path enforces.
-func checkStack(s *stackSource, team string) {
+func checkStack(s *stackSource, team string, updating bool) {
 	p := s.plan
-	if t, ok := stackTeam(p.Stack); ok {
+	if t, ok := stackTeam(p.Stack); ok && !updating {
 		if t == team {
 			p.Problems = append(p.Problems, "a stack with this name already exists")
 		} else {
@@ -240,7 +240,7 @@ func checkStack(s *stackSource, team string) {
 		if it.Kind != compose.KindApp {
 			continue
 		}
-		if _, taken := getSource(it.Name); taken {
+		if existing, taken := getSource(it.Name); taken && (!updating || existing.Stack != p.Stack) {
 			p.Problems = append(p.Problems, fmt.Sprintf("%s: an app called %s already exists", it.Service, it.Name))
 		}
 		if it.Build != nil && s.cloneURL == "" {
@@ -425,7 +425,7 @@ func stackApps(stack string) []Source {
 }
 
 // createStack records everything first and undoes it all if any step fails, so a stack is never half-made.
-func (p *Panel) createStack(s *stackSource, team, token string) error {
+func (p *Panel) createStack(s *stackSource, team, token string, vars map[string]string) error {
 	plan := s.plan
 	var dbs []dbRow
 	var apps []Source
@@ -439,8 +439,12 @@ func (p *Panel) createStack(s *stackSource, team, token string) error {
 		_, _ = sqlDB.Exec(`DELETE FROM stacks WHERE name=?`, plan.Stack)
 		_ = p.eng.RemoveNetwork(stackNetwork(plan.Stack))
 	}
-	if _, err := sqlDB.Exec(`INSERT INTO stacks(name,team,repo,branch,path,clone_url,created) VALUES(?,?,?,?,?,?,?)`,
-		plan.Stack, team, githubRepo(s.cloneURL), s.branch, s.path, s.cloneURL, time.Now().Unix()); err != nil {
+	sealedVars, err := sealStackVars(vars)
+	if err != nil {
+		return err
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO stacks(name,team,repo,branch,path,clone_url,created,vars) VALUES(?,?,?,?,?,?,?,?)`,
+		plan.Stack, team, githubRepo(s.cloneURL), s.branch, s.path, s.cloneURL, time.Now().Unix(), sealedVars); err != nil {
 		return err
 	}
 	for _, it := range plan.Items {
@@ -483,13 +487,8 @@ func (p *Panel) createStack(s *stackSource, team, token string) error {
 		if it.Kind != compose.KindWorker {
 			continue
 		}
-		owner := plan.Stack + "-" + strings.ToLower(it.WorkerOf)
-		for _, a := range apps {
-			if a.Service == it.WorkerOf {
-				owner = a.App
-			}
-		}
-		if err := putWorker(workerRow{ID: randToken()[:12], App: owner, Team: team, Name: sanitizeName(strings.ReplaceAll(it.Service, "_", "-")),
+		owner := plannedAppName(plan, it.WorkerOf)
+		if err := putWorker(workerRow{ID: randToken()[:12], App: owner, Team: team, Name: workerName(it.Service),
 			Command: shellJoin(it.Command), Replicas: it.Replicas, Created: time.Now().Unix()}); err != nil {
 			undo()
 			return err
@@ -533,11 +532,15 @@ type stackMember struct {
 type stackView struct {
 	Name    string        `json:"name"`
 	Created int64         `json:"created"`
+	FromGit bool          `json:"fromGit,omitempty"`
 	Members []stackMember `json:"members"`
 }
 
 func (p *Panel) viewStack(name string, created int64) stackView {
 	v := stackView{Name: name, Created: created, Members: []stackMember{}}
+	if r, ok := getStackRecord(name); ok {
+		v.FromGit = r.CloneURL != ""
+	}
 	for _, d := range stackDatabases(name) {
 		v.Members = append(v.Members, stackMember{Service: d.Alias, App: d.Name, Kind: "database", Engine: d.Engine, State: p.eng.State(d.Container)})
 	}
@@ -573,7 +576,7 @@ func (p *Panel) handleStackPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
-	s, err := loadStack(ctx, req, team)
+	s, err := loadStack(ctx, req, team, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -620,7 +623,7 @@ func (p *Panel) handleStacks(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 		defer cancel()
-		s, err := loadStack(ctx, req, team)
+		s, err := loadStack(ctx, req, team, false)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -631,7 +634,7 @@ func (p *Panel) handleStacks(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(viewPlan(s.plan))
 			return
 		}
-		if err := p.createStack(s, team, req.Token); err != nil {
+		if err := p.createStack(s, team, req.Token, req.Vars); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
