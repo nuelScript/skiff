@@ -15,7 +15,7 @@
 - **Less infrastructure overhead:** automatic HTTPS, domain routing, managed databases, backups and a control panel.
 - **More control:** your server, your data, ordinary containers, and open source.
 
- One small Go binary detects your stack, builds it, and runs it on Docker, local or over SSH.
+One small Go binary detects your stack, builds it, and runs it on Docker, local or over SSH.
 
 ```
 $ skiff deploy
