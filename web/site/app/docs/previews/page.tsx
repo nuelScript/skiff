@@ -38,7 +38,7 @@ export default function Previews() {
         </Step>
       </Steps>
       <p>
-        You can also create one by hand from the project&apos;s <strong>Previews</strong> tab for
+        You can also create one by hand from the project&apos;s <strong>Deployments</strong> tab for
         any branch.
       </p>
 
@@ -118,7 +118,7 @@ export default function Previews() {
       <p>
         Deleting a branch removes its previews: containers, images and routes. If your repository
         deletes branches when a pull request merges, previews take care of themselves. You can also
-        remove one from the <strong>Previews</strong> tab at any time.
+        remove one from the <strong>Deployments</strong> tab at any time.
       </p>
     </article>
   );
