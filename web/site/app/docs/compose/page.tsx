@@ -44,6 +44,28 @@ skiff compose plan -f deploy/compose.yml --name shop`}</CodeBlock>
         </Step>
       </Steps>
 
+      <h2>Change a stack</h2>
+      <p>
+        Edit your Compose file, then choose <strong>Update</strong> on the stack. Skiff lists what would
+        be added, changed and removed, and only the services that changed are redeployed. Values you
+        entered earlier are remembered, encrypted, so it only asks for new ones.
+      </p>
+      <ul>
+        <li>
+          <strong>Deleting data needs your OK.</strong> Removing a database, a volume or an app with a
+          volume is only applied once you confirm it.
+        </li>
+        <li>
+          <strong>Database images and credentials can&apos;t be changed this way.</strong> A new password
+          or major version doesn&apos;t apply to existing data, so Skiff refuses the update and explains
+          why. To change one, back up and restore into a new database service.
+        </li>
+        <li>
+          <strong>Your file wins.</strong> Settings or environment variables you changed in the dashboard
+          are replaced if they differ from the file, and the update lists them first.
+        </li>
+      </ul>
+
       <h2>What each service becomes</h2>
       <ul>
         <li>
@@ -88,11 +110,11 @@ skiff compose plan -f deploy/compose.yml --name shop`}</CodeBlock>
       </ul>
 
       <Callout>
-        A stack is created once from your file. With GitHub connected, pushing code redeploys the apps
-        that build from your repository, but later changes to the Compose file itself aren&apos;t
-        applied yet, and previews aren&apos;t available for a stack&apos;s services. A stack&apos;s
-        services also can&apos;t reach your team&apos;s other databases and buckets yet. An access token
-        is only used to create the stack, so connect GitHub for private repositories.
+        With GitHub connected, pushing code redeploys the apps that build from your repository. Changes
+        to the Compose file itself wait until you apply them with <strong>Update</strong>. Previews
+        aren&apos;t available for a stack&apos;s services, and they can&apos;t reach your team&apos;s other
+        databases and buckets yet. An access token is only used when you create or update the stack, so
+        connect GitHub for private repositories.
       </Callout>
     </article>
   );

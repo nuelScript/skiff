@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Layers, Plus, Trash2 } from 'lucide-react'
+import { Layers, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -22,6 +22,7 @@ import {
   type StackRequest,
 } from '@/services/api.service'
 import { stackSchema, type StackInput } from '@/validations/stack'
+import { StackUpdateDialog } from './stack-update-dialog'
 
 function describeItem(it: StackPlanItem) {
   if (it.kind === 'database') return `Managed ${it.engine} database, with daily backups`
@@ -227,6 +228,7 @@ function StackCard({ stack }: { stack: Stack }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const [error, setError] = useState('')
+  const [updating, setUpdating] = useState(false)
 
   const remove = async () => {
     if (
@@ -253,6 +255,13 @@ function StackCard({ stack }: { stack: Stack }) {
       <header className="flex items-center gap-3 border-b border-foreground/5 p-4">
         <Layers className="text-muted-foreground h-4 w-4 shrink-0" />
         <h2 className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{stack.name}</h2>
+        <button
+          onClick={() => setUpdating(true)}
+          className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] border border-foreground/12 px-2.5 py-1 text-xs transition hover:border-foreground/25"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Update
+        </button>
         <button onClick={remove} title="Delete stack" className="text-muted-foreground p-1.5 transition hover:text-danger">
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -281,6 +290,7 @@ function StackCard({ stack }: { stack: Stack }) {
         })}
       </ul>
       {error && <p className="p-3 text-xs text-danger">{error}</p>}
+      <StackUpdateDialog stack={stack} open={updating} onOpenChange={setUpdating} />
     </section>
   )
 }

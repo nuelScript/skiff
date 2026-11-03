@@ -42,9 +42,28 @@ export type StackMember = {
   public?: boolean
 }
 
+export type StackChange = {
+  service: string
+  kind: 'app' | 'worker' | 'database'
+  action: 'add' | 'update' | 'remove'
+  details?: string[]
+  deletesData?: boolean
+}
+
+export type StackChanges = {
+  stack: string
+  fromGit: boolean
+  changes: StackChange[]
+  problems: string[]
+  notes: string[]
+  unset: string[]
+  deletesData: boolean
+}
+
 export type Stack = {
   name: string
   created: number
+  fromGit?: boolean
   members: StackMember[]
 }
 
@@ -59,6 +78,14 @@ class StacksService extends BaseService {
 
   create(req: StackRequest) {
     return this.post<StackPlan>('/stacks', req)
+  }
+
+  changes(req: StackRequest) {
+    return this.post<StackChanges>('/stacks/changes', req)
+  }
+
+  update(req: StackRequest & { allowDataLoss: boolean }) {
+    return this.post<StackChanges>('/stacks/update', req)
   }
 
   remove(name: string) {
