@@ -88,10 +88,11 @@ skiff compose plan -f deploy/compose.yml --name shop`}</CodeBlock>
       </ul>
 
       <Callout>
-        A stack is created once from your file. Pushing code redeploys the apps that build from your
-        repository, but later changes to the Compose file itself aren&apos;t applied yet, and previews
-        aren&apos;t available for a stack&apos;s services. A stack&apos;s services also can&apos;t reach
-        your team&apos;s other databases and buckets yet.
+        A stack is created once from your file. With GitHub connected, pushing code redeploys the apps
+        that build from your repository, but later changes to the Compose file itself aren&apos;t
+        applied yet, and previews aren&apos;t available for a stack&apos;s services. A stack&apos;s
+        services also can&apos;t reach your team&apos;s other databases and buckets yet. An access token
+        is only used to create the stack, so connect GitHub for private repositories.
       </Callout>
     </article>
   );

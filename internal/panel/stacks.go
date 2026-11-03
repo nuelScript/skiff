@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -168,6 +169,11 @@ func loadStack(ctx context.Context, req stackRequest, team string) (*stackSource
 		if b, err := cl.CombinedOutput(); err != nil {
 			return nil, errors.New("couldn't clone the repository: " + cloneError(b))
 		}
+		if out.branch == "" {
+			if b, err := exec.CommandContext(ctx, "git", "-C", work, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+				out.branch = strings.TrimSpace(string(b))
+			}
+		}
 		within := func(p string) string { return filepath.Join(work, filepath.Clean("/"+p)) }
 		out.path = strings.TrimSpace(req.Path)
 		if out.path == "" {
@@ -271,6 +277,16 @@ func stackTeam(name string) (string, bool) {
 	return team, true
 }
 
+var githubURL = regexp.MustCompile(`^https?://github\.com/([^/\s]+/[^/\s]+?)(?:\.git)?/?$`)
+
+// githubRepo is the owner/name that push webhooks match on; other hosts have none.
+func githubRepo(cloneURL string) string {
+	if m := githubURL.FindStringSubmatch(cloneURL); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 // shellJoin rebuilds a command for workers, which run through sh -c.
 func shellJoin(args []string) string {
 	out := make([]string, len(args))
@@ -301,7 +317,7 @@ func stackSourceFor(s *stackSource, team string, it compose.Item) Source {
 		}
 	}
 	if it.Build != nil {
-		src.CloneURL, src.Branch, src.Auto = s.cloneURL, s.branch, true
+		src.CloneURL, src.Branch, src.Auto, src.Repo = s.cloneURL, s.branch, true, githubRepo(s.cloneURL)
 		src.RootDir = strings.TrimPrefix(filepath.Clean(filepath.Join(s.dir, it.Build.Context)), "/")
 		src.Dockerfile = it.Build.Dockerfile
 	} else {
@@ -424,7 +440,7 @@ func (p *Panel) createStack(s *stackSource, team, token string) error {
 		_ = p.eng.RemoveNetwork(stackNetwork(plan.Stack))
 	}
 	if _, err := sqlDB.Exec(`INSERT INTO stacks(name,team,repo,branch,path,clone_url,created) VALUES(?,?,?,?,?,?,?)`,
-		plan.Stack, team, "", s.branch, s.path, s.cloneURL, time.Now().Unix()); err != nil {
+		plan.Stack, team, githubRepo(s.cloneURL), s.branch, s.path, s.cloneURL, time.Now().Unix()); err != nil {
 		return err
 	}
 	for _, it := range plan.Items {
