@@ -333,25 +333,25 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			Command:       cfg.Deploy.Command,
 		})
 		if err != nil {
+			crashed := keptExiting(eng, container)
+			output := lastOutput(eng, container)
+			_ = eng.Remove(container)
 			rollback()
 			ui.Fail("Couldn't start container")
+			showOutput(output)
+			if crashed {
+				ui.Note("The app kept exiting, so it never answered.")
+			}
 			return err
 		}
 		if err := health.WaitMode(cfg.Deploy.HealthMode, healthHost, hostPort, cfg.Deploy.HealthPath, timeout); err != nil {
-			crashed := eng.State(container) != "running"
+			crashed := keptExiting(eng, container)
 			output := lastOutput(eng, container)
 			_ = eng.Remove(container)
 			rollback()
 			ui.Fail("New version never became healthy — rolled back")
 			ui.Note(err.Error())
-			if output != "" {
-				ui.Note("Last output from the app:")
-				for _, line := range strings.Split(output, "\n") {
-					ui.Note("  " + line)
-				}
-			} else {
-				ui.Note("The app printed nothing.")
-			}
+			showOutput(output)
 			if crashed {
 				ui.Note("The app kept exiting, so it never answered.")
 			} else if cfg.Deploy.HealthPath != "" {
@@ -438,6 +438,9 @@ func shortID() string {
 
 // lastOutput reads a failed container's output before it's removed, because this is the only chance to.
 func lastOutput(eng *docker.Engine, container string) string {
+	if eng.State(container) == "missing" {
+		return ""
+	}
 	var buf bytes.Buffer
 	_ = eng.Logs(container, false, "30", &buf)
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
@@ -447,4 +450,21 @@ func lastOutput(eng *docker.Engine, container string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func showOutput(output string) {
+	if output == "" {
+		ui.Note("The app printed nothing.")
+		return
+	}
+	ui.Note("Last output from the app:")
+	for _, line := range strings.Split(output, "\n") {
+		ui.Note("  " + line)
+	}
+}
+
+// keptExiting checks restarts as well as state, because a crashing app is briefly running between attempts.
+func keptExiting(eng *docker.Engine, container string) bool {
+	state := eng.State(container)
+	return state != "missing" && (state != "running" || eng.Restarts(container) > 1)
 }
