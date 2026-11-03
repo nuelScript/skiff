@@ -279,11 +279,7 @@ func TestMissingVariablesBlockTheStack(t *testing.T) {
 
 func TestMissingPasswordOnlyAsksForIt(t *testing.T) {
 	const file = "services:\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_PASSWORD: ${DB_PASSWORD}\n"
-	f, err := Parse([]byte(file), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, n := range BuildPlan("shop", f, nil).Notes {
+	for _, n := range plan(t, file).Notes {
 		if strings.Contains(n, "generates one") {
 			t.Fatalf("told to enter a password and that one will be generated: %q", n)
 		}
