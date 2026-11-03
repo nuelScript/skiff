@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -337,11 +338,23 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			return err
 		}
 		if err := health.WaitMode(cfg.Deploy.HealthMode, healthHost, hostPort, cfg.Deploy.HealthPath, timeout); err != nil {
+			crashed := eng.State(container) != "running"
+			output := lastOutput(eng, container)
 			_ = eng.Remove(container)
 			rollback()
 			ui.Fail("New version never became healthy — rolled back")
 			ui.Note(err.Error())
-			if cfg.Deploy.HealthPath != "" {
+			if output != "" {
+				ui.Note("Last output from the app:")
+				for _, line := range strings.Split(output, "\n") {
+					ui.Note("  " + line)
+				}
+			} else {
+				ui.Note("The app printed nothing.")
+			}
+			if crashed {
+				ui.Note("The app kept exiting, so it never answered.")
+			} else if cfg.Deploy.HealthPath != "" {
 				ui.Note(fmt.Sprintf("%s must answer 2xx or 3xx on 0.0.0.0:%d (the `port` in skiff.toml)", cfg.Deploy.HealthPath, cfg.Build.Port))
 			} else {
 				ui.Note(fmt.Sprintf("the app must listen on 0.0.0.0:%d (the `port` in skiff.toml) and answer HTTP", cfg.Build.Port))
@@ -421,4 +434,17 @@ func shortID() string {
 		return fmt.Sprintf("%d", time.Now().UnixNano()%1_000_000)
 	}
 	return hex.EncodeToString(b)
+}
+
+// lastOutput reads a failed container's output before it's removed, because this is the only chance to.
+func lastOutput(eng *docker.Engine, container string) string {
+	var buf bytes.Buffer
+	_ = eng.Logs(container, false, "30", &buf)
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	for i, line := range lines {
+		if len(line) > 500 {
+			lines[i] = line[:500] + "…"
+		}
+	}
+	return strings.Join(lines, "\n")
 }
