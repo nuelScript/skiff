@@ -14,7 +14,7 @@ const groups: { title: string; rows: [string, string, string][] }[] = [
       ["GET", "/apps", "List the team's apps."],
       ["GET", "/apps/{name}", "One app: state, address, replicas and latest commit."],
       ["GET", "/apps/{name}/logs", "Recent output. Add ?lines= up to 2000. The default is 200."],
-      ["GET", "/apps/{name}/insights", "Traffic and uptime. Add ?range=, which defaults to 24h."],
+      ["GET", "/apps/{name}/insights", "Traffic and uptime. Add ?range= with 1h, 24h or 7d. The default is 24h."],
     ],
   },
   {
@@ -54,7 +54,7 @@ export default function ApiReference() {
 
       <h2>Authentication</h2>
       <p>
-        Create an API token in the dashboard under <strong>Settings</strong>, and send it as a bearer
+        Create an API token in the dashboard under <strong>Settings → Integrations</strong>, and send it as a bearer
         token. It can reach everything in the team that created it, including environment variables,
         so treat it like a password.
       </p>

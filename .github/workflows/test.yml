@@ -24,7 +24,7 @@ jobs:
           token: not-a-real-token
           app: nothing
       - name: The step must fail, because the server can't be reached
-        run: test "\${{ steps.unreachable.outcome }}" = failure
+        run: test "${{ steps.unreachable.outcome }}" = failure
 
   test:
     runs-on: ubuntu-latest

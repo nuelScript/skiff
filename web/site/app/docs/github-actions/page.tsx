@@ -22,7 +22,7 @@ export default function GithubActions() {
       <h2>Set it up</h2>
       <Steps>
         <Step n={1} title="Create an API token">
-          In the dashboard, open <strong>Settings</strong> and create an API token. It can reach
+          In the dashboard, open <strong>Settings → Integrations</strong> and create one. It can reach
           everything in that team.
         </Step>
         <Step n={2} title="Add two repository secrets">
