@@ -71,7 +71,8 @@ jobs:
       <p>
         Create a preview of the branch, run your tests against its address, then remove it. Each preview
         gets empty copies of its project&apos;s volumes and uses the project&apos;s environment variables,
-        so <a href="/docs/previews">point it at a test database</a> rather than production.
+        so <a href="/docs/previews">give previews their own database</a> to keep tests away from
+        production.
       </p>
       <CodeBlock label=".github/workflows/preview.yml">{`on: pull_request
 

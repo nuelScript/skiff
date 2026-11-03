@@ -183,6 +183,10 @@ func (p *Panel) apiCreatePreview(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusConflict, cliOnlyMsg)
 		return
 	}
+	if src.Stack != "" {
+		apiErr(w, http.StatusConflict, "previews of a Compose stack's services aren't supported yet")
+		return
+	}
 	if src.Image != "" {
 		apiErr(w, http.StatusConflict, "previews deploy a branch of a repository; this app runs a prebuilt image")
 		return
