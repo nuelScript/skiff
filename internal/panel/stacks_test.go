@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -128,6 +129,21 @@ func TestDiffStack(t *testing.T) {
 	s.plan.Items[0].DBPassword = ""
 	if _, problems := diffStack(s, "t", cur); len(problems) != 0 {
 		t.Errorf("no password in the file: %v", problems)
+	}
+}
+
+func TestHoldReason(t *testing.T) {
+	if got := holdReason(stackChangesView{Changes: []StackChange{{Service: "api", Action: "update"}, {Service: "w", Action: "remove"}}}, nil); got != "" {
+		t.Errorf("safe changes should apply: %q", got)
+	}
+	if got := holdReason(stackChangesView{Changes: []StackChange{{Service: "db", Action: "remove", DeletesData: true}}, DeletesData: true}, nil); !strings.Contains(got, "delete data in db") {
+		t.Errorf("deleting data: %q", got)
+	}
+	if got := holdReason(stackChangesView{Problems: []string{"X needs a value"}}, nil); got != "X needs a value" {
+		t.Errorf("problems: %q", got)
+	}
+	if got := holdReason(stackChangesView{}, errors.New("bad yaml")); !strings.Contains(got, "bad yaml") {
+		t.Errorf("unreadable file: %q", got)
 	}
 }
 

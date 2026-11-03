@@ -75,6 +75,7 @@ var migrations = []string{
 	`ALTER TABLE databases ADD COLUMN stack TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE databases ADD COLUMN alias TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE stacks ADD COLUMN vars TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE stacks ADD COLUMN held TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN sleep_after INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sources ADD COLUMN health_path TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN health_timeout INTEGER NOT NULL DEFAULT 0`,
@@ -394,7 +395,8 @@ CREATE TABLE IF NOT EXISTS stacks (
   path      TEXT NOT NULL DEFAULT '',
   clone_url TEXT NOT NULL DEFAULT '',
   created   INTEGER NOT NULL,
-  vars      TEXT NOT NULL DEFAULT ''
+  vars      TEXT NOT NULL DEFAULT '',
+  held      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS volume_backups (
   id          TEXT PRIMARY KEY,

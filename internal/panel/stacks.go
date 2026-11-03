@@ -19,6 +19,7 @@ import (
 	"github.com/nuelScript/skiff/internal/compose"
 	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/github"
 )
 
 func stackNetwork(stack string) string { return "skiff-s-" + sanitizeName(stack) }
@@ -159,6 +160,12 @@ func loadStack(ctx context.Context, req stackRequest, team string, updating bool
 		auth := git
 		if req.Token != "" {
 			auth = injectToken(git, req.Token)
+		} else if githubRepo(git) != "" {
+			if gh := github.Load(); gh.Installed() {
+				if u, err := gh.CloneURLWithToken(git); err == nil {
+					auth = u
+				}
+			}
 		}
 		args := []string{"clone", "--depth", "1"}
 		if out.branch != "" {
@@ -498,12 +505,12 @@ func (p *Panel) createStack(s *stackSource, team, token string, vars map[string]
 	if token != "" && s.cloneURL != "" {
 		auth = injectToken(s.cloneURL, token)
 	}
-	go guard("deployStack", func() { p.deployStack(dbs, apps, auth) })
+	go guard("deployStack", func() { p.deployStack(dbs, apps, auth, stackDeploy{trigger: "manual"}) })
 	return nil
 }
 
 // deployStack waits for databases, then deploys apps one at a time in dependency order.
-func (p *Panel) deployStack(dbs []dbRow, apps []Source, auth string) {
+func (p *Panel) deployStack(dbs []dbRow, apps []Source, auth string, why stackDeploy) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	for _, d := range dbs {
@@ -516,9 +523,12 @@ func (p *Panel) deployStack(dbs []dbRow, apps []Source, auth string) {
 		if src.CloneURL == "" {
 			a = ""
 		}
-		p.runDeploy(src, a, "", "", "manual", newDeployID())
+		p.runDeploy(src, a, why.commit, why.message, why.trigger, newDeployID())
 	}
 }
+
+// stackDeploy says why a stack's apps are deploying, for their history.
+type stackDeploy struct{ commit, message, trigger string }
 
 type stackMember struct {
 	Service string `json:"service"`
@@ -530,16 +540,18 @@ type stackMember struct {
 }
 
 type stackView struct {
-	Name    string        `json:"name"`
-	Created int64         `json:"created"`
-	FromGit bool          `json:"fromGit,omitempty"`
+	Name    string `json:"name"`
+	Created int64  `json:"created"`
+	FromGit bool   `json:"fromGit,omitempty"`
+	// Held explains why the latest push's Compose changes are waiting for someone to apply them.
+	Held    string        `json:"held,omitempty"`
 	Members []stackMember `json:"members"`
 }
 
 func (p *Panel) viewStack(name string, created int64) stackView {
 	v := stackView{Name: name, Created: created, Members: []stackMember{}}
 	if r, ok := getStackRecord(name); ok {
-		v.FromGit = r.CloneURL != ""
+		v.FromGit, v.Held = r.CloneURL != "", r.Held
 	}
 	for _, d := range stackDatabases(name) {
 		v.Members = append(v.Members, stackMember{Service: d.Alias, App: d.Name, Kind: "database", Engine: d.Engine, State: p.eng.State(d.Container)})

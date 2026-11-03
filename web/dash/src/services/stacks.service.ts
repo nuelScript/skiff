@@ -64,6 +64,7 @@ export type Stack = {
   name: string
   created: number
   fromGit?: boolean
+  held?: string
   members: StackMember[]
 }
 

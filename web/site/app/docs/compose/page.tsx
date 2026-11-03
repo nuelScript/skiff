@@ -46,9 +46,12 @@ skiff compose plan -f deploy/compose.yml --name shop`}</CodeBlock>
 
       <h2>Change a stack</h2>
       <p>
-        Edit your Compose file, then choose <strong>Update</strong> on the stack. Skiff lists what would
-        be added, changed and removed, and only the services that changed are redeployed. Values you
-        entered earlier are remembered, encrypted, so it only asks for new ones.
+        For a stack from a GitHub repository, push your Compose file. Safe changes apply on their own,
+        and only the services that changed are redeployed. A push that would delete data, or that has a
+        problem, waits for you: the stack shows why, you get an alert, and new code still deploys with
+        the current settings. Review those with <strong>Update</strong>. For a pasted file, or another
+        Git host, use <strong>Update</strong> for every change. Values you entered earlier are remembered,
+        encrypted, so it only asks for new ones.
       </p>
       <ul>
         <li>
@@ -110,11 +113,9 @@ skiff compose plan -f deploy/compose.yml --name shop`}</CodeBlock>
       </ul>
 
       <Callout>
-        With GitHub connected, pushing code redeploys the apps that build from your repository. Changes
-        to the Compose file itself wait until you apply them with <strong>Update</strong>. Previews
-        aren&apos;t available for a stack&apos;s services, and they can&apos;t reach your team&apos;s other
-        databases and buckets yet. An access token is only used when you create or update the stack, so
-        connect GitHub for private repositories.
+        Previews aren&apos;t available for a stack&apos;s services, and they can&apos;t reach your team&apos;s
+        other databases and buckets yet. Pushes only reach Skiff with GitHub connected, and an access token
+        is only used when you create or update the stack, so connect GitHub for private repositories.
       </Callout>
     </article>
   );

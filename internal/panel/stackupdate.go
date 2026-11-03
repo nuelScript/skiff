@@ -13,19 +13,20 @@ import (
 
 	"github.com/nuelScript/skiff/internal/compose"
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/github"
 	"github.com/nuelScript/skiff/internal/seal"
 )
 
 type stackRecord struct {
-	Name, Team, Branch, Path, CloneURL string
-	Vars                               map[string]string
+	Name, Team, Branch, Path, CloneURL, Held string
+	Vars                                     map[string]string
 }
 
 func getStackRecord(name string) (stackRecord, bool) {
 	r := stackRecord{Name: name, Vars: map[string]string{}}
 	var sealed string
-	if sqlDB.QueryRow(`SELECT team,branch,path,clone_url,vars FROM stacks WHERE name=?`, name).
-		Scan(&r.Team, &r.Branch, &r.Path, &r.CloneURL, &sealed) != nil {
+	if sqlDB.QueryRow(`SELECT team,branch,path,clone_url,vars,held FROM stacks WHERE name=?`, name).
+		Scan(&r.Team, &r.Branch, &r.Path, &r.CloneURL, &sealed, &r.Held) != nil {
 		return stackRecord{}, false
 	}
 	if seal.OpenAll(&sealed) == nil && sealed != "" {
@@ -364,7 +365,7 @@ func (p *Panel) handleStackUpdate(w http.ResponseWriter, r *http.Request) {
 	for k, v := range req.Vars {
 		merged[k] = v
 	}
-	if err := p.applyStackChanges(s, team, req.Token, merged, view.Changes); err != nil {
+	if err := p.applyStackChanges(s, team, req.Token, merged, view.Changes, nil, stackDeploy{trigger: "manual"}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -373,13 +374,13 @@ func (p *Panel) handleStackUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 // applyStackChanges adds first and removes last, so a failure partway leaves everything that was running in place. Only services that changed are redeployed.
-func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[string]string, changes []StackChange) error {
+func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[string]string, changes []StackChange, alsoDeploy []Source, why stackDeploy) error {
 	stack := s.plan.Stack
 	sealedVars, err := sealStackVars(vars)
 	if err != nil {
 		return err
 	}
-	if _, err := sqlDB.Exec(`UPDATE stacks SET vars=? WHERE name=?`, sealedVars, stack); err != nil {
+	if _, err := sqlDB.Exec(`UPDATE stacks SET vars=?, held='' WHERE name=?`, sealedVars, stack); err != nil {
 		return err
 	}
 	action := map[string]string{}
@@ -437,6 +438,12 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 		order = append(order, want)
 	}
 
+	for _, src := range alsoDeploy {
+		if !slices.ContainsFunc(order, func(o Source) bool { return o.App == src.App }) {
+			order = append(order, src)
+		}
+	}
+
 	workersChanged := map[string]bool{}
 	for _, it := range s.plan.Items {
 		if it.Kind != compose.KindWorker || action["worker/"+it.Service] == "" {
@@ -478,7 +485,7 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 		}
 	}
 	go guard("updateStack", func() {
-		p.deployStack(newDBs, order, auth)
+		p.deployStack(newDBs, order, auth, why)
 		for app := range workersChanged {
 			if !slices.ContainsFunc(order, func(s Source) bool { return s.App == app }) {
 				p.reconcileWorkers(app)
@@ -492,4 +499,70 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 		}
 	})
 	return nil
+}
+
+func stacksForPush(repo, branch string) []string {
+	rows, err := sqlDB.Query(`SELECT name FROM stacks WHERE repo=? AND repo<>'' AND (branch='' OR branch=?)`, repo, branch)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// holdReason says why a push's Compose changes shouldn't apply on their own. A commit must never delete data or break a service unattended.
+func holdReason(view stackChangesView, err error) string {
+	switch {
+	case err != nil:
+		return "Skiff couldn't read the Compose file: " + err.Error()
+	case len(view.Problems) > 0:
+		return view.Problems[0]
+	case view.DeletesData:
+		var names []string
+		for _, c := range view.Changes {
+			if c.DeletesData {
+				names = append(names, c.Service)
+			}
+		}
+		return "This would delete data in " + strings.Join(names, ", ") + ", so it needs your confirmation."
+	}
+	return ""
+}
+
+// syncStackOnPush applies safe Compose changes from a push and deploys apps whose code changed. Changes it won't make alone wait for someone to apply them, while the new code still deploys with the current settings.
+func (p *Panel) syncStackOnPush(name string, push github.Push) {
+	rec, ok := getStackRecord(name)
+	if !ok {
+		return
+	}
+	var built []Source
+	for _, src := range stackApps(name) {
+		if src.Auto && touched(push.Paths, src.RootDir) {
+			built = append(built, src)
+		}
+	}
+	why := stackDeploy{commit: push.Commit, message: push.Message, trigger: "push"}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	s, loaded, view, err := loadStackUpdate(ctx, stackRequest{Name: name}, rec.Team)
+	if reason := holdReason(view, err); reason != "" {
+		_, _ = sqlDB.Exec(`UPDATE stacks SET held=? WHERE name=?`, reason, name)
+		recordAudit(rec.Team, AuditEntry{Actor: "push", Action: "stack.held", Target: name, Detail: shortCommit(push.Commit)})
+		go dispatchAlert(alertEvent{Team: rec.Team, Kind: "stack.held", App: name,
+			Title:  "Changes to " + name + " are waiting for you",
+			Detail: reason})
+		p.deployStack(nil, built, "", why)
+		return
+	}
+	recordAudit(rec.Team, AuditEntry{Actor: "push", Action: "stack.update", Target: name, Detail: fmt.Sprintf("%s: %d change(s)", shortCommit(push.Commit), len(view.Changes))})
+	if err := p.applyStackChanges(s, rec.Team, "", loaded.Vars, view.Changes, built, why); err != nil {
+		_, _ = sqlDB.Exec(`UPDATE stacks SET held=? WHERE name=?`, "Applying the latest push failed: "+err.Error(), name)
+	}
 }

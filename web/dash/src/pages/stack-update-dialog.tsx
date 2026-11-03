@@ -88,7 +88,8 @@ export function StackUpdateDialog({
         <div className="flex flex-col gap-4">
           {stack.fromGit ? (
             <p className="text-muted-foreground text-sm">
-              Compares the Compose file in your repository with what's running.
+              Compares the Compose file in your repository with what's running. Safe changes apply when you
+              push, so this is for changes that need your confirmation.
             </p>
           ) : (
             <Field>
@@ -140,6 +141,7 @@ export function StackUpdateDialog({
                     </span>{' '}
                     <span className="font-mono">{c.service}</span>{' '}
                     <span className="text-muted-foreground text-xs">{c.kind}</span>
+                    {c.deletesData && <span className="text-xs text-danger"> · deletes data</span>}
                   </p>
                   {c.details?.map((d) => (
                     <p key={d} className="text-muted-foreground mt-0.5 text-xs">

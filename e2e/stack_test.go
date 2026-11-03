@@ -3,6 +3,10 @@
 package e2e
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/db"
 )
 
 const stackFile = `
@@ -565,4 +571,184 @@ func TestComposeStackUpdate(t *testing.T) {
 		t.Fatalf("removing the database: %d %s", code, msg)
 	}
 	eventually(t, time.Minute, func() bool { return dbCtr() == "" })
+}
+
+// TestComposeStackFollowsPushes sends signed GitHub webhooks: safe changes apply on their own, and ones that would delete data wait.
+func TestComposeStackFollowsPushes(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	bin := filepath.Join(root, "skiff")
+	run(t, "", nil, "go", "build", "-o", bin, "..")
+	repo, pushRepo := gitServer(t, root)
+	work := filepath.Join(root, "work")
+	write := func(path, content string) {
+		t.Helper()
+		full := filepath.Join(work, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dockerfile := func(page string) string {
+		return "FROM busybox:1.36\nRUN mkdir /www && echo " + page + " > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"3000\", \"-h\", \"/www\"]\n"
+	}
+	composeFile := func(env string, withVolume, withJobs bool) string {
+		f := "services:\n  web:\n    build: ./api\n    ports: [\"3000\"]\n    environment: {NOTE: " + env + "}\n"
+		if withVolume {
+			f += "    volumes: [data:/data]\n"
+		}
+		if withJobs {
+			f += "  jobs:\n    image: alpine:3.20\n    command: sleep 100000\n"
+		}
+		return f
+	}
+	write("api/Dockerfile", dockerfile("page-one"))
+	write("compose.yml", composeFile("first", true, false))
+	pushRepo("v1")
+
+	protectExisting(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".skiff"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const hookSecret = "hook-secret"
+	if err := os.WriteFile(filepath.Join(home, ".skiff", "github.json"), []byte(`{"id":1,"pem":"x","webhook_secret":"`+hookSecret+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	panel := freeAddr(t)
+	start(t, []string{"HOME=" + home, "SKIFF_PANEL_PASSWORD=e2e-setup", "SKIFF_ALLOW_PRIVATE_ENDPOINTS=1"}, bin, "panel", "--addr", panel, "--domain", "localhost")
+	waitHTTP(t, "http://"+panel+"/api/me")
+	c := client(t)
+	post(t, c, "http://"+panel+"/api/auth/setup", `{"secret":"e2e-setup","email":"e2e@example.com","name":"E2E","password":"e2e-password-1"}`)
+
+	base := "http://" + panel + "/api/stacks"
+	const stack = "e2e-hook"
+	t.Cleanup(func() {
+		req, _ := http.NewRequest(http.MethodDelete, base+"?name="+stack, nil)
+		if resp, err := c.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	})
+	resp, err := c.Post(base, "application/json", strings.NewReader(fmt.Sprintf(`{"name":%q,"git":%q}`, stack, repo)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d %s", resp.StatusCode, msg)
+	}
+	web := func() string {
+		out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.app="+stack+"-web").Output()
+		return strings.TrimSpace(string(out))
+	}
+	eventually(t, 2*time.Minute, func() bool { return web() != "" })
+
+	// The test server's URL isn't github.com, so give the stack the name a webhook would carry.
+	store, err := db.OpenAt(filepath.Join(home, ".skiff", "skiff.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.Exec(`UPDATE stacks SET repo='acme/shop', branch='main' WHERE name=?`, stack); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Exec(`UPDATE sources SET repo='acme/shop', branch='main' WHERE stack=?`, stack); err != nil {
+		t.Fatal(err)
+	}
+
+	hook := func() {
+		t.Helper()
+		body := []byte(`{"ref":"refs/heads/main","after":"","repository":{"full_name":"acme/shop"},"head_commit":{"message":"change","added":[],"modified":[],"removed":[]}}`)
+		mac := hmac.New(sha256.New, []byte(hookSecret))
+		mac.Write(body)
+		req, _ := http.NewRequest(http.MethodPost, "http://"+panel+"/api/github/hook", bytes.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "push")
+		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("webhook: %d", resp.StatusCode)
+		}
+	}
+	env := func(key string) string {
+		id := web()
+		if id == "" {
+			return ""
+		}
+		out, _ := exec.Command("docker", "exec", id, "printenv", key).Output()
+		return strings.TrimSpace(string(out))
+	}
+	page := func() string {
+		id := web()
+		if id == "" {
+			return ""
+		}
+		out, _ := exec.Command("docker", "exec", id, "cat", "/www/index.html").Output()
+		return strings.TrimSpace(string(out))
+	}
+	held := func() string {
+		var list []struct{ Name, Held string }
+		getJSON(t, c, base, &list)
+		for _, s := range list {
+			if s.Name == stack {
+				return s.Held
+			}
+		}
+		return ""
+	}
+	dockerExec(t, web(), "echo precious > /data/file")
+
+	// A safe change applies from the push alone, including a new service.
+	write("compose.yml", composeFile("second", true, true))
+	pushRepo("v2")
+	hook()
+	eventually(t, 2*time.Minute, func() bool {
+		out, _ := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.app="+stack+"-jobs").Output()
+		return env("NOTE") == "second" && strings.TrimSpace(string(out)) != ""
+	})
+	if got := dockerExec(t, web(), "cat /data/file"); got != "precious" {
+		t.Fatalf("the volume after a push: %q", got)
+	}
+	if got := held(); got != "" {
+		t.Fatalf("a safe change was held: %q", got)
+	}
+
+	// A push that would delete a volume waits, while its new code still deploys with the current settings.
+	write("api/Dockerfile", dockerfile("page-two"))
+	write("compose.yml", composeFile("third", false, true))
+	pushRepo("v3")
+	hook()
+	eventually(t, 2*time.Minute, func() bool { return page() == "page-two" })
+	if got := held(); !strings.Contains(got, "delete data in web") {
+		t.Fatalf("the push wasn't held: %q", got)
+	}
+	if got := env("NOTE"); got != "second" {
+		t.Fatalf("a held change was applied: NOTE=%q", got)
+	}
+	if got := dockerExec(t, web(), "cat /data/file"); got != "precious" {
+		t.Fatalf("a held push touched the volume: %q", got)
+	}
+
+	// Confirming it applies the change and clears the hold.
+	resp, err = c.Post(base+"/update", "application/json", strings.NewReader(fmt.Sprintf(`{"name":%q,"allowDataLoss":true}`, stack)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("update: %d %s", resp.StatusCode, msg)
+	}
+	eventually(t, 2*time.Minute, func() bool { return env("NOTE") == "third" })
+	if got := held(); got != "" {
+		t.Fatalf("the hold stayed: %q", got)
+	}
 }

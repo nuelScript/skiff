@@ -266,6 +266,13 @@ function StackCard({ stack }: { stack: Stack }) {
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </header>
+      {stack.held && (
+        <div className="border-b border-warning/20 bg-warning/5 px-4 py-3">
+          <p className="text-sm font-medium text-warning">Changes from your latest push are waiting</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">{stack.held}</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">Use Update to review and apply them. New code still deploys.</p>
+        </div>
+      )}
       <ul className="divide-y divide-foreground/5">
         {stack.members.map((m) => {
           const running = m.state === 'running'
