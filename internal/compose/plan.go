@@ -103,7 +103,7 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error)) *Pl
 	}
 	p.Unset = dedupe(f.Unset)
 	for _, v := range p.Unset {
-		p.Notes = append(p.Notes, fmt.Sprintf("%s has no value, so it's left empty", v))
+		p.Problems = append(p.Problems, fmt.Sprintf("%s needs a value. For one that can stay empty, write ${%s:-} in the file", v, v))
 	}
 
 	resolved := map[string]Service{}

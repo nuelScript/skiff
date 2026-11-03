@@ -258,3 +258,21 @@ func TestEnvFile(t *testing.T) {
 		t.Errorf("environment should win over env_file: %v", a.Env)
 	}
 }
+
+func TestMissingVariablesBlockTheStack(t *testing.T) {
+	src := "services:\n  a:\n    image: x\n    environment: {P: \"${SECRET}\", O: \"${OPTIONAL:-}\"}\n"
+	p := plan(t, src)
+	if len(p.Unset) != 1 || p.Unset[0] != "SECRET" {
+		t.Fatalf("unset: %v", p.Unset)
+	}
+	if !strings.Contains(strings.Join(p.Problems, "\n"), "SECRET needs a value") {
+		t.Fatalf("problems: %v", p.Problems)
+	}
+	f, err := Parse([]byte(src), func(k string) (string, bool) { return "v", k == "SECRET" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := BuildPlan("s", f, noFiles); len(got.Problems) != 0 {
+		t.Fatalf("with the value given: %v", got.Problems)
+	}
+}
