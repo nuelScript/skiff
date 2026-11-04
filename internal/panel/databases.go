@@ -493,6 +493,21 @@ func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// rejoinNetworks keeps the shared network to the founding team, whose apps deployed from the CLI still live there; anyone else's database would sit beside theirs.
+func rejoinNetworks(d dbRow, previous []string) []string {
+	shared := d.Team == foundingTeam() || d.Team == ""
+	out := make([]string, 0, len(previous)+1)
+	for _, n := range previous {
+		if n != dbNetwork {
+			out = append(out, n)
+		}
+	}
+	if shared {
+		out = append(out, dbNetwork)
+	}
+	return out
+}
+
 func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -548,7 +563,7 @@ func (p *Panel) handleDatabasePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Recreating drops the container's other networks; rejoin them so apps that reached it there still can.
-	for _, n := range append(prevNets, dbNetwork) {
+	for _, n := range rejoinNetworks(d, prevNets) {
 		if n != net {
 			_ = p.eng.ConnectNetwork(n, d.Container)
 		}
