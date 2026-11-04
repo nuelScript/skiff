@@ -171,10 +171,28 @@ func publicHTTPClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// extraBlocked are ranges net.IP doesn't call private: shared address space, protocol assignments, and the IPv6 forms that wrap an IPv4 address.
+var extraBlocked = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, c := range []string{"100.64.0.0/10", "192.0.0.0/24", "64:ff9b::/96", "2002::/16"} {
+		_, n, _ := net.ParseCIDR(c)
+		out = append(out, n)
+	}
+	return out
+}()
+
 func isBlockedDialIP(ip net.IP) bool {
-	return ip == nil || ip.IsLoopback() || ip.IsPrivate() ||
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast()
+		ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	for _, n := range extraBlocked {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func postJSON(url string, payload any) error {
