@@ -2,6 +2,8 @@ package panel
 
 import (
 	"database/sql"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -69,25 +71,35 @@ func logPath(app, id string) string {
 
 const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas,release,autoscale,scale_min,scale_max,scale_cpu,origin,sleep_after,health_path,health_timeout,image,memory_limit,cpu_limit,catalog`
 
+// errTeamMismatch is returned when a write would hand an existing project to another team.
+var errTeamMismatch = errors.New("an app with that name exists in another team")
+
 func putSource(s Source) error {
 	if s.Replicas < 1 {
 		s.Replicas = 1
 	}
-	_, err := sqlDB.Exec(`
+	res, err := sqlDB.Exec(`
 		INSERT INTO sources(`+sourceCols+`)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(app) DO UPDATE SET
-			team=excluded.team, repo=excluded.repo, branch=excluded.branch,
+			repo=excluded.repo, branch=excluded.branch,
 			root_dir=excluded.root_dir, port=excluded.port,
 			clone_url=excluded.clone_url, auto=excluded.auto, parent=excluded.parent,
 			preview_auto=excluded.preview_auto, replicas=excluded.replicas, release=excluded.release,
 			autoscale=excluded.autoscale, scale_min=excluded.scale_min, scale_max=excluded.scale_max, scale_cpu=excluded.scale_cpu,
 			origin=excluded.origin, sleep_after=excluded.sleep_after,
 			health_path=excluded.health_path, health_timeout=excluded.health_timeout, image=excluded.image,
-			memory_limit=excluded.memory_limit, cpu_limit=excluded.cpu_limit, catalog=excluded.catalog`,
+			memory_limit=excluded.memory_limit, cpu_limit=excluded.cpu_limit, catalog=excluded.catalog
+		WHERE sources.team=excluded.team`,
 		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent, b2i(s.PreviewAuto), s.Replicas, s.Release,
 		b2i(s.Autoscale), s.ScaleMin, s.ScaleMax, s.ScaleCPU, s.Origin, s.SleepAfter, s.HealthPath, s.HealthTimeout, s.Image, s.Memory, s.CPU, s.Catalog)
-	return err
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errTeamMismatch
+	}
+	return nil
 }
 
 func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
@@ -107,7 +119,7 @@ func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 }
 
 func productionAppsForRepo(repo string) []Source {
-	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent=''`, repo)
+	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent='' AND team=?`, repo, foundingTeam())
 	if err != nil {
 		return nil
 	}
@@ -170,7 +182,7 @@ func deleteSource(app string) {
 
 func sourcesForRepo(repo, branch string) []Source {
 	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources
-		WHERE auto=1 AND repo=? AND (branch='' OR branch=?)`, repo, branch)
+		WHERE auto=1 AND repo=? AND (branch='' OR branch=?) AND team=?`, repo, branch, foundingTeam())
 	if err != nil {
 		return nil
 	}
@@ -461,4 +473,11 @@ func deleteSession(token string) {
 
 func setSessionTeam(token, teamID string) {
 	_, _ = sqlDB.Exec(`UPDATE sessions SET team_id=? WHERE token=?`, teamID, token)
+}
+
+// endOtherSessions signs a user out everywhere except the request's own session.
+func (p *Panel) endOtherSessions(r *http.Request, userID string) {
+	if tok, ok := p.sessionToken(r); ok {
+		_, _ = sqlDB.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, userID, tok)
+	}
 }
