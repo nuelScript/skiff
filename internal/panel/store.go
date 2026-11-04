@@ -2,6 +2,7 @@ package panel
 
 import (
 	"database/sql"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -517,4 +518,11 @@ func deleteSession(token string) {
 
 func setSessionTeam(token, teamID string) {
 	_, _ = sqlDB.Exec(`UPDATE sessions SET team_id=? WHERE token=?`, teamID, auth.StoredToken(token))
+}
+
+// endOtherSessions signs a user out everywhere except the request's own session.
+func (p *Panel) endOtherSessions(r *http.Request, userID string) {
+	if tok, ok := p.sessionToken(r); ok {
+		_, _ = sqlDB.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, userID, auth.StoredToken(tok))
+	}
 }

@@ -37,8 +37,8 @@ func (p *Panel) handleGithubStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
-	if !p.isOwner(r) {
-		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+	if !p.isInstanceAdmin(r) {
+		http.Error(w, "only this instance's owner can connect GitHub", http.StatusForbidden)
 		return
 	}
 	name := "Skiff Deploys (" + p.domain + ")"
@@ -53,8 +53,8 @@ func (p *Panel) handleGithubCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
-	if !p.isOwner(r) {
-		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+	if !p.isInstanceAdmin(r) {
+		http.Error(w, "only this instance's owner can connect GitHub", http.StatusForbidden)
 		return
 	}
 	code := r.URL.Query().Get("code")
@@ -75,8 +75,8 @@ func (p *Panel) handleGithubCreated(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Panel) handleGithubInstalled(w http.ResponseWriter, r *http.Request) {
-	if !p.isOwner(r) {
-		http.Error(w, "only team owners can connect GitHub", http.StatusForbidden)
+	if !p.isInstanceAdmin(r) {
+		http.Error(w, "only this instance's owner can connect GitHub", http.StatusForbidden)
 		return
 	}
 	cfg := github.Load()

@@ -70,7 +70,7 @@ env vars set in the dashboard (skiff.toml still wins when both set a key).`,
 
 			fmt.Println()
 			ui.Field("code", start.Code)
-			ui.Note("approve it in your browser: " + stripControl(start.ApproveURL))
+			ui.Note("open this in your browser and enter the code: " + stripControl(start.ApproveURL))
 			if approveURLOK(start.ApproveURL, base) {
 				openBrowser(start.ApproveURL)
 			}

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -210,11 +211,26 @@ func slackText(ev alertEvent) string {
 
 func nowUnix() int64 { return time.Now().Unix() }
 
+// maskURL keeps a webhook's scheme and host so members can tell where alerts go without the path or key that authorises posting there.
+func maskURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "••••"
+	}
+	return u.Scheme + "://" + u.Host + "/••••"
+}
+
 func (p *Panel) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	team := p.teamID(r)
 	switch r.Method {
 	case http.MethodGet:
 		cfg := getAlerts(team)
+		if !p.isOwner(r) {
+			cfg.SlackURL, cfg.WebhookURL = maskURL(cfg.SlackURL), maskURL(cfg.WebhookURL)
+		}
 		_, smtpOK := smtpConfig()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(struct {
@@ -222,6 +238,10 @@ func (p *Panel) handleAlerts(w http.ResponseWriter, r *http.Request) {
 			SMTP bool `json:"smtp"`
 		}{cfg, smtpOK})
 	case http.MethodPut:
+		if !p.isOwner(r) {
+			http.Error(w, "only team owners can change alerts", http.StatusForbidden)
+			return
+		}
 		var body AlertConfig
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		cfg := AlertConfig{
