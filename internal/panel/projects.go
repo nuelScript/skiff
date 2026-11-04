@@ -280,7 +280,10 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		if src.Private {
 			src.SleepAfter = 0
 		}
-		_ = putSource(src)
+		if err := putSource(src); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		_ = writeEdgeFile()
 		p.audit(r, "settings.update", app, "")
 		w.WriteHeader(http.StatusNoContent)
@@ -451,7 +454,10 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		port = "3000"
 	}
 	src := Source{App: name, Port: port, CloneURL: git, RootDir: rootDir, Team: team}
-	_ = putSource(src)
+	if err := putSource(src); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	envStage.release(name)
 
 	auth := ""

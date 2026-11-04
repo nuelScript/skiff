@@ -156,7 +156,10 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		App: name, Team: team, Repo: repo, Branch: branch, RootDir: rootDir,
 		Port: port, CloneURL: clone, Auto: q.Get("auto") == "1",
 	}
-	_ = putSource(src)
+	if err := putSource(src); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	envStage.release(name)
 	id := newDeployID()
 	go p.runDeploy(src, "", "", "", "manual", id)
