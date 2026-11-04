@@ -145,6 +145,10 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "an app with that name exists in another team", http.StatusConflict)
 		return
 	}
+	if !ok && nameReserved(name, team) {
+		http.Error(w, reservedNameMsg, http.StatusBadRequest)
+		return
+	}
 	if !ok && envStage.heldByOther(name, team, time.Now()) {
 		// Discard env another team staged under this unused name so this deploy can't inherit foreign vars.
 		_ = setEnv(name, nil)
@@ -237,6 +241,10 @@ func (p *Panel) handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 	if !github.VerifySignature(cfg.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
+		return
+	}
+	if !hookDeliveries.firstSeen(r.Header.Get("X-GitHub-Delivery")) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	switch r.Header.Get("X-GitHub-Event") {

@@ -153,6 +153,10 @@ func (p *Panel) apiCLIDeploy(w http.ResponseWriter, r *http.Request) {
 		if body.Port > 0 && body.Port <= 65535 {
 			src.Port = strconv.Itoa(body.Port)
 		}
+		if nameReserved(name, team) {
+			apiErr(w, http.StatusBadRequest, reservedNameMsg)
+			return
+		}
 		if envStage.heldByOther(name, team, time.Now()) {
 			_ = setEnv(name, nil)
 		}

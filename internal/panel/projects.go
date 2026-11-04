@@ -446,6 +446,10 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "an app with that name exists in another team", http.StatusConflict)
 		return
 	}
+	if !ok && nameReserved(name, team) {
+		http.Error(w, reservedNameMsg, http.StatusBadRequest)
+		return
+	}
 	if !ok && envStage.heldByOther(name, team, time.Now()) {
 		// Discard env another team staged under this unused name so this deploy can't inherit foreign vars.
 		_ = setEnv(name, nil)
