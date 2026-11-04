@@ -67,7 +67,7 @@ env vars set in the dashboard (skiff.toml still wins when both set a key).`,
 
 			fmt.Println()
 			ui.Field("code", start.Code)
-			ui.Note("approve it in your browser: " + start.ApproveURL)
+			ui.Note("open this in your browser and enter the code: " + start.ApproveURL)
 			openBrowser(start.ApproveURL)
 
 			deadline := time.Now().Add(10 * time.Minute)
