@@ -90,6 +90,10 @@ func TestLeaving(t *testing.T) {
 	if err := os.MkdirAll(copied, 0o777); err != nil {
 		t.Fatal(err)
 	}
+	// The container writes as root, and on Linux the test can't remove root's files by itself.
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "run", "--rm", "-v", copied+":/out", "alpine:3.20", "sh", "-c", "rm -rf /out/*").Run()
+	})
 	if err := os.WriteFile(filepath.Join(copied, "seed.txt"), []byte("kept"), 0o644); err != nil {
 		t.Fatal(err)
 	}
