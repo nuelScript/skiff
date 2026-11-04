@@ -81,8 +81,8 @@ skiff logs shop-api -n 500   # more history`}</CodeBlock>
 skiff db connect orders       # prints an address on 127.0.0.1, press Ctrl-C to close
 skiff db connect orders -p 15432   # choose the local port`}</CodeBlock>
       <p>
-        Anyone with a token for your team can open a tunnel, and Activity records it. Revoking the token
-        closes its tunnels within a minute. When the dashboard itself restarts, open connections drop
+        Only a token from <code>skiff login</code> can open a tunnel, so tokens you create for CI
+        can&apos;t. Activity records each one, and revoking the token closes its tunnels within a minute. When the dashboard itself restarts, open connections drop
         and your client reconnects through the same tunnel.
       </p>
       <p>

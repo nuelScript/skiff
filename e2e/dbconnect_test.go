@@ -42,7 +42,7 @@ func TestDBConnect(t *testing.T) {
 	post(t, c, base+"/api/auth/setup", `{"secret":"e2e-setup","email":"e2e@example.com","name":"E2E","password":"e2e-password-1"}`)
 
 	var token struct{ ID, Token string }
-	postJSON(t, c, base+"/api/tokens", `{"name":"laptop"}`, &token)
+	postJSON(t, c, base+"/api/tokens", `{"name":"laptop","databases":true}`, &token)
 	creds, _ := json.Marshal(map[string]string{"url": base, "token": token.Token})
 	if err := os.WriteFile(filepath.Join(home, ".skiff", "credentials.json"), creds, 0o600); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestDBConnect(t *testing.T) {
 		getJSON(t, c, base+"/api/me", &me)
 		post(t, c, base+"/api/auth/team", `{"team":"`+other.ID+`"}`)
 		var theirs struct{ Token string }
-		postJSON(t, c, base+"/api/tokens", `{"name":"other"}`, &theirs)
+		postJSON(t, c, base+"/api/tokens", `{"name":"other","databases":true}`, &theirs)
 		post(t, c, base+"/api/auth/team", `{"team":"`+me.Team+`"}`)
 		for _, path := range []string{"/connection?port=5432", "/tunnel"} {
 			req, _ := http.NewRequest(http.MethodGet, base+"/api/v1/databases/tunnel-postgres"+path, nil)
@@ -135,6 +135,23 @@ func TestDBConnect(t *testing.T) {
 			resp.Body.Close()
 			if resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s answered %d to another team's token", path, resp.StatusCode)
+			}
+		}
+	})
+
+	t.Run("a token made for a pipeline can't reach it", func(t *testing.T) {
+		var ci struct{ Token string }
+		postJSON(t, c, base+"/api/tokens", `{"name":"ci"}`, &ci)
+		for _, path := range []string{"/connection?port=5432", "/tunnel"} {
+			req, _ := http.NewRequest(http.MethodGet, base+"/api/v1/databases/tunnel-postgres"+path, nil)
+			req.Header.Set("Authorization", "Bearer "+ci.Token)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s answered %d", path, resp.StatusCode)
 			}
 		}
 	})

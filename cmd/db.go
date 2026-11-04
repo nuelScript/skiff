@@ -26,6 +26,7 @@ import (
 const (
 	tunnelPingEvery   = 30 * time.Second
 	tunnelPingTimeout = 90 * time.Second
+	tunnelMaxMessage  = 1 << 20
 )
 
 type remoteDatabase struct {
@@ -153,6 +154,9 @@ func connectDatabase(ctx context.Context, c credentials, name string, port int) 
 	if err != nil {
 		return err
 	}
+	if code == http.StatusForbidden {
+		return errors.New("this sign-in can't reach databases, run `skiff login` again")
+	}
 	if code != http.StatusOK || conn.URL == "" {
 		return fmt.Errorf("couldn't read the address of %s (the dashboard answered %d)", name, code)
 	}
@@ -201,7 +205,7 @@ func carryConnection(parent context.Context, local net.Conn, target, token strin
 		return tunnelDialError(resp, err)
 	}
 	defer ws.CloseNow()
-	ws.SetReadLimit(-1)
+	ws.SetReadLimit(tunnelMaxMessage)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()

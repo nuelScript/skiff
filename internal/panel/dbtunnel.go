@@ -17,12 +17,42 @@ const (
 	tunnelCheckEvery  = 30 * time.Second
 	tunnelPingTimeout = 90 * time.Second // a pong queues behind data already sent, so a slow link needs room
 	tunnelAuditEvery  = 10 * time.Minute
+	tunnelsPerTeam    = 64
+	tunnelMaxMessage  = 1 << 20
 )
 
 var (
 	tunnelAudits   = map[string]time.Time{}
 	tunnelAuditsMu sync.Mutex
+
+	openTunnels   = map[string]int{}
+	openTunnelsMu sync.Mutex
 )
+
+func holdTunnel(team string) (release func(), ok bool) {
+	openTunnelsMu.Lock()
+	defer openTunnelsMu.Unlock()
+	if openTunnels[team] >= tunnelsPerTeam {
+		return nil, false
+	}
+	openTunnels[team]++
+	return func() {
+		openTunnelsMu.Lock()
+		defer openTunnelsMu.Unlock()
+		if openTunnels[team]--; openTunnels[team] <= 0 {
+			delete(openTunnels, team)
+		}
+	}, true
+}
+
+// databaseToken refuses tokens that were never granted database access, so a token kept in CI can't reach a private database.
+func databaseToken(w http.ResponseWriter, r *http.Request) bool {
+	if tokenReachesDatabases(bearerToken(r)) {
+		return true
+	}
+	apiErr(w, http.StatusForbidden, "this token can't reach databases, sign in again with `skiff login`")
+	return false
+}
 
 // auditTunnel records a token reaching a database. Clients open many connections, so repeats inside tunnelAuditEvery are left out.
 func auditTunnel(team, actor string, d dbRow) {
@@ -80,6 +110,9 @@ func (p *Panel) apiListDatabases(w http.ResponseWriter, r *http.Request) {
 
 // apiDatabaseConnection answers with the address a client uses through a local tunnel on ?port=.
 func (p *Panel) apiDatabaseConnection(w http.ResponseWriter, r *http.Request) {
+	if !databaseToken(w, r) {
+		return
+	}
 	d, ok := apiDatabase(w, r)
 	if !ok {
 		return
@@ -97,6 +130,9 @@ func (p *Panel) apiDatabaseConnection(w http.ResponseWriter, r *http.Request) {
 
 // apiDatabaseTunnel carries one client connection to a private database over a WebSocket.
 func (p *Panel) apiDatabaseTunnel(w http.ResponseWriter, r *http.Request) {
+	if !databaseToken(w, r) {
+		return
+	}
 	d, ok := apiDatabase(w, r)
 	if !ok {
 		return
@@ -107,15 +143,16 @@ func (p *Panel) apiDatabaseTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := rt.IPs[d.network()]
-	for _, other := range rt.IPs {
-		if ip == "" {
-			ip = other
-		}
-	}
 	if ip == "" {
 		apiErr(w, http.StatusConflict, d.Name+" isn't on a network the server can reach")
 		return
 	}
+	release, ok := holdTunnel(apiTeam(r))
+	if !ok {
+		apiErr(w, http.StatusTooManyRequests, "your team has too many open tunnels, close some and try again")
+		return
+	}
+	defer release()
 	upstream, err := net.DialTimeout("tcp", net.JoinHostPort(ip, strconv.Itoa(dbEngines[d.Engine].port)), 5*time.Second)
 	if err != nil {
 		apiErr(w, http.StatusBadGateway, fmt.Sprintf("%s isn't accepting connections yet", d.Name))
@@ -128,7 +165,7 @@ func (p *Panel) apiDatabaseTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.CloseNow()
-	c.SetReadLimit(-1)
+	c.SetReadLimit(tunnelMaxMessage)
 	auditTunnel(apiTeam(r), apiActor(r), d)
 
 	// r.Context() ends once the connection is hijacked, so the tunnel keeps its own.
