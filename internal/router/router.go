@@ -185,10 +185,16 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if rt.metrics != nil {
 		rt.metrics.Record(label, rec.status, r.ContentLength, rec.bytes, dur)
 	}
-	if label != "" && label != "dash" && label != "status" {
+	if label != "" && label != dashLabel && label != statusLabel {
 		rt.reqlog.Record(label, r, rec.status, rec.bytes, dur)
 	}
 }
+
+// Platform traffic is labelled with characters a project name can't contain.
+const (
+	dashLabel   = "_dash"
+	statusLabel = "_status"
+)
 
 // serve routes a request and returns the app label it's accounted to (empty when nothing matched, so it isn't recorded).
 func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
@@ -196,7 +202,7 @@ func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	if app, ok := rt.customDomains()[hostOnly(r.Host)]; ok {
 		if slug, isStatus := strings.CutPrefix(app, StatusDomainPrefix); isStatus {
 			rt.proxyStatus(w, r, slug)
-			return "status"
+			return statusLabel
 		}
 		if !rt.proxyToApp(w, r, app) {
 			return ""
@@ -213,11 +219,11 @@ func (rt *Router) serve(w http.ResponseWriter, r *http.Request) string {
 	switch sub {
 	case "status":
 		rt.proxyStatus(w, r, strings.Trim(r.URL.Path, "/"))
-		return "status"
+		return statusLabel
 	case "dash":
 		if up := rt.panelUpstream(); up != "" {
 			proxyTo(w, r, up)
-			return "dash"
+			return dashLabel
 		}
 	}
 
