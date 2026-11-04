@@ -126,15 +126,42 @@ func TestDockerignoreKeepsConfigOut(t *testing.T) {
 		t.Fatal("the default file should be removed afterwards")
 	}
 
-	const own = "dist\n!keep"
+	const own = "dist\n!keep\n!.git"
 	_ = os.WriteFile(path, []byte(own), 0o644)
 	clean = ensureDockerignore(dir)
 	b, _ = os.ReadFile(path)
-	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\nskiff.toml\n") {
+	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\n.git\nskiff.toml\n") {
 		t.Fatalf("during the build = %q", b)
 	}
 	clean()
 	if b, _ = os.ReadFile(path); string(b) != own {
 		t.Fatalf("the app's own file should come back unchanged: %q", b)
+	}
+}
+
+func TestAppContainersAreLimitedAndLocal(t *testing.T) {
+	args := strings.Join((&Engine{}).runArgs(RunSpec{Name: "a-1", App: "a", Image: "img", ContainerPort: 3000, Memory: "256m"}), " ")
+	for _, want := range []string{
+		"--pids-limit 4096", "-p 127.0.0.1::3000",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("missing %q in: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "0.0.0.0") {
+		t.Errorf("an app must never be published on every interface: %s", args)
+	}
+	if got := strings.Join((&Engine{}).limitArgs(), " "); !strings.Contains(got, "--pids-limit 4096") {
+		t.Errorf("limitArgs = %s", got)
+	}
+}
+
+func TestRunBindsLoopbackUnlessPublic(t *testing.T) {
+	e := &Engine{}
+	if got := strings.Join(e.runArgs(RunSpec{Name: "a", Image: "i", ContainerPort: 3000}), " "); !strings.Contains(got, "-p 127.0.0.1::3000") {
+		t.Errorf("default bind: %s", got)
+	}
+	if got := strings.Join(e.runArgs(RunSpec{Name: "a", Image: "i", ContainerPort: 3000, Public: true}), " "); !strings.Contains(got, "-p 0.0.0.0::3000") {
+		t.Errorf("public bind: %s", got)
 	}
 }

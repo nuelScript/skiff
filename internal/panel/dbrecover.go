@@ -56,7 +56,9 @@ func (p *Panel) recreateDatabase(d dbRow) error {
 	if err != nil {
 		return err
 	}
-	_ = p.eng.ConnectNetwork(dbNetwork, d.Container)
+	for _, n := range rejoinNetworks(d, nil) {
+		_ = p.eng.ConnectNetwork(n, d.Container)
+	}
 	_, _ = sqlDB.Exec(`UPDATE databases SET public=0, public_port=0 WHERE id=?`, d.ID)
 	return nil
 }
