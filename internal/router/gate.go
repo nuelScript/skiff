@@ -18,7 +18,7 @@ const (
 	maxFailures  = 10
 	failWindow   = 10 * time.Minute
 	// Wrong guesses allowed per app across all visitors, and the most keys tracked at once.
-	maxAppFailures = 200
+	maxAppFailures = 2000
 	maxGateKeys    = 10_000
 	maxGateWork    = 4
 )

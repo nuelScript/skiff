@@ -62,7 +62,7 @@ func isPreviewStack(name string) bool {
 }
 
 func stackPreviewsForBranch(repo, branch string) []string {
-	rows, err := sqlDB.Query(`SELECT name FROM stacks WHERE parent<>'' AND repo=? AND repo<>'' AND branch=?`, repo, branch)
+	rows, err := sqlDB.Query(`SELECT name FROM stacks WHERE parent<>'' AND repo=? AND repo<>'' AND branch=? AND team=?`, repo, branch, foundingTeam())
 	if err != nil {
 		return nil
 	}
@@ -79,7 +79,7 @@ func stackPreviewsForBranch(repo, branch string) []string {
 
 // stacksWantingPreview are the stacks that give this branch's pull request an environment.
 func stacksWantingPreview(repo, branch string) []string {
-	rows, err := sqlDB.Query(`SELECT name FROM stacks WHERE parent='' AND repo=? AND repo<>'' AND branch<>? AND preview_data<>''`, repo, branch)
+	rows, err := sqlDB.Query(`SELECT name FROM stacks WHERE parent='' AND repo=? AND repo<>'' AND branch<>? AND preview_data<>'' AND team=?`, repo, branch, foundingTeam())
 	if err != nil {
 		return nil
 	}

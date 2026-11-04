@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
@@ -44,4 +45,18 @@ func Forward(sshTarget string, remotePort int) (localPort int, stop func(), err 
 	}
 	stop()
 	return 0, nil, fmt.Errorf("timed out opening a tunnel to %s", sshTarget)
+}
+
+// RouterOn reports whether a box runs Skiff's router. known is false when ssh itself failed, so nothing can be said.
+func RouterOn(sshTarget string) (running, known bool) {
+	err := exec.Command("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "--", sshTarget,
+		"systemctl", "is-active", "--quiet", "skiff-router").Run()
+	if err == nil {
+		return true, true
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() != 255 {
+		return false, true
+	}
+	return false, false
 }

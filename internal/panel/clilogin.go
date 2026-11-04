@@ -118,7 +118,6 @@ func (p *Panel) handleCLIApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no pending sign-in with that code", http.StatusNotFound)
 		return
 	}
-	cliCodeLimiter.ok(s.userID)
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, map[string]any{"code": l.code, "host": l.host, "ip": l.ip, "requested": l.started.Unix()})

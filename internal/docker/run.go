@@ -9,6 +9,7 @@ import (
 )
 
 type RunSpec struct {
+	Public        bool // on all interfaces, for a box with no router in front of its apps
 	Name          string
 	App           string // app name, for the skiff.app route label
 	Image         string
@@ -60,9 +61,18 @@ func safetyCap(total int64) int64 { return total / 100 * SafetyCapPercent }
 
 const hostPortWait = 10 * time.Second
 
-// limitArgs caps what one container can use besides memory: processes, and the log file docker keeps for it. The json-file driver is named so `docker logs` works whatever the daemon defaults to.
-func limitArgs() []string {
-	return []string{"--pids-limit", "4096", "--log-driver", "json-file", "--log-opt", "max-size=50m", "--log-opt", "max-file=3"}
+// limitArgs caps what one container can use besides memory: processes, and the log file docker keeps for it. A server shipping logs through another driver keeps its own setup.
+func (e *Engine) limitArgs() []string {
+	args := []string{"--pids-limit", "4096"}
+	if e.usesJSONFileLogs() {
+		args = append(args, "--log-opt", "max-size=50m", "--log-opt", "max-file=3")
+	}
+	return args
+}
+
+func (e *Engine) usesJSONFileLogs() bool {
+	out, err := e.command("info", "--format", "{{.LoggingDriver}}").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "json-file"
 }
 
 func (e *Engine) Run(s RunSpec) (int, error) {
@@ -77,14 +87,18 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 }
 
 func (e *Engine) runArgs(s RunSpec) []string {
+	bind := "127.0.0.1"
+	if s.Public {
+		bind = "0.0.0.0"
+	}
 	args := []string{"run", "-d",
 		"--name", s.Name,
 		"--restart", "unless-stopped",
 		"--label", "skiff=1",
 		"-e", fmt.Sprintf("PORT=%d", s.ContainerPort),
-		"-p", fmt.Sprintf("127.0.0.1::%d", s.ContainerPort),
+		"-p", fmt.Sprintf("%s::%d", bind, s.ContainerPort),
 	}
-	args = append(args, limitArgs()...)
+	args = append(args, e.limitArgs()...)
 	if s.App != "" {
 		args = append(args, "--label", "skiff.app="+s.App, "--label", fmt.Sprintf("skiff.port=%d", s.ContainerPort))
 	}
@@ -143,7 +157,7 @@ func (e *Engine) RunWorker(s WorkerSpec) error {
 	args := []string{"run", "-d", "--name", s.Name, "--restart", "unless-stopped",
 		"--label", "skiff.kind=worker", "--label", "skiff.worker.app=" + s.App,
 		"--memory", e.memoryOr(s.Memory)}
-	args = append(args, limitArgs()...)
+	args = append(args, e.limitArgs()...)
 	if s.CPU != "" {
 		args = append(args, "--cpus", s.CPU)
 	}

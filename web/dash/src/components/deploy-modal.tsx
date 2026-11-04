@@ -138,6 +138,11 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
             label="Connect GitHub"
             href={me?.admin ? '/api/github/create' : undefined}
           />
+        ) : gh.status.usable === false ? (
+          <ConnectCard
+            hint="This server's GitHub connection belongs to the team that set it up. Deploy from a git URL with your own token instead."
+            label="Not available to your team"
+          />
         ) : !gh.status.installed ? (
           <ConnectCard
             hint="Choose which repositories Skiff can deploy."

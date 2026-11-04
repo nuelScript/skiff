@@ -149,7 +149,7 @@ func loadStack(ctx context.Context, req stackRequest, team string, updating bool
 	case strings.TrimSpace(req.Git) != "":
 		git := strings.TrimSpace(req.Git)
 		if !cloneURLAllowed(git) {
-			return nil, errors.New("git url must be a public http(s) URL")
+			return nil, errors.New("git url must be a public http(s) URL (for a private git host, set SKIFF_ALLOW_PRIVATE_ENDPOINTS=1 on the server)")
 		}
 		out.cloneURL = git
 		work, err := os.MkdirTemp("", "skiff-stack-")

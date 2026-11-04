@@ -433,7 +433,7 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !cloneURLAllowed(git) {
-		http.Error(w, "git url must be a public http(s) URL", http.StatusBadRequest)
+		http.Error(w, "git url must be a public http(s) URL (for a private git host, set SKIFF_ALLOW_PRIVATE_ENDPOINTS=1 on the server)", http.StatusBadRequest)
 		return
 	}
 	if !validPort(port) {

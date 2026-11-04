@@ -175,6 +175,7 @@ func (p *Panel) uploadSegments(d dbRow, t OffsiteTarget, gen string) error {
 	rows.Close()
 	root := historyRoot(t.Prefix, d) + gen + "/wal/"
 	c := t.client()
+	var skipped error
 	for _, name := range strings.Fields(out.String()) {
 		if !strings.HasSuffix(name, ".gz") || done[name] {
 			continue
@@ -183,6 +184,9 @@ func (p *Panel) uploadSegments(d dbRow, t OffsiteTarget, gen string) error {
 		body, err := readSegment(run, name)
 		if err != nil {
 			log.Printf("skiff: skipping %s of %s: %v", name, d.Name, err)
+			if skipped == nil {
+				skipped = fmt.Errorf("couldn't copy %s: %w", name, err)
+			}
 			continue
 		}
 		if err := c.Put(ctx, root+name, bytes.NewReader(body), int64(len(body))); err != nil {
@@ -192,7 +196,7 @@ func (p *Panel) uploadSegments(d dbRow, t OffsiteTarget, gen string) error {
 			return err
 		}
 	}
-	return nil
+	return skipped
 }
 
 // copyBases only sends a snapshot once a later pass has copied its segments, so the newest snapshot in the bucket can always be replayed.

@@ -25,6 +25,7 @@ func (p *Panel) handleGithubStatus(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"configured": cfg.Configured(),
 		"installed":  cfg.Installed() && githubUsable(p.teamID(r)),
+		"usable":     githubUsable(p.teamID(r)),
 	}
 	if cfg.Configured() {
 		out["slug"] = cfg.Slug

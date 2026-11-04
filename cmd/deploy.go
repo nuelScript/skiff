@@ -359,6 +359,12 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			_ = eng.Remove(rp.Container)
 		}
 	}
+	// With no router on a remote box, the published port is the only way in.
+	direct := false
+	if eng.IsRemote() {
+		running, known := docker.RouterOn(cfg.RemoteHost())
+		direct = known && !running
+	}
 	for range replicas {
 		container := fmt.Sprintf("%s-%s", cfg.Name, shortID())
 		if !eng.IsRemote() {
@@ -372,6 +378,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			App:           cfg.Name,
 			Image:         image,
 			ContainerPort: cfg.Build.Port,
+			Public:        direct,
 			Memory:        cfg.Resources.Memory,
 			CPU:           cfg.Resources.CPU,
 			Env:           runtimeEnv,
@@ -455,7 +462,9 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	}
 
 	fmt.Println()
-	if eng.IsRemote() {
+	if eng.IsRemote() && direct {
+		ui.Live(fmt.Sprintf("http://%s:%d", docker.SSHHostname(cfg.RemoteHost()), reps[0].HostPort), time.Since(start))
+	} else if eng.IsRemote() {
 		ui.Done(fmt.Sprintf("Running on %s, served by its router (%.1fs)", cfg.RemoteHost(), time.Since(start).Seconds()))
 	} else {
 		ui.Live(proxy.URL(cfg.Name), time.Since(start))

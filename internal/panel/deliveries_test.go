@@ -3,6 +3,7 @@ package panel
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestRecentDeliveries(t *testing.T) {
@@ -24,5 +25,15 @@ func TestRecentDeliveries(t *testing.T) {
 	}
 	if len(d.seen) > 3 {
 		t.Fatalf("set grew to %d", len(d.seen))
+	}
+
+	now := time.Now()
+	r := newRecentDeliveries(3)
+	r.firstSeenAt("redeliver", now)
+	if r.firstSeenAt("redeliver", now.Add(time.Minute)) {
+		t.Fatal("a quick repeat should be dropped")
+	}
+	if !r.firstSeenAt("redeliver", now.Add(6*time.Minute)) {
+		t.Fatal("Redeliver later on should run again")
 	}
 }

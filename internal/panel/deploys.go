@@ -239,7 +239,7 @@ func (p *Panel) cloneSource(ctx context.Context, src Source, authURL, sha string
 		authEnv = appCloneEnv(src.Team, src.CloneURL, src.Repo)
 	}
 	if !cloneURLAllowed(clone) {
-		finish("✗ clone failed: the git address must be a public http(s) URL")
+		finish("✗ clone failed: the git address must be a public http(s) URL (for a private git host, set SKIFF_ALLOW_PRIVATE_ENDPOINTS=1 on the server)")
 		return "", sha, false
 	}
 

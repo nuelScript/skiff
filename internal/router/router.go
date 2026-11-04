@@ -49,7 +49,6 @@ type Router struct {
 	// CertDir is where issued certificates are cached; a custom domain that already has one keeps renewing wherever it points.
 	CertDir string
 
-	here hereState
 
 	limiter      *rateLimiter
 	limiterOnce  sync.Once
@@ -436,7 +435,7 @@ func (rt *Router) subFor(host string) (string, bool) {
 // certAllowed limits certificates to names Skiff actually serves. Wildcard DNS sends every name here, and scanners trying random subdomains would otherwise use up the certificate authority's weekly limit for the whole domain.
 func (rt *Router) certAllowed(host string) bool {
 	if app, ok := rt.customDomains()[host]; ok {
-		return !rt.edgeRules()[app].Private && (rt.hadCert(host) || rt.resolvesHere(host))
+		return !rt.edgeRules()[app].Private
 	}
 	if host == rt.MailHost() {
 		return true
