@@ -500,6 +500,11 @@ CREATE TABLE IF NOT EXISTS preview_passwords (
   app  TEXT PRIMARY KEY,
   hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS env_stage (
+  app   TEXT PRIMARY KEY,
+  team  TEXT NOT NULL,
+  until INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS offsite_objects (
   db_id   TEXT NOT NULL,
   key     TEXT NOT NULL,

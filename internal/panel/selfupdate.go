@@ -75,14 +75,15 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 
 	src := filepath.Join(skiffDir(), "self-src")
 	_ = os.RemoveAll(src)
-	cloneURL := "https://github.com/" + opts.Repo + ".git"
+	cloneURL := github.CloneURL(opts.Repo)
+	var authEnv []string
 	if gh := github.Load(); gh.Installed() {
-		if u, e := gh.CloneURLWithToken(cloneURL); e == nil {
-			cloneURL = u
-		}
+		authEnv, _ = gh.CloneEnv(cloneURL, opts.Repo)
 	}
 	log("→ cloning %s (%s)", opts.Repo, opts.Branch)
-	if out, e := run("git", "clone", "--depth", "1", "--branch", opts.Branch, cloneURL, src); e != nil {
+	cl := exec.Command("git", "clone", "--depth", "1", "--branch", opts.Branch, cloneURL, src)
+	cl.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ALLOW_PROTOCOL=https:http"), authEnv...)
+	if out, e := cl.CombinedOutput(); e != nil {
 		return fail("clone failed: %s", cloneError(out))
 	}
 

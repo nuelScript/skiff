@@ -126,11 +126,11 @@ func TestDockerignoreKeepsConfigOut(t *testing.T) {
 		t.Fatal("the default file should be removed afterwards")
 	}
 
-	const own = "dist\n!keep"
+	const own = "dist\n!keep\n!.git"
 	_ = os.WriteFile(path, []byte(own), 0o644)
 	clean = ensureDockerignore(dir)
 	b, _ = os.ReadFile(path)
-	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\nskiff.toml\n") {
+	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\n.git\nskiff.toml\n") {
 		t.Fatalf("during the build = %q", b)
 	}
 	clean()
@@ -145,5 +145,22 @@ func TestSortDeployTagsNewestFirst(t *testing.T) {
 	want := []string{"1793784154-d", "1793784138-b", "1793773895-c", "1793773891-a", "custom"}
 	if strings.Join(tags, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v", tags)
+	}
+}
+
+func TestAppContainersAreLimitedAndLocal(t *testing.T) {
+	args := strings.Join((&Engine{}).runArgs(RunSpec{Name: "a-1", App: "a", Image: "img", ContainerPort: 3000, Memory: "256m"}), " ")
+	for _, want := range []string{
+		"--pids-limit 4096", "--log-driver json-file", "--log-opt max-size=50m", "--log-opt max-file=3", "-p 127.0.0.1::3000",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("missing %q in: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "0.0.0.0") {
+		t.Errorf("an app must never be published on every interface: %s", args)
+	}
+	if got := strings.Join(limitArgs(), " "); !strings.Contains(got, "--pids-limit 4096") {
+		t.Errorf("limitArgs = %s", got)
 	}
 }

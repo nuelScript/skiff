@@ -168,13 +168,21 @@ func (p *Panel) apiCLIDeploy(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case !ok:
 		src = Source{App: name, Team: team, Port: "3000", Origin: originCLI, Replicas: 1, ScaleMin: 1, ScaleMax: 1}
-		if body.Port > 0 {
+		if body.Port > 0 && body.Port <= 65535 {
 			src.Port = strconv.Itoa(body.Port)
+		}
+		if nameReserved(name, team) {
+			apiErr(w, http.StatusBadRequest, reservedNameMsg)
+			return
+		}
+		if envStage.heldByOther(name, team, time.Now()) {
+			_ = setEnv(name, nil)
 		}
 		if err := putSource(src); err != nil {
 			apiErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		envStage.release(name)
 	case src.Team != team:
 		apiErr(w, http.StatusConflict, "an app with that name belongs to another team")
 		return
