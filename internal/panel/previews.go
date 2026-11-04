@@ -53,7 +53,7 @@ func previewSources(parent string) []Source {
 
 // branchPreviews are the previews built from one branch of a repo.
 func branchPreviews(repo, branch string) []Source {
-	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE parent<>'' AND repo=? AND branch=?`, repo, branch)
+	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE parent<>'' AND repo=? AND branch=? AND team=?`, repo, branch, foundingTeam())
 	if err != nil {
 		return nil
 	}

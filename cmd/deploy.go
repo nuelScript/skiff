@@ -6,10 +6,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -76,6 +78,11 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 	case bc.Start != "" || bc.Static != "":
 		b = builder.Custom(bc.Base, bc.Install, bc.Build, bc.Start, bc.Static)
 	default:
+		if os.Getenv("SKIFF_DEPLOY_ID") != "" && !dockerfileInside(cfg.Build.Dockerfile) {
+			err = fmt.Errorf("the dockerfile must be a path inside the build folder")
+			ui.Fail(err.Error())
+			return err
+		}
 		b, err = builder.Select(contextDir, cfg.Build.Dockerfile)
 		if err != nil {
 			ui.Fail(err.Error())
@@ -128,7 +135,10 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 			return err
 		}
 		ui.Step("Building " + image)
-		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, os.Stdout); err != nil {
+		// Builds the panel runs for a team pull their base images, so they can't use another team's local ones.
+		onPanel := os.Getenv("SKIFF_DEPLOY_ID") != ""
+		out := &pullSniffer{w: os.Stdout}
+		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, onPanel, out); err != nil {
 			switch ctx.Err() {
 			case context.DeadlineExceeded:
 				ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))
@@ -136,6 +146,9 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 				ui.Fail("Build canceled")
 			default:
 				ui.Fail("Build failed")
+				if onPanel && out.denied {
+					ui.Note("A base image couldn't be pulled. Builds here use images from a registry, not images stored on this server: check the name in your Dockerfile, and sign in if it's private.")
+				}
 			}
 			return err
 		}
@@ -159,6 +172,27 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 		reportDeploy(panel, cfg, deployID, labels)
 	}
 	return nil
+}
+
+// dockerfileInside reports whether a dockerfile path stays within the build folder.
+func dockerfileInside(p string) bool {
+	if filepath.IsAbs(p) {
+		return false
+	}
+	return !slices.Contains(strings.Split(filepath.ToSlash(p), "/"), "..")
+}
+
+// pullSniffer passes build output through and notes when an image couldn't be pulled.
+type pullSniffer struct {
+	w      io.Writer
+	denied bool
+}
+
+func (s *pullSniffer) Write(b []byte) (int, error) {
+	if bytes.Contains(b, []byte("pull access denied")) {
+		s.denied = true
+	}
+	return s.w.Write(b)
 }
 
 // pullPrebuilt fetches a prebuilt image and tags it as the app's build, so the release and rollback paths treat it like one Skiff built.

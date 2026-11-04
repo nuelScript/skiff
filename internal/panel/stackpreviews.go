@@ -267,7 +267,7 @@ type stackPreviewRow struct{ service, status, url string }
 // commentOnStackPreview keeps one comment on the branch's open pull request in step with its preview.
 func (p *Panel) commentOnStackPreview(name, commit string) {
 	rec, ok := getStackRecord(name)
-	if !ok || rec.Parent == "" || rec.Repo == "" {
+	if !ok || rec.Parent == "" || rec.Repo == "" || !githubUsable(rec.Team) {
 		return
 	}
 	gh := github.Load()

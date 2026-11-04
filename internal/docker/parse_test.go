@@ -126,11 +126,11 @@ func TestDockerignoreKeepsConfigOut(t *testing.T) {
 		t.Fatal("the default file should be removed afterwards")
 	}
 
-	const own = "dist\n!keep"
+	const own = "dist\n!keep\n!.git"
 	_ = os.WriteFile(path, []byte(own), 0o644)
 	clean = ensureDockerignore(dir)
 	b, _ = os.ReadFile(path)
-	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\nskiff.toml\n") {
+	if !strings.HasPrefix(string(b), own) || !strings.HasSuffix(string(b), "\n.git\nskiff.toml\n") {
 		t.Fatalf("during the build = %q", b)
 	}
 	clean()

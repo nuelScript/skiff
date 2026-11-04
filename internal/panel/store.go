@@ -129,7 +129,7 @@ func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 }
 
 func productionAppsForRepo(repo string) []Source {
-	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent=''`, repo)
+	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources WHERE repo=? AND parent='' AND team=?`, repo, foundingTeam())
 	if err != nil {
 		return nil
 	}
@@ -192,7 +192,7 @@ func deleteSource(app string) {
 
 func sourcesForRepo(repo, branch string) []Source {
 	rows, err := sqlDB.Query(`SELECT `+sourceCols+` FROM sources
-		WHERE auto=1 AND repo=? AND (branch='' OR branch=?)`, repo, branch)
+		WHERE auto=1 AND repo=? AND (branch='' OR branch=?) AND team=?`, repo, branch, foundingTeam())
 	if err != nil {
 		return nil
 	}
