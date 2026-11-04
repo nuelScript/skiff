@@ -71,6 +71,7 @@ type Router struct {
 	cachedSleep   sleep.Apps
 	cachedSleepAt time.Time
 	wakeMu        sync.Mutex
+	wakes         map[string]*wakeState
 
 	// mailMu is separate from mu so reading the forwarding table can't serialize against request routing.
 	mailMu        sync.Mutex
