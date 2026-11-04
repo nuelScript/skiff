@@ -49,7 +49,6 @@ type Router struct {
 	// CertDir is where issued certificates are cached; a custom domain that already has one keeps renewing wherever it points.
 	CertDir string
 
-
 	limiter      *rateLimiter
 	limiterOnce  sync.Once
 	edgeMu       sync.RWMutex
