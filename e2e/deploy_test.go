@@ -896,9 +896,10 @@ func post(t *testing.T, c *http.Client, url, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		t.Fatalf("POST %s: %d", url, resp.StatusCode)
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		t.Fatalf("POST %s: %d %s", url, resp.StatusCode, msg)
 	}
 }
 
