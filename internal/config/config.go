@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -221,10 +222,26 @@ func (c *Config) validate() error {
 			return err
 		}
 	}
+	if err := ValidateHost(c.Server.Host); err != nil {
+		return err
+	}
 	if err := ValidateHealth(c.Deploy.HealthPath, c.Deploy.HealthTimeout); err != nil {
 		return err
 	}
 	return ValidateVolumes(c.Volumes)
+}
+
+var hostRe = regexp.MustCompile(`^[A-Za-z0-9._@:-]+$`)
+
+// ValidateHost accepts [user@]host[:port] and nothing ssh or docker could read as an option or a different URL.
+func ValidateHost(h string) error {
+	if h == "" || h == "local" {
+		return nil
+	}
+	if !hostRe.MatchString(h) || strings.HasPrefix(h, "-") {
+		return fmt.Errorf("server host %q isn't a valid [user@]host", h)
+	}
+	return nil
 }
 
 func (c *Config) IsLocal() bool {
