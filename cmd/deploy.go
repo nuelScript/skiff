@@ -304,10 +304,6 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	if eng.EnsureNetwork(netName) == nil {
 		network = netName
 	}
-	healthHost := "127.0.0.1"
-	if eng.IsRemote() {
-		healthHost = docker.SSHHostname(cfg.Server.Host)
-	}
 
 	var mounts []docker.Mount
 	for _, v := range cfg.Volumes {
@@ -379,7 +375,6 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			Memory:        cfg.Resources.Memory,
 			CPU:           cfg.Resources.CPU,
 			Env:           runtimeEnv,
-			Public:        eng.IsRemote(),
 			Network:       network,
 			Labels:        labels,
 			Volumes:       mounts,
@@ -398,7 +393,12 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			}
 			return err
 		}
-		if err := health.WaitMode(cfg.Deploy.HealthMode, healthHost, hostPort, cfg.Deploy.HealthPath, timeout); err != nil {
+		healthHost, healthPort, stopReach, err := reach(eng, cfg.RemoteHost(), hostPort)
+		if err == nil {
+			err = health.WaitMode(cfg.Deploy.HealthMode, healthHost, healthPort, cfg.Deploy.HealthPath, timeout)
+			stopReach()
+		}
+		if err != nil {
 			crashed := keptExiting(eng, container)
 			output := lastOutput(eng, container)
 			_ = eng.Remove(container)
@@ -456,7 +456,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 
 	fmt.Println()
 	if eng.IsRemote() {
-		ui.Live(fmt.Sprintf("http://%s:%d", healthHost, reps[0].HostPort), time.Since(start))
+		ui.Done(fmt.Sprintf("Running on %s, served by its router (%.1fs)", cfg.RemoteHost(), time.Since(start).Seconds()))
 	} else {
 		ui.Live(proxy.URL(cfg.Name), time.Since(start))
 		ui.Field("direct", fmt.Sprintf("http://localhost:%d", reps[0].HostPort))

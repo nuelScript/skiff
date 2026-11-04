@@ -147,3 +147,20 @@ func TestSortDeployTagsNewestFirst(t *testing.T) {
 		t.Fatalf("got %v", tags)
 	}
 }
+
+func TestAppContainersAreLimitedAndLocal(t *testing.T) {
+	args := strings.Join((&Engine{}).runArgs(RunSpec{Name: "a-1", App: "a", Image: "img", ContainerPort: 3000, Memory: "256m"}), " ")
+	for _, want := range []string{
+		"--pids-limit 4096", "--log-driver json-file", "--log-opt max-size=50m", "--log-opt max-file=3", "-p 127.0.0.1::3000",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("missing %q in: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "0.0.0.0") {
+		t.Errorf("an app must never be published on every interface: %s", args)
+	}
+	if got := strings.Join(limitArgs(), " "); !strings.Contains(got, "--pids-limit 4096") {
+		t.Errorf("limitArgs = %s", got)
+	}
+}
