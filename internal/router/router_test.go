@@ -101,6 +101,7 @@ func TestCertAllowedOnlyForServedNames(t *testing.T) {
 	_ = os.WriteFile(domains, []byte(`{"shop.example.org":"shop"}`), 0o644)
 	sleeping := filepath.Join(dir, "sleeping.json")
 	_ = os.WriteFile(sleeping, []byte(`{"napper":["c1"]}`), 0o644)
+	pointAllHere(t)
 	rt := &Router{Domains: []string{"useskiff.xyz", "1-2-3-4.sslip.io"}, DomainsFile: domains, SleepFile: sleeping}
 	rt.routeTable = map[string][]int{"shop": {1}}
 	rt.routeAt = time.Now().Add(time.Hour)
@@ -208,6 +209,7 @@ func TestPrivateAppHasNoPublicAddress(t *testing.T) {
 	domains := filepath.Join(dir, "domains.json")
 	_ = os.WriteFile(rules, []byte(`{"api":{"private":true}}`), 0o644)
 	_ = os.WriteFile(domains, []byte(`{"api.acme.dev":"api","web.acme.dev":"web"}`), 0o644)
+	pointAllHere(t)
 	rt := &Router{Domains: []string{"example.com"}, EdgeFile: rules, DomainsFile: domains}
 	rt.routeTable = map[string][]int{"api": {port}, "web": {port}}
 	rt.routeAt = time.Now().Add(time.Hour)

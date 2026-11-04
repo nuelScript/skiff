@@ -46,6 +46,10 @@ type Router struct {
 	GateFile string
 	// EdgeFile holds per-app rules: private apps and rate limits.
 	EdgeFile string
+	// CertDir is where issued certificates are cached; a custom domain that already has one keeps renewing wherever it points.
+	CertDir string
+
+	here hereState
 
 	limiter      *rateLimiter
 	limiterOnce  sync.Once
@@ -425,7 +429,7 @@ func (rt *Router) subFor(host string) (string, bool) {
 // certAllowed limits certificates to names Skiff actually serves. Wildcard DNS sends every name here, and scanners trying random subdomains would otherwise use up the certificate authority's weekly limit for the whole domain.
 func (rt *Router) certAllowed(host string) bool {
 	if app, ok := rt.customDomains()[host]; ok {
-		return !rt.edgeRules()[app].Private
+		return !rt.edgeRules()[app].Private && (rt.hadCert(host) || rt.resolvesHere(host))
 	}
 	if host == rt.MailHost() {
 		return true
@@ -480,6 +484,7 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 	rt.startMetrics()
 	rt.startTCP()
 	rt.startDrain()
+	rt.CertDir = cacheDir
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
 		Cache:  autocert.DirCache(cacheDir),
