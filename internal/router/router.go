@@ -46,8 +46,6 @@ type Router struct {
 	GateFile string
 	// EdgeFile holds per-app rules: private apps and rate limits.
 	EdgeFile string
-	// CertDir is where issued certificates are cached; a custom domain that already has one keeps renewing wherever it points.
-	CertDir string
 
 	limiter      *rateLimiter
 	limiterOnce  sync.Once
@@ -489,7 +487,6 @@ func (rt *Router) ServeTLS(cacheDir string) error {
 	rt.startMetrics()
 	rt.startTCP()
 	rt.startDrain()
-	rt.CertDir = cacheDir
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
 		Cache:  autocert.DirCache(cacheDir),
