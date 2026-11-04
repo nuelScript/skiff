@@ -35,6 +35,14 @@ const groups: { title: string; rows: [string, string, string][] }[] = [
     ],
   },
   {
+    title: "Databases",
+    rows: [
+      ["GET", "/databases", "List the team's databases: name, engine, state and port."],
+      ["GET", "/databases/{name}/connection?port=", "The connection address, including its password, for a tunnel on that local port."],
+      ["GET", "/databases/{name}/tunnel", "A WebSocket carrying one client connection to the database. skiff db connect uses this."],
+    ],
+  },
+  {
     title: "Environment variables",
     rows: [
       ["GET", "/apps/{name}/env", "Read the app's variables, including their values."],
