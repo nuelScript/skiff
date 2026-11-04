@@ -79,6 +79,12 @@ func TestCrossSiteRequestsAreRefused(t *testing.T) {
 	if w.Code != 403 {
 		t.Errorf("callback cross-site post: %d, want 403", w.Code)
 	}
+
+	w = httptest.NewRecorder()
+	cb(w, req(p, "GET", "/api/github/created?code=1", "", "s", map[string]string{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "navigate"}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("a sibling subdomain reached a callback: %d", w.Code)
+	}
 }
 
 func TestSessionCookieNames(t *testing.T) {

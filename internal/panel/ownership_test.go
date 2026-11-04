@@ -14,7 +14,7 @@ import (
 
 func domainRequest(p *Panel, body, session string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "/api/domains", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: "skiff_session", Value: session})
+	req.AddCookie(&http.Cookie{Name: p.cookieName(), Value: session})
 	w := httptest.NewRecorder()
 	p.handleDomains(w, req)
 	return w

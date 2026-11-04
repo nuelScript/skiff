@@ -250,12 +250,17 @@ func (p *Panel) protectedCallback(h http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if (r.Method != http.MethodGet || r.Header.Get("Sec-Fetch-Mode") != "navigate") && crossSiteRequest(r) {
+		if !callbackNavigation(r) && crossSiteRequest(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		h(w, r)
 	}
+}
+
+// callbackNavigation is a top-level visit from another site. A sibling subdomain is same-site, so it can't use this to reach a callback with the session cookie attached.
+func callbackNavigation(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Site") == "cross-site"
 }
 
 // crossSiteRequest reports a browser request that came from another origin; apps on sibling subdomains are same-site but must not drive the dashboard. Clients that send neither header (curl, tests) pass.
