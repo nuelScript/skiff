@@ -128,7 +128,7 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 			return err
 		}
 		ui.Step("Building " + image)
-		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, os.Stdout); err != nil {
+		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, termSafe(os.Stdout)); err != nil {
 			switch ctx.Err() {
 			case context.DeadlineExceeded:
 				ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))
@@ -511,7 +511,7 @@ func showOutput(output string) {
 	}
 	ui.Note("Last output from the app:")
 	for _, line := range strings.Split(output, "\n") {
-		ui.Note("  " + line)
+		ui.Note("  " + stripControl(line))
 	}
 }
 
