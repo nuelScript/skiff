@@ -561,10 +561,10 @@ func appContainer(t *testing.T, name string) string {
 	t.Helper()
 	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=skiff.app="+name).Output()
 	ids := strings.Fields(string(out))
-	if err != nil || len(ids) != 1 {
-		t.Fatalf("want one running container for %s, got %q (%v)", name, ids, err)
+	if err != nil || len(ids) == 0 {
+		t.Fatalf("want a running container for %s, got %q (%v)", name, ids, err)
 	}
-	return ids[0]
+	return ids[0] // the newest: a replaced version can still be finishing its requests
 }
 
 func dockerExec(t *testing.T, container, script string) string {
