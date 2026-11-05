@@ -809,7 +809,8 @@ func TestComposeStackPostgres18(t *testing.T) {
 		if id == "" {
 			return false
 		}
-		return exec.Command("docker", "exec", id, "pg_isready", "-U", "app", "-d", "shop").Run() == nil
+		// Over TCP, because the server Postgres runs during first-time setup only listens on its socket.
+		return exec.Command("docker", "exec", id, "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "shop").Run() == nil
 	}
 	eventually(t, 3*time.Minute, ready)
 	dockerExec(t, container(), "psql -U app -d shop -c 'create table kept (id int)'")
