@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -63,38 +62,6 @@ func compatProjects(t *testing.T) []compatProject {
 	return list
 }
 
-func compatFetch(p compatProject, file string) ([]byte, error) {
-	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", p.Repo, p.Commit, file)
-	var last error
-	for try := 0; try < 4; try++ {
-		if try > 0 {
-			time.Sleep(time.Duration(try) * 3 * time.Second)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			cancel()
-			last = err
-			continue
-		}
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		cancel()
-		switch {
-		case err != nil:
-			last = err
-		case resp.StatusCode == http.StatusNotFound:
-			return nil, os.ErrNotExist
-		case resp.StatusCode != http.StatusOK:
-			last = fmt.Errorf("%s: %s", url, resp.Status)
-		default:
-			return body, nil
-		}
-	}
-	return nil, last
-}
-
 var (
 	compatIgnored  = regexp.MustCompile(`^[^:]+: (\S+) is ignored$`)
 	compatRequired = regexp.MustCompile(`^(\w+) must be set`)
@@ -107,20 +74,15 @@ var compatHarmless = []string{"attach", "container_name", "hostname", "labels", 
 var compatEnvFiles = []string{".env.example", ".env.sample", ".env.template", ".env.dist", "example.env", "env.example", "sample.env", ".env"}
 
 // compatEnv reads the project's own example values, as someone following its instructions would.
-func compatEnv(p compatProject) (map[string]string, error) {
-	for _, dir := range []string{path.Dir(p.File), "."} {
+func compatEnv(work string, p compatProject) map[string]string {
+	for _, dir := range []string{filepath.Join(work, filepath.Dir(p.File)), work} {
 		for _, name := range compatEnvFiles {
-			data, err := compatFetch(p, path.Join(dir, name))
-			if errors.Is(err, os.ErrNotExist) {
-				continue
+			if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
+				return compose.ParseEnvFile(data)
 			}
-			if err != nil {
-				return nil, err
-			}
-			return compose.ParseEnvFile(data), nil
 		}
 	}
-	return map[string]string{}, nil
+	return map[string]string{}
 }
 
 // compatFill gives a value to anything the file insists on that the example doesn't provide.
@@ -159,35 +121,45 @@ func compatParse(data []byte, env map[string]string) (*compose.File, error) {
 	}
 }
 
-func compatPlan(p compatProject) compatPlanResult {
+// compatLoad checks the project out at its pinned commit and plans it the way the panel would.
+func compatLoad(p compatProject, work string) compatPlanResult {
 	r := compatPlanResult{compatProject: p}
-	data, err := compatFetch(p, p.File)
+	if err := compatCheckout(p, work); err != nil {
+		r.Unreachable = err.Error()
+		return r
+	}
+	dir := filepath.Join(work, filepath.Dir(p.File))
+	data, err := os.ReadFile(filepath.Join(work, p.File))
 	if err != nil {
 		r.Unreachable = err.Error()
 		return r
 	}
-	env, err := compatEnv(p)
-	if err != nil {
-		r.Unreachable = err.Error()
-		return r
-	}
+	env := compatEnv(work, p)
 	f, err := compatParse(data, env)
 	if err != nil {
 		r.Problems = []string{err.Error()}
 		return r
 	}
 	plan := compose.BuildPlan("compat", f, func(file string) ([]byte, error) {
-		body, err := compatFetch(p, path.Join(path.Dir(p.File), file))
-		if !errors.Is(err, os.ErrNotExist) {
-			return body, err
+		body, err := os.ReadFile(filepath.Join(dir, file))
+		if err == nil {
+			return body, nil
 		}
 		// A missing .env is the one the user would have created from the example.
 		for _, name := range compatEnvFiles {
-			if body, err := compatFetch(p, path.Join(path.Dir(p.File), path.Dir(file), name)); err == nil {
+			if body, err := os.ReadFile(filepath.Join(dir, filepath.Dir(file), name)); err == nil {
 				return body, nil
 			}
 		}
 		return nil, err
+	}, func(path string) compose.PathKind {
+		switch info, err := os.Stat(filepath.Join(dir, path)); {
+		case err != nil:
+			return compose.PathMissing
+		case info.IsDir():
+			return compose.PathDir
+		}
+		return compose.PathFile
 	})
 	r.plan, r.env = plan, env
 	r.Services = len(f.Services)
@@ -207,9 +179,11 @@ func compatPlan(p compatProject) compatPlanResult {
 	return r
 }
 
-// compatPlanAll plans every project, a few at a time.
-func compatPlanAll(t *testing.T) []compatPlanResult {
-	t.Helper()
+// TestCompatPlan reads every project's file with Skiff's own planner. The result is a score, so a refusal doesn't fail the test.
+func TestCompatPlan(t *testing.T) {
+	if os.Getenv("SKIFF_COMPAT") == "" {
+		t.Skip("set SKIFF_COMPAT=1: this downloads every project's Compose file")
+	}
 	list := compatProjects(t)
 	results := make([]compatPlanResult, len(list))
 	var wg sync.WaitGroup
@@ -220,7 +194,9 @@ func compatPlanAll(t *testing.T) []compatPlanResult {
 			defer wg.Done()
 			slots <- struct{}{}
 			defer func() { <-slots }()
-			results[i] = compatPlan(p)
+			work := filepath.Join(t.TempDir(), p.Name)
+			results[i] = compatLoad(p, work)
+			_ = os.RemoveAll(work)
 		}()
 	}
 	wg.Wait()
@@ -229,15 +205,7 @@ func compatPlanAll(t *testing.T) []compatPlanResult {
 			t.Errorf("%s couldn't be read, so this score means nothing: %s", r.Name, r.Unreachable)
 		}
 	}
-	return results
-}
-
-// TestCompatPlan reads every project's file with Skiff's own planner. The result is a score, so a refusal doesn't fail the test.
-func TestCompatPlan(t *testing.T) {
-	if os.Getenv("SKIFF_COMPAT") == "" {
-		t.Skip("set SKIFF_COMPAT=1: this downloads every project's Compose file")
-	}
-	compatWrite(t, "plan", compatPlanAll(t))
+	compatWrite(t, "plan", results)
 }
 
 // compatRunResult is how far a project got on a real panel.
@@ -245,7 +213,7 @@ type compatRunResult struct {
 	compatProject
 	// Outcome is refused, failed, crashed, silent or runs, or unmeasured when the test itself couldn't set up.
 	Outcome string `json:"outcome"`
-	// Control is why plain Docker Compose couldn't run the same file. Those projects are broken on their own, so they don't count toward the score.
+	// Control is why plain Docker Compose couldn't run the same file with the same example settings. Those projects are broken or need setup steps first, so they don't count toward the score.
 	Control string `json:"control,omitempty"`
 	Detail  string `json:"detail,omitempty"`
 	Seconds int    `json:"seconds,omitempty"`
@@ -285,16 +253,25 @@ func TestCompatRun(t *testing.T) {
 	defer srv.Close()
 
 	kind, only := os.Getenv("SKIFF_COMPAT_KIND"), strings.Split(os.Getenv("SKIFF_COMPAT_ONLY"), ",")
+	// Not a test temp folder: containers can leave files in here that only root can delete.
+	scratch, err := os.MkdirTemp("", "skiff-compat-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var results []compatRunResult
-	for _, r := range compatPlanAll(t) {
-		if kind != "" && r.Kind != kind || only[0] != "" && !slices.Contains(only, r.Name) {
+	for _, p := range compatProjects(t) {
+		if kind != "" && p.Kind != kind || only[0] != "" && !slices.Contains(only, p.Name) {
 			continue
 		}
-		out := compatRunResult{compatProject: r.compatProject}
-		work := filepath.Join(root, "work-"+r.Name)
-		if err := compatRepo(gitRoot, work, r); err != nil {
+		out := compatRunResult{compatProject: p}
+		work := filepath.Join(scratch, p.Name)
+		r := compatLoad(p, work)
+		if r.Unreachable != "" {
 			// This says nothing about Skiff, so it can't count toward the score.
-			t.Errorf("%s: couldn't prepare the repository: %v", r.Name, err)
+			t.Errorf("%s: couldn't check it out: %s", p.Name, r.Unreachable)
+			out.Outcome, out.Detail = "unmeasured", r.Unreachable
+		} else if err := compatPublish(gitRoot, work, r); err != nil {
+			t.Errorf("%s: couldn't prepare the repository: %v", p.Name, err)
 			out.Outcome, out.Detail = "unmeasured", err.Error()
 		} else {
 			out.Control = compatControl(work, r)
@@ -307,7 +284,7 @@ func TestCompatRun(t *testing.T) {
 			}
 		}
 		_ = os.RemoveAll(work)
-		t.Logf("%s: %s %s", r.Name, out.Outcome, out.Detail)
+		t.Logf("%s: %s %s", p.Name, out.Outcome, out.Detail)
 		results = append(results, out)
 		compatWrite(t, "run-"+cmp.Or(kind, "all"), results)
 		compatSummary(t, results)
@@ -518,12 +495,12 @@ func compatSummary(t *testing.T, results []compatRunResult) {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "### Runs on Skiff: %d of %d\n\n", count["runs"], count["total"])
-	fmt.Fprintf(&b, "%d crashed, %d silent, %d failed to deploy, %d refused, %d unmeasured. %d more don't run under plain Compose either.\n\n", count["crashed"], count["silent"], count["failed"], count["refused"], count["unmeasured"], broken)
+	fmt.Fprintf(&b, "%d crashed, %d silent, %d failed to deploy, %d refused, %d unmeasured. %d more don't run under plain Compose with their example settings: some are broken, others need setup steps first.\n\n", count["crashed"], count["silent"], count["failed"], count["refused"], count["unmeasured"], broken)
 	b.WriteString("| Project | Kind | Result | Detail |\n|---|---|---|---|\n")
 	for _, r := range results {
 		outcome, detail := r.Outcome, r.Detail
 		if r.Control != "" {
-			outcome, detail = "broken on its own", r.Control
+			outcome, detail = "not running under Compose", r.Control
 		}
 		detail = strings.NewReplacer("|", "/", "\n", " ").Replace(detail)
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", r.Name, r.Kind, outcome, detail[:min(len(detail), 300)])
@@ -535,33 +512,35 @@ func compatSummary(t *testing.T, results []compatRunResult) {
 	}
 }
 
-// compatRepo serves the project at its pinned commit, with the .env someone following its instructions would create, and leaves a copy in work.
-func compatRepo(gitRoot, work string, r compatPlanResult) error {
-	git := func(dir string, args ...string) error {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=e2e", "GIT_AUTHOR_EMAIL=e2e@example.com", "GIT_COMMITTER_NAME=e2e", "GIT_COMMITTER_EMAIL=e2e@example.com")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git %s: %v: %s", args[0], err, out)
-		}
-		return nil
+func compatGit(dir string, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false"}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_LFS_SKIP_SMUDGE=1", "GIT_LFS_SKIP_PUSH=1", "GIT_AUTHOR_NAME=e2e", "GIT_AUTHOR_EMAIL=e2e@example.com", "GIT_COMMITTER_NAME=e2e", "GIT_COMMITTER_EMAIL=e2e@example.com")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %s: %v: %s", args[0], err, out)
 	}
+	return nil
+}
+
+func compatCheckout(p compatProject, work string) error {
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return err
 	}
 	for _, step := range [][]string{
-		{"init", "-q", "-b", "main"},
-		{"fetch", "-q", "--depth", "1", "https://github.com/" + r.Repo + ".git", r.Commit},
+		{"init", "-q", "--template=", "-b", "main"},
+		{"fetch", "-q", "--depth", "1", "https://github.com/" + p.Repo + ".git", p.Commit},
 		{"checkout", "-q", "-B", "main", "FETCH_HEAD"},
 	} {
-		if err := git(work, step...); err != nil {
+		if err := compatGit(work, step...); err != nil {
 			return err
 		}
 	}
 	// A shallow history can't be pushed, so the pinned files become a single new commit.
-	if err := os.RemoveAll(filepath.Join(work, ".git")); err != nil {
-		return err
-	}
+	return os.RemoveAll(filepath.Join(work, ".git"))
+}
+
+// compatPublish serves the checkout, with the .env someone following the project's instructions would create.
+func compatPublish(gitRoot, work string, r compatPlanResult) error {
 	dir := filepath.Join(work, filepath.Dir(r.File))
 	if _, err := os.Stat(filepath.Join(dir, ".env")); err != nil {
 		var b strings.Builder
@@ -573,19 +552,19 @@ func compatRepo(gitRoot, work string, r compatPlanResult) error {
 		}
 	}
 	for _, step := range [][]string{
-		{"init", "-q", "-b", "main"},
+		{"init", "-q", "--template=", "-b", "main"},
 		{"add", "-A", "-f"},
 		{"commit", "-q", "-m", r.Commit},
 	} {
-		if err := git(work, step...); err != nil {
+		if err := compatGit(work, step...); err != nil {
 			return err
 		}
 	}
 	bare := filepath.Join(gitRoot, r.Name+".git")
-	if err := git(gitRoot, "init", "-q", "--bare", "-b", "main", bare); err != nil {
+	if err := compatGit(gitRoot, "init", "-q", "--template=", "--bare", "-b", "main", bare); err != nil {
 		return err
 	}
-	return git(work, "push", "-q", "--force", bare, "main")
+	return compatGit(work, "push", "-q", "--force", bare, "main")
 }
 
 // compatAnswers checks the services people reach, from inside the stack's network. Any answer short of a server error counts, since most apps want a login first.

@@ -84,6 +84,13 @@
   "file": "gitea-postgres/compose.yaml"
  },
  {
+  "name": "growthbook",
+  "kind": "web",
+  "repo": "growthbook/growthbook",
+  "commit": "bbc45d186d39d375c4dc5ed99fc02d75b8430228",
+  "file": "docker-compose.yml"
+ },
+ {
   "name": "hedgedoc",
   "kind": "web",
   "repo": "hedgedoc/container",
@@ -123,6 +130,13 @@
   "kind": "web",
   "repo": "linkwarden/linkwarden",
   "commit": "eff7c6b735f6b20a4766745dc86c6bdc52bd9840",
+  "file": "docker-compose.yml"
+ },
+ {
+  "name": "listmonk",
+  "kind": "web",
+  "repo": "knadh/listmonk",
+  "commit": "517b46169e2d7b7b6a544b3caa9ce8970ac5028c",
   "file": "docker-compose.yml"
  },
  {
@@ -231,6 +245,13 @@
   "file": "docker-compose.yml"
  },
  {
+  "name": "unleash",
+  "kind": "web",
+  "repo": "Unleash/unleash",
+  "commit": "6e416ef757455bbf531661ef73fec61d33539055",
+  "file": "docker-compose.yml"
+ },
+ {
   "name": "wordpress",
   "kind": "web",
   "repo": "docker/awesome-compose",
@@ -315,6 +336,13 @@
   "file": "docker-compose.yml"
  },
  {
+  "name": "infisical",
+  "kind": "backend",
+  "repo": "Infisical/infisical",
+  "commit": "41db38dca9f70d69f3bab268b631c31debfc51d4",
+  "file": "docker-compose.prod.yml"
+ },
+ {
   "name": "kong",
   "kind": "backend",
   "repo": "Kong/docker-kong",
@@ -383,13 +411,6 @@
   "repo": "temporalio/docker-compose",
   "commit": "cd6d3b19a3307e2cbbc4c1830228166e92caef24",
   "file": "docker-compose-postgres.yml"
- },
- {
-  "name": "traefik",
-  "kind": "backend",
-  "repo": "traefik/traefik",
-  "commit": "38d53dd06c53c7e9bd08e57b217e72686d823610",
-  "file": "docs/content/user-guides/docker-compose/basic-example/docker-compose.yml"
  },
  {
   "name": "trigger",
@@ -532,13 +553,6 @@
   "file": "docker/docker-compose.yml"
  },
  {
-  "name": "airflow",
-  "kind": "data",
-  "repo": "apache/airflow",
-  "commit": "a1be2c1ce30dcb566883154604670166bcf30acf",
-  "file": "airflow-core/docs/howto/docker-compose/docker-compose.yaml"
- },
- {
   "name": "dagster",
   "kind": "data",
   "repo": "dagster-io/dagster",
@@ -551,13 +565,6 @@
   "repo": "apache/druid",
   "commit": "2f53dfefd68b8ac2e1f87d3659ba6803c3d6b424",
   "file": "distribution/docker/docker-compose.yml"
- },
- {
-  "name": "elasticsearch",
-  "kind": "data",
-  "repo": "elastic/elasticsearch",
-  "commit": "289db6edd5a7d65fc118048276bf0b5855436941",
-  "file": "docs/reference/setup/install/docker/docker-compose.yml"
  },
  {
   "name": "elk-sample",
