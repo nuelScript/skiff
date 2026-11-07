@@ -219,7 +219,7 @@ type compatRunResult struct {
 	Seconds int    `json:"seconds,omitempty"`
 }
 
-// TestCompatRun deploys what the planner accepts and checks it stays up, answers and survives a restart. SKIFF_COMPAT_KIND or SKIFF_COMPAT_ONLY narrow the list.
+// TestCompatRun deploys what the planner accepts and checks it stays up, answers, and survives a restart and a redeploy. SKIFF_COMPAT_KIND or SKIFF_COMPAT_ONLY narrow the list.
 func TestCompatRun(t *testing.T) {
 	if os.Getenv("SKIFF_COMPAT") == "" {
 		t.Skip("set SKIFF_COMPAT=1: this pulls and runs real projects")
@@ -396,6 +396,27 @@ func compatDeploy(t *testing.T, c *http.Client, panel, gitURL string, r compatPl
 	}
 	if why := compatAnswers(r, appOf); why != "" {
 		return "crashed", "after a restart: " + why
+	}
+
+	// A redeploy replaces every app's containers, which is where shared volumes and start order get tested again.
+	for _, m := range members() {
+		if m.Kind != "app" {
+			continue
+		}
+		if resp, err := c.Post(panel+"/api/redeploy?app="+m.App, "application/json", nil); err == nil {
+			resp.Body.Close()
+		}
+	}
+	time.Sleep(10 * time.Second)
+	left = waiting()
+	for deadline := time.Now().Add(12 * time.Minute); left != "" && time.Now().Before(deadline); time.Sleep(5 * time.Second) {
+		left = waiting()
+	}
+	if left != "" {
+		return "crashed", "after a redeploy: " + left + ": " + compatWhy(c, panel, stack, members())
+	}
+	if why := compatAnswers(r, appOf); why != "" {
+		return "crashed", "after a redeploy: " + why
 	}
 	return "runs", ""
 }
