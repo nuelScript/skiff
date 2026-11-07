@@ -98,20 +98,6 @@ func apiDatabase(w http.ResponseWriter, r *http.Request) (dbRow, bool) {
 	return dbRow{}, false
 }
 
-func (p *Panel) apiListDatabases(w http.ResponseWriter, r *http.Request) {
-	type view struct {
-		Name   string `json:"name"`
-		Engine string `json:"engine"`
-		State  string `json:"state"`
-		Port   int    `json:"port"`
-	}
-	out := []view{}
-	for _, d := range listDBs(apiTeam(r)) {
-		out = append(out, view{d.Name, d.Engine, p.eng.State(d.Container), d.Port})
-	}
-	apiJSON(w, http.StatusOK, out)
-}
-
 // apiDatabaseConnection answers with the address a client uses through a local tunnel on ?port=.
 func (p *Panel) apiDatabaseConnection(w http.ResponseWriter, r *http.Request) {
 	if !databaseToken(w, r) {

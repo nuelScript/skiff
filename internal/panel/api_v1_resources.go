@@ -23,6 +23,14 @@ func (p *Panel) toAPIDatabase(d dbRow) apiDatabaseView {
 	return apiDatabaseView{d.Name, d.Engine, p.eng.State(d.Container), d.Port, attached}
 }
 
+func (p *Panel) apiListDatabases(w http.ResponseWriter, r *http.Request) {
+	out := []apiDatabaseView{}
+	for _, d := range listDBs(apiTeam(r)) {
+		out = append(out, p.toAPIDatabase(d))
+	}
+	apiJSON(w, http.StatusOK, out)
+}
+
 func (p *Panel) apiCreateDatabase(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Engine string `json:"engine"`

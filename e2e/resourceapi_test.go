@@ -3,8 +3,10 @@
 package e2e
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -92,6 +94,10 @@ func TestResourceAPI(t *testing.T) {
 		if code := call(data.Token, http.MethodPut, "/databases/api-pg/apps/"+app, "", &db); code != http.StatusOK || !slices.Contains(db.Attached, app) {
 			t.Fatalf("attaching: %d %+v", code, db)
 		}
+		var dbs []resource
+		if code := call(ci.Token, http.MethodGet, "/databases", "", &dbs); code != http.StatusOK || len(dbs) != 1 || !slices.Contains(dbs[0].Attached, app) {
+			t.Errorf("listing databases: %d %+v", code, dbs)
+		}
 		if !strings.HasPrefix(env()["DATABASE_URL"], "postgres") {
 			t.Errorf("the app has no DATABASE_URL: %v", env())
 		}
@@ -172,6 +178,95 @@ func TestResourceAPI(t *testing.T) {
 		}
 		if code := call(theirs.Token, http.MethodPost, "/apps/"+app+"/volumes", `{"name":"x","path":"/x"}`, nil); code != http.StatusNotFound {
 			t.Errorf("another team adding a volume: %d", code)
+		}
+	})
+
+	t.Run("cli", func(t *testing.T) {
+		creds, _ := json.Marshal(map[string]string{"url": base, "token": data.Token})
+		if err := os.WriteFile(filepath.Join(home, ".skiff", "credentials.json"), creds, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		skiff := func(args ...string) (string, error) {
+			cmd := exec.Command(bin, args...)
+			cmd.Env = append(os.Environ(), "HOME="+home)
+			out, err := cmd.CombinedOutput()
+			return string(out), err
+		}
+		if out, err := skiff("volume", "add", app, "cache", "/cache"); err != nil {
+			t.Fatalf("volume add: %v %s", err, out)
+		}
+		if out, err := skiff("volume", "ls", app); err != nil || !strings.Contains(out, "/cache") {
+			t.Fatalf("volume ls: %v %s", err, out)
+		}
+		if out, err := skiff("volume", "rm", app, "cache"); err == nil || !strings.Contains(out, "--yes") {
+			t.Errorf("volume rm without --yes: %v %s", err, out)
+		}
+		if out, err := skiff("volume", "rm", app, "cache", "--yes"); err != nil {
+			t.Fatalf("volume rm: %v %s", err, out)
+		}
+		if out, err := skiff("db", "attach", "missing", app); err == nil || !strings.Contains(out, "database not found") {
+			t.Errorf("attaching a missing database: %v %s", err, out)
+		}
+	})
+
+	t.Run("mcp", func(t *testing.T) {
+		tools := func(readOnly bool) (map[string]bool, func(string, map[string]any) (string, bool)) {
+			args := []string{"mcp"}
+			if readOnly {
+				args = append(args, "--read-only")
+			}
+			cmd := exec.Command(bin, args...)
+			cmd.Env = append(os.Environ(), "SKIFF_URL="+base, "SKIFF_TOKEN="+ci.Token)
+			stdin, _ := cmd.StdinPipe()
+			stdout, _ := cmd.StdoutPipe()
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = stdin.Close(); _ = cmd.Wait() })
+			out := bufio.NewScanner(stdout)
+			out.Buffer(make([]byte, 0, 64*1024), 8<<20)
+			id := 0
+			rpc := func(method string, params any) map[string]any {
+				id++
+				b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+				_, _ = stdin.Write(append(b, '\n'))
+				if !out.Scan() {
+					t.Fatalf("mcp closed during %s", method)
+				}
+				var r map[string]any
+				_ = json.Unmarshal(out.Bytes(), &r)
+				r, _ = r["result"].(map[string]any)
+				return r
+			}
+			rpc("initialize", map[string]any{"protocolVersion": "2025-06-18"})
+			names := map[string]bool{}
+			for _, tl := range rpc("tools/list", nil)["tools"].([]any) {
+				names[tl.(map[string]any)["name"].(string)] = true
+			}
+			return names, func(name string, args map[string]any) (string, bool) {
+				r := rpc("tools/call", map[string]any{"name": name, "arguments": args})
+				return r["content"].([]any)[0].(map[string]any)["text"].(string), r["isError"].(bool)
+			}
+		}
+
+		ro, _ := tools(true)
+		if !ro["list_databases"] || !ro["list_volumes"] || ro["create_database"] || ro["add_volume"] || ro["set_worker"] {
+			t.Errorf("read-only tools: %v", ro)
+		}
+		all, tool := tools(false)
+		for name := range all {
+			if strings.HasPrefix(name, "delete_") || name == "remove_volume" {
+				t.Errorf("an agent can delete data with %s", name)
+			}
+		}
+		if text, isErr := tool("add_volume", map[string]any{"name": app, "volume": "agent", "path": "/agent"}); isErr {
+			t.Fatalf("add_volume: %s", text)
+		}
+		if text, isErr := tool("list_volumes", map[string]any{"name": app}); isErr || !strings.Contains(text, "/agent") {
+			t.Fatalf("list_volumes: %s", text)
+		}
+		if text, isErr := tool("attach_database", map[string]any{"database": "missing", "name": app}); !isErr || !strings.Contains(text, "can't reach") {
+			t.Errorf("a pipeline token attaching through mcp: %s", text)
 		}
 	})
 
