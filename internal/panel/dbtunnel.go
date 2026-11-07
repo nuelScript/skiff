@@ -45,12 +45,12 @@ func holdTunnel(team string) (release func(), ok bool) {
 	}, true
 }
 
-// databaseToken refuses tokens that were never granted database access, so a token kept in CI can't reach a private database.
+// databaseToken refuses tokens that were never granted data access, so a token kept in CI can't reach a private database or delete stored data.
 func databaseToken(w http.ResponseWriter, r *http.Request) bool {
 	if tokenReachesDatabases(bearerToken(r)) {
 		return true
 	}
-	apiErr(w, http.StatusForbidden, "this token can't reach databases, sign in again with `skiff login`")
+	apiErr(w, http.StatusForbidden, "this token can't reach databases or buckets, sign in again with `skiff login`")
 	return false
 }
 
