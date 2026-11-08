@@ -487,8 +487,19 @@ func compatWhy(c *http.Client, panel, stack string, members []stackMember) strin
 		if resp, err := c.Do(req); err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
+			var errs []string
+			for line := range strings.Lines(string(body)) {
+				if low := strings.ToLower(line); strings.Contains(low, "error") || strings.Contains(low, "fatal") || strings.Contains(low, "failed to") {
+					errs = append(errs, strings.Join(strings.Fields(line), " "))
+				}
+			}
 			text := strings.Join(strings.Fields(string(body)), " ")
-			why = append(why, m.App+": "+text[max(0, len(text)-300):])
+			detail := text[max(0, len(text)-300):]
+			if len(errs) > 0 {
+				first := strings.Join(errs[:min(len(errs), 3)], " / ")
+				detail = first[:min(len(first), 600)] + " … " + detail
+			}
+			why = append(why, m.App+": "+detail)
 		}
 		cancel()
 		break
