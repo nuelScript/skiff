@@ -123,8 +123,6 @@ func (f *File) topLevelSettings(root *yaml.Node) {
 		key, v := root.Content[i].Value, root.Content[i+1]
 		switch {
 		case key == "services" || key == "secrets" || key == "configs" || key == "version" || strings.HasPrefix(key, "x-"):
-		case key == "include":
-			f.Problems = append(f.Problems, "include isn't supported yet, so copy those services into this file")
 		case key == "name":
 			f.Notes = append(f.Notes, "the file's name is ignored, because the stack keeps the name you give it in Skiff")
 		case key == "networks":

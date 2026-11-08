@@ -225,7 +225,7 @@ func loadStack(ctx context.Context, req stackRequest, team string, updating bool
 		v, ok := repoEnv[k]
 		return v, ok
 	}
-	f, err := compose.Parse(data, lookup)
+	f, err := compose.ParseWith(data, lookup, read)
 	if err != nil {
 		return nil, err
 	}

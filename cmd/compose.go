@@ -80,16 +80,17 @@ func loadComposePlan(path, name string) (*compose.Plan, error) {
 		v, ok := vars[k]
 		return v, ok
 	}
-	f, err := compose.Parse(data, lookup)
-	if err != nil {
-		return nil, err
-	}
-	return compose.BuildPlan(name, f, func(p string) ([]byte, error) {
+	read := func(p string) ([]byte, error) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(dir, p)
 		}
 		return os.ReadFile(p)
-	}, func(p string) compose.PathKind {
+	}
+	f, err := compose.ParseWith(data, lookup, read)
+	if err != nil {
+		return nil, err
+	}
+	return compose.BuildPlan(name, f, read, func(p string) compose.PathKind {
 		switch info, err := os.Stat(filepath.Join(dir, p)); {
 		case err != nil:
 			return compose.PathMissing

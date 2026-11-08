@@ -90,7 +90,6 @@ var unsupportedKeys = map[string]string{
 	"privileged":   "needs privileges Skiff doesn't grant",
 	"network_mode": "Skiff manages the network",
 	"devices":      "Skiff doesn't pass devices through",
-	"extends":      "from another file isn't supported yet, so merge it into this file",
 }
 
 // ignoredWhy explains the service keys Skiff leaves out that files use most.
