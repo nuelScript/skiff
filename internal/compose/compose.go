@@ -31,6 +31,8 @@ type File struct {
 	Profiled []string
 	// Problems are parts of the file Skiff can't honor, found while reading it.
 	Problems []string
+	// Notes are settings Skiff reads differently or leaves out, found while reading it.
+	Notes []string
 }
 
 type Service struct {
@@ -55,6 +57,9 @@ type Build struct{ Context, Dockerfile string }
 type Port struct {
 	Published string
 	Target    int
+	// HostIP is the address the file publishes on, such as 127.0.0.1 for a port meant to stay on the machine.
+	HostIP   string
+	Protocol string
 }
 
 // Mount is a volume entry: a named volume, an anonymous one (empty Source) or a bind mount.
@@ -66,6 +71,9 @@ type Mount struct {
 	Need string
 	// Content is a config written in the Compose file itself.
 	Content *string
+	// tmpfs is a type: tmpfs entry, which becomes a tmpfs mount rather than a volume; tmpfsSize is its size option.
+	tmpfs     bool
+	tmpfsSize string
 }
 
 type rawService struct {
@@ -90,7 +98,8 @@ type rawService struct {
 		} `yaml:"resources"`
 	} `yaml:"deploy"`
 	Healthcheck struct {
-		Test stringList `yaml:"test"`
+		Test    stringList `yaml:"test"`
+		Disable bool       `yaml:"disable"`
 	} `yaml:"healthcheck"`
 	Entrypoint      stringList `yaml:"entrypoint"`
 	User            string     `yaml:"user"`
@@ -172,6 +181,7 @@ func Parse(data []byte, lookup func(string) (string, bool)) (*File, error) {
 	if err := doc.Content[0].Decode(&top); err != nil {
 		return nil, fmt.Errorf("reading secrets and configs: %w", err)
 	}
+	f.topLevelSettings(doc.Content[0])
 	for i := 0; i+1 < len(services.Content); i += 2 {
 		name, node := services.Content[i].Value, services.Content[i+1]
 		var raw rawService
@@ -181,6 +191,10 @@ func Parse(data []byte, lookup func(string) (string, bool)) (*File, error) {
 		if len(raw.Profiles) > 0 {
 			f.Profiled = append(f.Profiled, name)
 			continue
+		}
+		f.Notes = append(f.Notes, ignoredSettings(name, node)...)
+		if raw.Healthcheck.Disable || slices.Equal(raw.Healthcheck.Test, []string{"NONE"}) {
+			raw.Healthcheck.Test = nil
 		}
 		s := Service{
 			Image: raw.Image, Command: raw.Command, Environment: raw.Environment, EnvFiles: raw.EnvFile,
@@ -219,7 +233,14 @@ func Parse(data []byte, lookup func(string) (string, bool)) (*File, error) {
 			}
 		}
 		for _, m := range raw.Volumes {
-			s.Volumes = append(s.Volumes, Mount(m))
+			switch {
+			case m.tmpfs && m.tmpfsSize != "":
+				s.Options.Tmpfs = append(s.Options.Tmpfs, m.Target+":size="+m.tmpfsSize)
+			case m.tmpfs:
+				s.Options.Tmpfs = append(s.Options.Tmpfs, m.Target)
+			default:
+				s.Volumes = append(s.Volumes, Mount(m))
+			}
 		}
 		for _, r := range raw.Secrets {
 			if m, ok := f.fileMount(name, "secret", r, top.Secrets, lookup); ok {
@@ -415,7 +436,7 @@ func dockerSize(s string) string {
 }
 
 func mapValue(n *yaml.Node, key string) *yaml.Node {
-	if n.Kind != yaml.MappingNode {
+	if n == nil || n.Kind != yaml.MappingNode {
 		return nil
 	}
 	for i := 0; i+1 < len(n.Content); i += 2 {
@@ -675,9 +696,16 @@ func (p *rawPort) UnmarshalYAML(n *yaml.Node) error {
 		if pub := mapValue(n, "published"); pub != nil {
 			p.Published = pub.Value
 		}
+		if ip := mapValue(n, "host_ip"); ip != nil {
+			p.HostIP = ip.Value
+		}
+		if proto := mapValue(n, "protocol"); proto != nil {
+			p.Protocol = proto.Value
+		}
 		return nil
 	}
-	spec := strings.Split(n.Value, "/")[0]
+	spec, proto, _ := strings.Cut(n.Value, "/")
+	p.Protocol = proto
 	parts := strings.Split(spec, ":")
 	target, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
@@ -686,6 +714,9 @@ func (p *rawPort) UnmarshalYAML(n *yaml.Node) error {
 	p.Target = target
 	if len(parts) > 1 {
 		p.Published = parts[len(parts)-2]
+	}
+	if len(parts) == 3 {
+		p.HostIP = parts[0]
 	}
 	return nil
 }
@@ -705,6 +736,10 @@ func (m *rawMount) UnmarshalYAML(n *yaml.Node) error {
 			m.Target = cleanTarget(t.Value)
 		}
 		m.Bind = kind == "bind"
+		m.tmpfs = kind == "tmpfs"
+		if size := mapValue(mapValue(n, "tmpfs"), "size"); size != nil {
+			m.tmpfsSize = size.Value
+		}
 		if r := mapValue(n, "read_only"); r != nil {
 			m.ReadOnly = r.Value == "true"
 		}

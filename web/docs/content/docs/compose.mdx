@@ -48,7 +48,7 @@ For a stack from a GitHub repository, push your Compose file. Safe changes apply
 ## What each service becomes
 
 - **Stock Postgres, MySQL, MongoDB and Redis images** become managed databases with daily backups, using your file's image, username, password and database name. They stay private. Other images, like `pgvector/pgvector`, run as ordinary private apps, and their data is covered by volume backups. So does a stock image that mounts its own setup scripts into `/docker-entrypoint-initdb.d`, so the scripts still run, and one your file leaves without a password, like MongoDB with no root user, so apps that connect without one still can.
-- **Services that publish a port** become public apps with HTTPS. Skiff serves one port per app, so only the first web port is used. Ports that browsers can't open, such as 5432 for Postgres or 6379 for Redis, stay inside the stack. To reach one from outside, open a public TCP port in the project's settings.
+- **Services that publish a port** become public apps with HTTPS. Skiff serves one port per app, so only the first web port is used. A port published only on `127.0.0.1` stays private, and UDP ports aren't forwarded. Ports that browsers can't open, such as 5432 for Postgres or 6379 for Redis, stay inside the stack. To reach one from outside, open a public TCP port in the project's settings.
 - **Services with no published port** stay private, and only the stack can reach them.
 - **A service with the same build, environment and volumes as an app**, but its own command and no port, becomes that app's worker.
 
@@ -58,10 +58,12 @@ For a stack from a GitHub repository, push your Compose file. Safe changes apply
 - **Paths the repository doesn't have**, like `./data` or `/opt/data`, become volumes that start empty.
 - **The server's own files** aren't shared with apps. System folders like `/etc` and the Docker socket are refused.
 - **Shared volumes** are held by the first service that uses them, which also keeps their backups. That service has to keep mounting a volume while others use it. Managed databases keep their data to themselves, so they can't share one.
-- **Health checks** are used when they make an HTTP request. Otherwise a private service counts as ready once its port opens.
+- **Health checks** are used when they make an HTTP request, and `disable: true` turns one off. Otherwise a private service counts as ready once its port opens. Timings like `interval` and `retries` are ignored, because Skiff runs its own check.
+- **tmpfs volumes** (`type: tmpfs`) become in-memory folders, as they do in Compose.
 - **Secrets and configs** are built into the service's image as read-only files: secrets at `/run/secrets/<name>`, configs at `/<name>`, or wherever `target` says. Secrets come from a `file` in the repository. Configs can also be written with `content` or taken from a variable with `environment`. A managed database reads its password from a secret through variables like `POSTGRES_PASSWORD_FILE`.
 - **extends** works for a service in the same file.
-- **Not supported:** `privileged`, `network_mode`, `devices`, `extends` from another file, secrets taken from an environment variable, and external secrets and configs. Keys like `restart` and `networks` are ignored, and so are permission settings like `cap_add` and `sysctls`.
+- **Not supported:** `privileged`, `network_mode`, `devices`, `extends` from another file, `include`, secrets taken from an environment variable, and external secrets and configs.
+- **Ignored, with a note saying why:** keys like `restart`, `container_name` and `networks`, permission settings like `cap_add` and `sysctls`, `build` `args` and `target`, `deploy` settings other than replicas and limits, and waiting for a service to finish (`service_completed_successfully`). An `external` volume becomes a new empty volume, so copy your data in after the first deploy. Checking a file lists every setting Skiff leaves out.
 - **Services behind a profile** are left out, as they are in a plain `docker compose up`.
 - **Managed databases** ignore settings like `user` and `entrypoint`, because Skiff chooses how they start.
 

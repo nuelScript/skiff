@@ -93,6 +93,25 @@ var unsupportedKeys = map[string]string{
 	"extends":      "from another file isn't supported yet, so merge it into this file",
 }
 
+// ignoredWhy explains the service keys Skiff leaves out that files use most.
+var ignoredWhy = map[string]string{
+	"restart":        "Skiff restarts a service whenever it stops",
+	"container_name": "Skiff names each service's container itself",
+	"hostname":       "other services reach it by its service name",
+	"networks":       "a stack's services share one private network",
+	"logging":        "Skiff keeps each service's logs itself",
+	"labels":         "Skiff sets its own labels",
+	"platform":       "Skiff builds and runs for the server's own platform",
+	"pull_policy":    "Skiff pulls the image on every deploy",
+	"stdin_open":     "no terminal is attached to a service",
+	"tty":            "no terminal is attached to a service",
+}
+
+// loopback says whether a published address keeps a port on the machine.
+func loopback(ip string) bool {
+	return ip == "127.0.0.1" || ip == "localhost" || ip == "::1" || ip == "[::1]"
+}
+
 var nameUnsafe = regexp.MustCompile(`[^a-z0-9-]+`)
 
 func safeName(s string) string {
@@ -130,6 +149,7 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 	}
 	p.Unset = dedupe(f.Unset)
 	p.Problems = append(p.Problems, f.Problems...)
+	p.Notes = append(p.Notes, f.Notes...)
 	for _, name := range f.Profiled {
 		p.Notes = append(p.Notes, name+": only runs with a Compose profile, so Skiff leaves it out")
 	}
@@ -194,6 +214,8 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 		for _, key := range f.Extra[name] {
 			if why, bad := unsupportedKeys[key]; bad {
 				p.Problems = append(p.Problems, fmt.Sprintf("%s: %s %s", name, key, why))
+			} else if why := ignoredWhy[key]; why != "" {
+				p.Notes = append(p.Notes, fmt.Sprintf("%s: %s is ignored, because %s", name, key, why))
 			} else {
 				p.Notes = append(p.Notes, fmt.Sprintf("%s: %s is ignored", name, key))
 			}
@@ -220,8 +242,20 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 			p.Notes = append(p.Notes, name+": "+why+", so it runs as an ordinary private app instead of a managed database. Its data is covered by volume backups")
 		}
 
+		var ports []Port
+		for _, pt := range s.Ports {
+			if pt.Protocol != "" && pt.Protocol != "tcp" {
+				p.Notes = append(p.Notes, fmt.Sprintf("%s: port %d/%s isn't reachable, because Skiff only forwards TCP", name, pt.Target, pt.Protocol))
+				continue
+			}
+			ports = append(ports, pt)
+		}
+		s.Ports = ports
 		web := slices.IndexFunc(s.Ports, func(pt Port) bool { return !plainTCPPorts[pt.Target] })
 		switch {
+		case web >= 0 && loopback(s.Ports[web].HostIP):
+			it.Port = s.Ports[web].Target
+			p.Notes = append(p.Notes, fmt.Sprintf("%s: port %d is published only on %s, so it stays private. Turn on public access in its settings if it should be a website", name, it.Port, s.Ports[web].HostIP))
 		case web >= 0:
 			it.Port, it.Public = s.Ports[web].Target, true
 			if len(s.Ports) > 1 {
