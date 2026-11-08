@@ -65,13 +65,14 @@ func TestCatalog(t *testing.T) {
 			if ok, log := streamResult(t, c, base+"/api/deploys/log?app="+name+"&id="+created.ID); !ok {
 				t.Fatalf("the install didn't go live:\n%s", tail(log, 40))
 			}
-			// Some apps answer 503 while their first start runs migrations, which can outlast the health check.
+			// Some apps answer 503 while their first start runs migrations, which can outlast the health check. A redirect is an answer too: an app set up for HTTPS sends plain HTTP there, and following it would leave this test's router.
+			noFollow := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 			var status int
 			deadline := time.Now().Add(10 * time.Minute)
 			for time.Now().Before(deadline) {
 				req, _ := http.NewRequest(http.MethodGet, "http://"+routerAddr+"/", nil)
 				req.Host = name + ".localhost"
-				if resp, err := http.DefaultClient.Do(req); err == nil {
+				if resp, err := noFollow.Do(req); err == nil {
 					_, _ = io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
 					if status = resp.StatusCode; status < 500 {
