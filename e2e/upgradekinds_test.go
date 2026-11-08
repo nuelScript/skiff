@@ -51,29 +51,32 @@ func seedKinds(t *testing.T, b *drillBox) (check func(redeployed bool)) {
 		t.Fatalf("adding a job: %d %s", code, out)
 	}
 
+	// The oldest versions ran buckets on an image that can no longer be pulled, so a bucket only counts where the old version can still make one.
 	var bucket struct{ ID, Endpoint string }
 	code, out = send(http.MethodPost, "/api/storage", `{"name":"upgrade-files"}`)
-	if code != http.StatusOK || json.Unmarshal(out, &bucket) != nil || bucket.ID == "" {
-		t.Fatalf("creating a bucket: %d %s", code, out)
+	hasBucket := code == http.StatusOK && json.Unmarshal(out, &bucket) == nil && bucket.ID != ""
+	t.Logf("buckets: %v %s", hasBucket, out[:min(len(out), 120)])
+	hasFile := false
+	if hasBucket {
+		store := strings.TrimSuffix(strings.TrimPrefix(bucket.Endpoint, "http://"), ":8333")
+		t.Cleanup(func() {
+			_ = exec.Command("docker", "rm", "-f", store).Run()
+			_ = exec.Command("docker", "volume", "rm", store+"-data").Run()
+		})
+		if code, out := send(http.MethodPost, "/api/storage/attach?id="+bucket.ID+"&app="+app, ""); code >= 300 {
+			t.Fatalf("attaching the bucket: %d %s", code, out)
+		}
+		// Older versions have no file browser.
+		code, _ = send(http.MethodPut, "/api/storage/object?id="+bucket.ID+"&key=kept.txt", "kept-file")
+		hasFile = code == http.StatusNoContent
 	}
-	store := strings.TrimSuffix(strings.TrimPrefix(bucket.Endpoint, "http://"), ":8333")
-	t.Cleanup(func() {
-		_ = exec.Command("docker", "rm", "-f", store).Run()
-		_ = exec.Command("docker", "volume", "rm", store+"-data").Run()
-	})
-	if code, out := send(http.MethodPost, "/api/storage/attach?id="+bucket.ID+"&app="+app, ""); code >= 300 {
-		t.Fatalf("attaching the bucket: %d %s", code, out)
-	}
-	// Older versions have no file browser.
-	code, _ = send(http.MethodPut, "/api/storage/object?id="+bucket.ID+"&key=kept.txt", "kept-file")
-	hasFile := code == http.StatusNoContent
 	t.Logf("bucket files: %v", hasFile)
 
-	// Stacks arrived after the oldest releases.
+	// Stacks arrived after the oldest releases, which answer an unknown address with the dashboard page.
 	compose := `services:\n  web:\n    image: traefik/whoami:v1.10.2\n    ports: [\"80:80\"]\n  cache:\n    image: redis:7-alpine\n`
 	code, out = send(http.MethodPost, "/api/stacks", `{"name":"`+upgradeStack+`","compose":"`+compose+`"}`)
 	hasStack := code == http.StatusCreated
-	if !hasStack && code != http.StatusNotFound && code != http.StatusMethodNotAllowed {
+	if !hasStack && code >= 400 && code != http.StatusNotFound && code != http.StatusMethodNotAllowed {
 		t.Fatalf("creating a stack: %d %s", code, out)
 	}
 	t.Logf("stacks: %v", hasStack)
@@ -120,7 +123,7 @@ func seedKinds(t *testing.T, b *drillBox) (check func(redeployed bool)) {
 		for _, v := range vars {
 			bucketVar = bucketVar || v.Key == "S3_BUCKET" && v.Value == "upgrade-files"
 		}
-		if !bucketVar {
+		if hasBucket && !bucketVar {
 			t.Errorf("the bucket's variables after upgrading: %+v", vars)
 		}
 		if hasFile {
