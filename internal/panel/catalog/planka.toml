@@ -1,0 +1,24 @@
+name = "Planka"
+category = "Productivity"
+blurb = "Kanban boards for projects and teams, with a Postgres database included."
+image = "ghcr.io/plankanban/planka:2.3.1"
+database = "postgres"
+database_var = "DATABASE_URL"
+port = 1337
+memory = "512 MB"
+timeout = 180
+setup = "Sign in as admin, with the password in DEFAULT_ADMIN_PASSWORD under Environment."
+
+[[volumes]]
+name = "data"
+path = "/app/data"
+
+[env]
+BASE_URL = "{{url}}"
+DATABASE_URL = "{{db.url}}"
+SECRET_KEY = "{{secret}}"
+TRUST_PROXY = "true"
+DEFAULT_ADMIN_EMAIL = "admin@{{host}}"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_NAME = "Admin"
+DEFAULT_ADMIN_PASSWORD = "{{secret}}"

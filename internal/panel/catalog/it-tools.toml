@@ -1,0 +1,8 @@
+name = "IT Tools"
+category = "Development"
+blurb = "Handy developer tools in the browser: encoders, converters, generators and formatters."
+image = "corentinth/it-tools:2024.10.22-7ca5933"
+port = 80
+memory = "32 MB"
+timeout = 120
+setup = "There is no sign-in and nothing is stored, so anyone who has the address can use it."
