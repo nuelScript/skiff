@@ -2,7 +2,9 @@ package compose
 
 import (
 	"errors"
+	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -619,7 +621,7 @@ volumes: {data: {}}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := BuildPlan("s", other, noFiles, nil); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.Contains(s, "from another file") }) {
+	if p := BuildPlan("s", other, noFiles, nil); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.Contains(s, "a pasted file can't read") }) {
 		t.Errorf("extends from another file: %v", p.Problems)
 	}
 }
@@ -849,8 +851,8 @@ services:
 		}
 	}
 
-	if p := plan(t, "include: [other.yaml]\nservices:\n  a: {image: x}\n"); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.HasPrefix(s, "include isn't supported") }) {
-		t.Errorf("include should be refused: %v", p.Problems)
+	if p := plan(t, "include: [other.yaml]\nservices:\n  a: {image: x}\n"); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.HasPrefix(s, "include needs the files it names") }) {
+		t.Errorf("include in a pasted file should be refused: %v", p.Problems)
 	}
 }
 
@@ -874,5 +876,68 @@ func TestBuildArgsAndTarget(t *testing.T) {
 	}
 	if b := f.Services["b"].Build; b.Target != "" || !slices.Equal(b.Args, []string{"A=1", "B=2"}) {
 		t.Errorf("b: %+v", b)
+	}
+}
+
+func TestIncludeAndExtendsFromOtherFiles(t *testing.T) {
+	repo := map[string]string{
+		"db/compose.yaml": `services:
+  cache:
+    image: redis:7
+  worker:
+    build: ./worker
+    env_file: worker.env
+    volumes: ["./seed:/seed", "jobs:/jobs"]
+volumes: {jobs: {}}
+`,
+		"common/base.yml": `services:
+  web-base:
+    build: {context: ../app, dockerfile: Dockerfile.web}
+    environment: {LOG: info}
+    volumes: ["./static:/static:ro"]
+`,
+	}
+	read := func(name string) ([]byte, error) {
+		if s, ok := repo[path.Clean(name)]; ok {
+			return []byte(s), nil
+		}
+		return nil, fmt.Errorf("no %s", name)
+	}
+	f, err := ParseWith([]byte(`include: [db/compose.yaml]
+services:
+  web:
+    extends: {file: common/base.yml, service: web-base}
+    environment: {PORT: "3000"}
+    ports: ["3000"]
+`), noEnv, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, web := f.Services["worker"], f.Services["web"]
+	if worker.Build == nil || worker.Build.Context != "db/worker" || !slices.Equal(worker.EnvFiles, []string{"db/worker.env"}) {
+		t.Errorf("an included service's paths should start from its own file: %+v", worker)
+	}
+	if worker.Volumes[0].Source != "./db/seed" || worker.Volumes[1].Source != "jobs" {
+		t.Errorf("included volumes: %+v", worker.Volumes)
+	}
+	if _, ok := f.Services["cache"]; !ok {
+		t.Error("the included file's other services should be there")
+	}
+	if web.Build == nil || web.Build.Context != "app" || web.Build.Dockerfile != "Dockerfile.web" || web.Environment["LOG"] != "info" || web.Environment["PORT"] != "3000" {
+		t.Errorf("web should extend web-base from the other file: %+v", web)
+	}
+	if web.Volumes[0].Source != "./common/static" {
+		t.Errorf("extended volumes: %+v", web.Volumes)
+	}
+
+	if _, err := ParseWith([]byte("include: [db/compose.yaml]\nservices:\n  cache: {image: x}\n"), noEnv, read); err == nil || !strings.Contains(err.Error(), "in both") {
+		t.Errorf("a service defined twice should be refused: %v", err)
+	}
+	if _, err := ParseWith([]byte("include: [missing.yml]\nservices:\n  a: {image: x}\n"), noEnv, read); err == nil {
+		t.Error("a missing included file should be refused")
+	}
+	repo["loop.yml"] = "include: [loop.yml]\nservices:\n  l: {image: x}\n"
+	if _, err := ParseWith([]byte("include: [loop.yml]\nservices:\n  a: {image: x}\n"), noEnv, read); err == nil {
+		t.Error("an include circle should be refused")
 	}
 }

@@ -163,26 +163,27 @@ var serviceKeys = map[string]bool{
 
 // Parse reads a Compose file, filling in ${VAR} references from lookup.
 func Parse(data []byte, lookup func(string) (string, bool)) (*File, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("reading the Compose file: %w", err)
-	}
-	if len(doc.Content) == 0 {
-		return nil, errors.New("the Compose file is empty")
-	}
+	return ParseWith(data, lookup, nil)
+}
+
+// ParseWith also follows include and extends into other files, which read loads relative to the Compose file's folder.
+func ParseWith(data []byte, lookup func(string) (string, bool), read Reader) (*File, error) {
 	f := &File{Services: map[string]Service{}, Extra: map[string][]string{}}
-	expandAliases(&doc, map[*yaml.Node]bool{})
-	stripMergeTags(&doc, map[*yaml.Node]bool{})
-	if err := interpolate(&doc, lookup, f, map[*yaml.Node]bool{}); err != nil {
+	root, err := f.load(data, "the Compose file", lookup)
+	if err != nil {
 		return nil, err
 	}
-	services := mapValue(doc.Content[0], "services")
+	if err := f.applyIncludes(root, read, lookup, 0); err != nil {
+		return nil, err
+	}
+	services := mapValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode || len(services.Content) == 0 {
 		return nil, errors.New("the Compose file has no services")
 	}
-	if err := applyExtends(services); err != nil {
+	if err := f.applyExtends(services, read, lookup, 0); err != nil {
 		return nil, err
 	}
+	doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}
 	var top struct {
 		Secrets map[string]fileSource `yaml:"secrets"`
 		Configs map[string]fileSource `yaml:"configs"`
@@ -313,8 +314,11 @@ func (f *File) fileMount(service, kind string, r rawRef, sources map[string]file
 	return m, true
 }
 
-// applyExtends merges each service that extends another in the same file into a copy of that service. Extending a service from another file is left for the plan to refuse.
-func applyExtends(services *yaml.Node) error {
+// applyExtends merges each service that extends another into a copy of that service, reading another file through read when the service names one.
+func (f *File) applyExtends(services *yaml.Node, read Reader, lookup func(string) (string, bool), depth int) error {
+	if depth >= maxFileDepth {
+		return errors.New("extends goes too deep across files, or in a circle")
+	}
 	done := map[string]bool{}
 	var resolve func(name string, seen []string) error
 	resolve = func(name string, seen []string) error {
@@ -335,12 +339,12 @@ func applyExtends(services *yaml.Node) error {
 		}
 		base := ext.Value
 		if ext.Kind == yaml.MappingNode {
-			if mapValue(ext, "file") != nil {
-				done[name] = true
-				return nil
-			}
 			if s := mapValue(ext, "service"); s != nil {
 				base = s.Value
+			}
+			if file := mapValue(ext, "file"); file != nil {
+				done[name] = true
+				return f.extendFromFile(node, name, file.Value, base, read, lookup, depth)
 			}
 		}
 		if mapValue(services, base) == nil {
