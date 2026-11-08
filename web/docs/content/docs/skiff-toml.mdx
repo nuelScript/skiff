@@ -62,6 +62,8 @@ command = "node report.js"
 | Key | Default | What it does |
 | --- | --- | --- |
 | `dockerfile` | `Dockerfile` | The Dockerfile to build from. |
+| `target` | the last stage | The Dockerfile stage to build, like `runtime`. |
+| `args` | none | Build arguments for the Dockerfile's `ARG` lines, like `args = { MODE = "prod" }`. They end up in the image's history, so keep secrets in `[secrets]`. |
 | `port` | `8080` | The port the app listens on. With `image` set and no `port`, the port the image exposes is used. |
 | `image` | none | A prebuilt image to deploy instead of building, like `ghcr.io/you/api:1.4`. See [Prebuilt images](/images). |
 | `base`, `install`, `build`, `start`, `static` | none | Build steps for an app with no Dockerfile. Setting `start` or `static` skips detection and builds from these instead. |

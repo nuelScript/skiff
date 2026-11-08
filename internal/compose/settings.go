@@ -22,11 +22,6 @@ func unread(n *yaml.Node, read ...string) []string {
 	return out
 }
 
-var buildWhy = map[string]string{
-	"args":   ", so the image builds with the Dockerfile's default values",
-	"target": ", so the Dockerfile is built to its last stage",
-}
-
 var deployWhy = map[string]string{
 	"restart_policy": ", because Skiff restarts a service whenever it stops",
 }
@@ -36,8 +31,8 @@ func ignoredSettings(service string, node *yaml.Node) []string {
 	var out []string
 	add := func(format string, a ...any) { out = append(out, service+": "+fmt.Sprintf(format, a...)) }
 
-	for _, k := range unread(mapValue(node, "build"), "context", "dockerfile") {
-		add("build %s is ignored%s", k, buildWhy[k])
+	for _, k := range unread(mapValue(node, "build"), "context", "dockerfile", "args", "target") {
+		add("build %s is ignored", k)
 	}
 
 	deploy := mapValue(node, "deploy")

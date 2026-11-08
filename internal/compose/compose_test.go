@@ -88,7 +88,7 @@ func TestPlanForATypicalBackend(t *testing.T) {
 	}
 	api := item(t, p, "api")
 	if api.Name != "shop-api" || api.Kind != KindApp || !api.Public || api.Port != 3000 || api.Replicas != 2 ||
-		api.Memory != "512m" || api.CPUs != "0.5" || api.HealthPath != "/healthz" || *api.Build != (Build{"./api", "Dockerfile.prod"}) {
+		api.Memory != "512m" || api.CPUs != "0.5" || api.HealthPath != "/healthz" || !api.Build.equal(Build{Context: "./api", Dockerfile: "Dockerfile.prod"}) {
 		t.Errorf("api: %+v", api)
 	}
 	if got := api.Env["DATABASE_URL"]; got != "postgres://app:devpass@db:5432/shop" {
@@ -840,8 +840,6 @@ services:
 		"web: volume setting volume.nocopy on /data is ignored",
 		"web: healthcheck interval, retries are ignored",
 		"web: network aliases are ignored",
-		"api: build args is ignored, so the image builds with the Dockerfile's default values",
-		"api: build target is ignored, so the Dockerfile is built to its last stage",
 		"api: deploy restart_policy is ignored, because",
 		"api: deploy reservations are ignored",
 		"api: waiting for migrate to finish isn't supported yet",
@@ -853,5 +851,28 @@ services:
 
 	if p := plan(t, "include: [other.yaml]\nservices:\n  a: {image: x}\n"); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.HasPrefix(s, "include isn't supported") }) {
 		t.Errorf("include should be refused: %v", p.Problems)
+	}
+}
+
+func TestBuildArgsAndTarget(t *testing.T) {
+	f, err := Parse([]byte(`services:
+  a:
+    build:
+      context: .
+      target: runtime
+      args: {MODE: prod, EMPTY: "", FROM_SHELL: null}
+  b:
+    build:
+      context: .
+      args: ["B=2", "A=1", "UNSET"]
+`), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := f.Services["a"].Build; a.Target != "runtime" || !slices.Equal(a.Args, []string{"EMPTY=", "MODE=prod"}) {
+		t.Errorf("a: %+v", a)
+	}
+	if b := f.Services["b"].Build; b.Target != "" || !slices.Equal(b.Args, []string{"A=1", "B=2"}) {
+		t.Errorf("b: %+v", b)
 	}
 }

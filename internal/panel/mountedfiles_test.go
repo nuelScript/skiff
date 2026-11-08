@@ -79,3 +79,22 @@ func TestPrepareMountedFiles(t *testing.T) {
 		t.Errorf("a removed file: %v", err)
 	}
 }
+
+// TestMountedFilesGoOnTheTargetStage checks that files land in the stage a service builds, not the Dockerfile's last one.
+func TestMountedFilesGoOnTheTargetStage(t *testing.T) {
+	work := t.TempDir()
+	if err := os.WriteFile(filepath.Join(work, "Dockerfile"), []byte("FROM alpine AS runtime\nFROM alpine AS dev\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "app.conf"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := Source{Service: "api", BuildTarget: "runtime", MountedFiles: `[{"from":"app.conf","to":"/app.conf"}]`}
+	if err := prepareMountedFiles(&src, work, work); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(work, src.Dockerfile))
+	if !strings.HasSuffix(string(data), "FROM runtime\nCOPY [\".skiff-mounts/0/app.conf\",\"/app.conf\"]\n") || src.BuildTarget != "" {
+		t.Errorf("target %q, Dockerfile:\n%s", src.BuildTarget, data)
+	}
+}

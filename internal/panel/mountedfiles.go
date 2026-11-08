@@ -49,6 +49,11 @@ func prepareMountedFiles(src *Source, work, ctxDir string) error {
 			return fmt.Errorf("%s mounts files from the repository, which needs a Dockerfile at %s", src.Service, name)
 		}
 		base = string(data) + "\n"
+		// The files go on top of the stage the service asked for, which may not be the last one.
+		if src.BuildTarget != "" {
+			base += "FROM " + src.BuildTarget + "\n"
+			src.BuildTarget = ""
+		}
 	}
 	dir := filepath.Join(ctxDir, mountedDir)
 	if err := os.RemoveAll(dir); err != nil {

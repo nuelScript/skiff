@@ -584,7 +584,7 @@ func sameBuild(a, b *Item) bool {
 		return false
 	}
 	if a.Build != nil && b.Build != nil {
-		return *a.Build == *b.Build
+		return a.Build.equal(*b.Build)
 	}
 	return a.Build == nil && b.Build == nil && a.Image == b.Image
 }

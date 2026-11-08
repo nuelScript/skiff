@@ -45,6 +45,9 @@ type Run struct {
 	Release string `json:"release,omitempty"`
 	// MountedFiles are repository files built into the image, as a JSON list.
 	MountedFiles string `json:"mountedFiles,omitempty"`
+	// BuildArgs are build arguments as a JSON list of KEY=value; BuildTarget is the Dockerfile stage to build.
+	BuildArgs   string `json:"buildArgs,omitempty"`
+	BuildTarget string `json:"buildTarget,omitempty"`
 }
 
 // When is when it runs: always, with replicas, or on a schedule.
