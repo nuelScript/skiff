@@ -183,7 +183,7 @@ func TestFormsOfEachKey(t *testing.T) {
 	if s.Build.Context != "./app" || s.Environment["B"] != "two=2" || len(s.EnvFiles) != 2 || s.EnvFiles[0] != "one.env" {
 		t.Errorf("%+v", s)
 	}
-	if s.Ports[0] != (Port{"8080", 80}) || s.Ports[1] != (Port{"8443", 443}) || s.Ports[2] != (Port{"", 9000}) {
+	if s.Ports[0] != (Port{Published: "8080", Target: 80, HostIP: "127.0.0.1", Protocol: "tcp"}) || s.Ports[1] != (Port{Published: "8443", Target: 443}) || s.Ports[2] != (Port{Target: 9000}) {
 		t.Errorf("ports: %+v", s.Ports)
 	}
 	v := s.Volumes
@@ -770,5 +770,88 @@ services:
 		if it := item(t, p, name); it.Kind != KindDatabase {
 			t.Errorf("%s = %s, want a managed database", name, it.Kind)
 		}
+	}
+}
+
+// TestNothingIgnoredQuietly checks that each setting is either honored or named in a note.
+func TestNothingIgnoredQuietly(t *testing.T) {
+	p := plan(t, `name: shop
+networks:
+  backend: {}
+volumes:
+  pgdata:
+    external: true
+  cache:
+    driver: local
+    driver_opts: {type: none}
+services:
+  web:
+    image: nginx
+    restart: unless-stopped
+    container_name: web
+    ports:
+      - "127.0.0.1:8080:80"
+      - "53:53/udp"
+    volumes:
+      - {type: tmpfs, target: /cache, tmpfs: {size: 1048576, mode: 1777}}
+      - {type: volume, source: cache, target: /data, volume: {nocopy: true}}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      retries: 3
+    networks:
+      backend: {aliases: [www]}
+  api:
+    build:
+      context: .
+      args: {MODE: prod}
+      target: runtime
+    deploy:
+      restart_policy: {condition: on-failure}
+      resources:
+        reservations: {memory: 256M}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck: {disable: true, test: ["CMD", "true"]}
+  migrate:
+    image: migrator
+`)
+	web, api := item(t, p, "web"), item(t, p, "api")
+	if web.Public || web.Port != 80 {
+		t.Errorf("a port published on 127.0.0.1 should stay private: public=%v port=%d", web.Public, web.Port)
+	}
+	if !slices.Contains(web.Options.Tmpfs, "/cache:size=1048576") || len(web.Volumes) != 1 {
+		t.Errorf("tmpfs should be a tmpfs mount, not a volume: tmpfs=%v volumes=%v", web.Options.Tmpfs, web.Volumes)
+	}
+	if api.HealthPath != "" {
+		t.Errorf("a disabled healthcheck is still used: %q", api.HealthPath)
+	}
+	notes := strings.Join(p.Notes, "\n")
+	for _, want := range []string{
+		"the file's name is ignored",
+		"networks are ignored",
+		"volume pgdata is external, but Skiff creates a new empty one",
+		"volume cache: driver, driver_opts are ignored",
+		"web: restart is ignored, because Skiff restarts a service whenever it stops",
+		"web: container_name is ignored, because",
+		"web: port 80 is published only on 127.0.0.1, so it stays private",
+		"web: port 53/udp isn't reachable",
+		"web: tmpfs setting mode on /cache is ignored",
+		"web: volume setting volume.nocopy on /data is ignored",
+		"web: healthcheck interval, retries are ignored",
+		"web: network aliases are ignored",
+		"api: build args is ignored, so the image builds with the Dockerfile's default values",
+		"api: build target is ignored, so the Dockerfile is built to its last stage",
+		"api: deploy restart_policy is ignored, because",
+		"api: deploy reservations are ignored",
+		"api: waiting for migrate to finish isn't supported yet",
+	} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("no note containing %q in:\n%s", want, notes)
+		}
+	}
+
+	if p := plan(t, "include: [other.yaml]\nservices:\n  a: {image: x}\n"); !slices.ContainsFunc(p.Problems, func(s string) bool { return strings.HasPrefix(s, "include isn't supported") }) {
+		t.Errorf("include should be refused: %v", p.Problems)
 	}
 }
