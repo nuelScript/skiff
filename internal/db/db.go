@@ -116,6 +116,8 @@ var migrations = []string{
 	`ALTER TABLE sources ADD COLUMN mounted_files TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN run_options TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE volumes ADD COLUMN owner TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN build_args TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN build_target TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -188,7 +190,9 @@ CREATE TABLE IF NOT EXISTS sources (
   run_options TEXT NOT NULL DEFAULT '',
   health_mode  TEXT NOT NULL DEFAULT '',
   preview_data TEXT NOT NULL DEFAULT '',
-  tcp_port     INTEGER NOT NULL DEFAULT 0
+  tcp_port     INTEGER NOT NULL DEFAULT 0,
+  build_args   TEXT NOT NULL DEFAULT '',
+  build_target TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

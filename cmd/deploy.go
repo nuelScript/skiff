@@ -139,7 +139,7 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 		// Builds the panel runs for a team pull their base images, so they can't use another team's local ones.
 		onPanel := os.Getenv("SKIFF_DEPLOY_ID") != ""
 		out := &pullSniffer{w: termSafe(os.Stdout)}
-		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, onPanel, out); err != nil {
+		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, onPanel, docker.BuildOptions{Args: cfg.Build.Args, Target: cfg.Build.Target}, out); err != nil {
 			switch ctx.Err() {
 			case context.DeadlineExceeded:
 				ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))

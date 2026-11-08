@@ -3,18 +3,32 @@ package docker
 import (
 	"context"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
+// BuildOptions are the build arguments and Dockerfile stage a build asks for.
+type BuildOptions struct {
+	Args   map[string]string
+	Target string
+}
+
 // BuildFromDockerfile builds contextDir into tag. With pull, every base image comes from its registry, so a build can't use images other apps left on this machine.
-func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, contextDir string, pull bool, out io.Writer) error {
+func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, contextDir string, pull bool, opts BuildOptions, out io.Writer) error {
 	defer ensureDockerignore(contextDir)()
 
 	args := []string{"build", "-t", tag, "-f", "-"}
 	if pull {
 		args = append(args, "--pull")
+	}
+	for _, k := range slices.Sorted(maps.Keys(opts.Args)) {
+		args = append(args, "--build-arg", k+"="+opts.Args[k])
+	}
+	if opts.Target != "" {
+		args = append(args, "--target", opts.Target)
 	}
 	cmd := e.contextCommand(ctx, append(args, contextDir)...)
 	cmd.Stdin = strings.NewReader(dockerfile)

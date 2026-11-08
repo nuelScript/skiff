@@ -52,7 +52,16 @@ type Service struct {
 	Options     config.RunOptions
 }
 
-type Build struct{ Context, Dockerfile string }
+type Build struct {
+	Context, Dockerfile string
+	// Args are build arguments as KEY=value, sorted; Target is the Dockerfile stage to build.
+	Args   []string
+	Target string
+}
+
+func (b Build) equal(o Build) bool {
+	return b.Context == o.Context && b.Dockerfile == o.Dockerfile && b.Target == o.Target && slices.Equal(b.Args, o.Args)
+}
 
 type Port struct {
 	Published string
@@ -682,6 +691,27 @@ func (b *rawBuild) UnmarshalYAML(n *yaml.Node) error {
 	}
 	if d := mapValue(n, "dockerfile"); d != nil {
 		b.Dockerfile = d.Value
+	}
+	if t := mapValue(n, "target"); t != nil {
+		b.Target = t.Value
+	}
+	// An argument listed without a value takes it from the shell in Compose; there is none here, so the Dockerfile's default applies.
+	if args := mapValue(n, "args"); args != nil {
+		switch args.Kind {
+		case yaml.MappingNode:
+			for i := 0; i+1 < len(args.Content); i += 2 {
+				if v := args.Content[i+1]; v.Tag != "!!null" {
+					b.Args = append(b.Args, args.Content[i].Value+"="+v.Value)
+				}
+			}
+		case yaml.SequenceNode:
+			for _, a := range args.Content {
+				if strings.Contains(a.Value, "=") {
+					b.Args = append(b.Args, a.Value)
+				}
+			}
+		}
+		slices.Sort(b.Args)
 	}
 	return nil
 }

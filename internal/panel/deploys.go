@@ -624,6 +624,18 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	if src.Dockerfile != "" {
 		fmt.Fprintf(&b, "dockerfile = %s\n", tomlQuote(src.Dockerfile))
 	}
+	if src.BuildTarget != "" {
+		fmt.Fprintf(&b, "target = %s\n", tomlQuote(src.BuildTarget))
+	}
+	var args []string
+	if json.Unmarshal([]byte(src.BuildArgs), &args) == nil && len(args) > 0 {
+		pairs := make([]string, 0, len(args))
+		for _, a := range args {
+			k, v, _ := strings.Cut(a, "=")
+			pairs = append(pairs, tomlQuote(k)+" = "+tomlQuote(v))
+		}
+		fmt.Fprintf(&b, "args = { %s }\n", strings.Join(pairs, ", "))
+	}
 	b.WriteString("\n[deploy]\n")
 	fmt.Fprintf(&b, "network = %s\n", tomlQuote(network))
 	if src.HealthMode != "" {

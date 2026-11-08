@@ -236,6 +236,10 @@ type Build struct {
 	Build   string `toml:"build"`
 	Start   string `toml:"start"`
 	Static  string `toml:"static"`
+
+	// Args are passed to docker build as --build-arg; Target picks the Dockerfile stage to build.
+	Args   map[string]string `toml:"args"`
+	Target string            `toml:"target"`
 }
 
 func Load(path string) (*Config, error) {

@@ -361,6 +361,12 @@ func stackSourceFor(s *stackSource, team string, it compose.Item) Source {
 	if it.Build != nil {
 		src.RootDir = strings.TrimPrefix(filepath.Clean(filepath.Join(s.dir, it.Build.Context)), "/")
 		src.Dockerfile = it.Build.Dockerfile
+		src.BuildTarget = it.Build.Target
+		if len(it.Build.Args) > 0 {
+			if b, err := json.Marshal(it.Build.Args); err == nil {
+				src.BuildArgs = string(b)
+			}
+		}
 	} else {
 		src.Image = it.Image
 	}

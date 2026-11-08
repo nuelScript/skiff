@@ -70,3 +70,18 @@ func TestStackLimits(t *testing.T) {
 		t.Errorf("dockerfile problems: b=%d c=%d, in %v", bad, c, s.plan.Problems)
 	}
 }
+
+func TestProjectTomlCarriesBuildArgsAndTarget(t *testing.T) {
+	out := projectToml(Source{App: "web", BuildArgs: `["MODE=prod","QUOTE=a\"\n[deploy]"]`, BuildTarget: "runtime"}, nil, "net", nil)
+	path := filepath.Join(t.TempDir(), "skiff.toml")
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if cfg.Build.Target != "runtime" || cfg.Build.Args["MODE"] != "prod" || cfg.Build.Args["QUOTE"] != "a\"\n[deploy]" || len(cfg.Build.Args) != 2 {
+		t.Errorf("build: %+v\n%s", cfg.Build, out)
+	}
+}

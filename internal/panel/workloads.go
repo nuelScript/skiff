@@ -18,6 +18,7 @@ func sourceSpec(s Source) workload.Spec {
 		Run: workload.Run{
 			Repo: s.Repo, Branch: s.Branch, RootDir: s.RootDir, Dockerfile: s.Dockerfile, CloneURL: s.CloneURL,
 			Image: s.Image, Command: s.Command, Release: s.Release, MountedFiles: s.MountedFiles,
+			BuildArgs: s.BuildArgs, BuildTarget: s.BuildTarget,
 		},
 		When: workload.When{
 			Replicas: s.Replicas, Autoscale: s.Autoscale, ScaleMin: s.ScaleMin, ScaleMax: s.ScaleMax, ScaleCPU: s.ScaleCPU,
@@ -42,6 +43,7 @@ func specSource(w workload.Spec) Source {
 		App: w.ID, Team: w.Team,
 		Repo: w.Run.Repo, Branch: w.Run.Branch, RootDir: w.Run.RootDir, Dockerfile: w.Run.Dockerfile, CloneURL: w.Run.CloneURL,
 		Image: w.Run.Image, Command: w.Run.Command, Release: w.Run.Release, MountedFiles: w.Run.MountedFiles,
+		BuildArgs: w.Run.BuildArgs, BuildTarget: w.Run.BuildTarget,
 		Replicas: w.When.Replicas, Autoscale: w.When.Autoscale, ScaleMin: w.When.ScaleMin, ScaleMax: w.When.ScaleMax,
 		ScaleCPU: w.When.ScaleCPU, SleepAfter: w.When.SleepAfter, Auto: w.When.AutoDeploy,
 		Private: w.Reach.Private, RateLimit: w.Reach.RateLimit, TCPPort: w.Reach.TCPPort,
