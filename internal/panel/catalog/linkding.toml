@@ -1,0 +1,17 @@
+name = "linkding"
+category = "Productivity"
+blurb = "A fast, minimal bookmark manager with tags, search and browser extensions."
+image = "sissbruecker/linkding:1.47.0"
+port = 9090
+memory = "256 MB"
+timeout = 120
+setup = "Sign in as admin, with the password in LD_SUPERUSER_PASSWORD under Environment."
+
+[[volumes]]
+name = "data"
+path = "/etc/linkding/data"
+
+[env]
+LD_SUPERUSER_NAME = "admin"
+LD_SUPERUSER_PASSWORD = "{{secret}}"
+LD_CSRF_TRUSTED_ORIGINS = "{{url}}"

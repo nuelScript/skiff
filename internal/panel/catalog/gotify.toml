@@ -1,0 +1,15 @@
+name = "Gotify"
+category = "Communication"
+blurb = "Push notifications to your phone and browser from your own scripts and apps, over a simple API."
+image = "gotify/server:3.1.1"
+port = 80
+memory = "64 MB"
+timeout = 120
+setup = "Sign in as admin, with the password in GOTIFY_DEFAULTUSER_PASS under Environment."
+
+[[volumes]]
+name = "data"
+path = "/app/data"
+
+[env]
+GOTIFY_DEFAULTUSER_PASS = "{{secret}}"

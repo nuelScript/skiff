@@ -1,0 +1,12 @@
+name = "PrivateBin"
+category = "Productivity"
+blurb = "A pastebin where text is encrypted in the browser, so the server never sees it."
+image = "privatebin/nginx-fpm-alpine:2.1.1"
+port = 8080
+memory = "64 MB"
+timeout = 120
+setup = "There is no sign-in, so anyone who has the address can create pastes. Keep the address private."
+
+[[volumes]]
+name = "data"
+path = "/srv/data"

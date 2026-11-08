@@ -1,0 +1,18 @@
+name = "DocuSeal"
+category = "Productivity"
+blurb = "Send documents for signature and fill in PDF forms, with a Postgres database included."
+image = "docuseal/docuseal:3.3.5"
+database = "postgres"
+database_var = "DATABASE_URL"
+port = 3000
+memory = "1 GB"
+timeout = 240
+setup = "Open it right away and create the admin account. Until you do, anyone who opens it can."
+
+[[volumes]]
+name = "data"
+path = "/data/docuseal"
+
+[env]
+DATABASE_URL = "{{db.url}}"
+FORCE_SSL = "true"
