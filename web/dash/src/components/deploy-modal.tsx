@@ -2,7 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, ArrowLeft, Database, GitBranch, MemoryStick, Search, Plus } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Box,
+  Database,
+  GitBranch,
+  LayoutGrid,
+  Link2,
+  MemoryStick,
+  Search,
+  Plus,
+} from 'lucide-react'
 import { useGithub } from '@/hooks/use-github'
 import { useAuthContext } from '@/context/auth-context'
 import { useDeployForm } from '@/hooks/use-deploy-form'
@@ -17,6 +28,7 @@ import { queryKeys } from '@/constants/query-keys'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { EnvFields, blankVar } from '@/components/env-fields'
 import { errText } from '@/lib/errors'
@@ -53,6 +65,13 @@ const descriptions: Record<Mode, string> = {
   image: 'Run an image that is already built, from Docker Hub or any registry.',
   apps: 'Install a ready-made app, with everything it needs set up for you.',
 }
+
+const tabs: { mode: Mode; label: string; short: string; icon: typeof Box }[] = [
+  { mode: 'github', label: 'GitHub', short: 'GitHub', icon: GitBranch },
+  { mode: 'apps', label: 'One-click apps', short: 'Apps', icon: LayoutGrid },
+  { mode: 'image', label: 'Docker image', short: 'Image', icon: Box },
+  { mode: 'url', label: 'Git URL', short: 'Git URL', icon: Link2 },
+]
 
 export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onDeployImage }: Props) {
   const gh = useGithub(open)
@@ -119,6 +138,18 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
           <DialogTitle>Deploy an app</DialogTitle>
           <DialogDescription>{descriptions[mode]}</DialogDescription>
         </DialogHeader>
+
+        <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
+          <TabsList className="w-full">
+            {tabs.map((t) => (
+              <TabsTrigger key={t.mode} value={t.mode} className="cursor-pointer">
+                <t.icon className="max-sm:hidden" />
+                <span className="sm:hidden">{t.short}</span>
+                <span className="max-sm:hidden">{t.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {mode === 'apps' ? (
           <CatalogPicker onDeployed={onDeployImage} />
@@ -250,24 +281,6 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
           </div>
         )}
 
-        <div className="text-muted-foreground mt-1 flex flex-wrap items-center justify-center gap-3 text-xs">
-          {(['github', 'apps', 'image', 'url'] as const)
-            .filter((m) => m !== mode)
-            .map((m, i) => (
-              <span key={m} className="flex items-center gap-3">
-                {i > 0 && <span aria-hidden>·</span>}
-                <button onClick={() => setMode(m)} className="hover:text-foreground">
-                  {m === 'github'
-                    ? 'Deploy from GitHub'
-                    : m === 'url'
-                      ? 'Deploy from a Git URL'
-                      : m === 'apps'
-                        ? 'One-click apps'
-                        : 'Deploy a Docker image'}
-                </button>
-              </span>
-            ))}
-        </div>
       </DialogContent>
     </Dialog>
   )
@@ -471,30 +484,89 @@ function CatalogPicker({ onDeployed }: { onDeployed: (app: string, id: string) =
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
+
+  const categories = useMemo(() => [...new Set(apps.map((a) => a.category))].sort(), [apps])
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return apps.filter(
+      (a) =>
+        (!category || a.category === category) &&
+        (!q || [a.name, a.blurb, a.category].some((s) => s.toLowerCase().includes(q))),
+    )
+  }, [apps, query, category])
 
   if (isPending) return <p className="text-muted-foreground py-8 text-center text-sm">…</p>
 
   if (!picked) {
     return (
-      <div className="grid gap-2 sm:grid-cols-2">
-        {apps.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => {
-              setPicked(a)
-              setName(a.id)
-              setError('')
-            }}
-            className="hover:border-foreground/25 flex flex-col gap-1 rounded-lg border border-foreground/10 p-3 text-left transition-colors"
-          >
-            <span className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold">{a.name}</span>
-              <span className="text-muted-foreground text-[11px]">{a.category}</span>
-            </span>
-            <span className="text-muted-foreground text-xs leading-relaxed">{a.blurb}</span>
-          </button>
-        ))}
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="relative">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <Input
+            type="search"
+            aria-label="Search apps"
+            placeholder={`Search ${apps.length} apps…`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" role="group" aria-label="Category">
+          {['', ...categories].map((c) => (
+            <button
+              key={c || 'all'}
+              type="button"
+              aria-pressed={category === c}
+              onClick={() => setCategory(c)}
+              className={
+                'shrink-0 cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors ' +
+                (category === c
+                  ? 'border-foreground/25 bg-foreground/[0.08] text-foreground'
+                  : 'text-muted-foreground hover:text-foreground border-foreground/10')
+              }
+            >
+              {c || 'All'}
+            </button>
+          ))}
+        </div>
+        {shown.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center text-sm sm:h-[min(52vh,30rem)]">
+            <p className="text-muted-foreground">No apps match that.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setQuery('')
+                setCategory('')
+              }}
+            >
+              Show all apps
+            </Button>
+          </div>
+        ) : (
+          <div className="grid max-h-[min(52vh,30rem)] content-start gap-2 overflow-y-auto sm:h-[min(52vh,30rem)] sm:grid-cols-2">
+            {shown.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => {
+                  setPicked(a)
+                  setName(a.id)
+                  setError('')
+                }}
+                className="hover:border-foreground/25 flex cursor-pointer flex-col gap-1 rounded-lg border border-foreground/10 p-3 text-left transition-colors"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">{a.name}</span>
+                  <span className="text-muted-foreground text-[11px]">{a.category}</span>
+                </span>
+                <span className="text-muted-foreground text-xs leading-relaxed">{a.blurb}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
