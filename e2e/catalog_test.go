@@ -65,8 +65,9 @@ func TestCatalog(t *testing.T) {
 			if ok, log := streamResult(t, c, base+"/api/deploys/log?app="+name+"&id="+created.ID); !ok {
 				t.Fatalf("the install didn't go live:\n%s", tail(log, 40))
 			}
+			// Some apps answer 503 while their first start runs migrations, which can outlast the health check.
 			var status int
-			deadline := time.Now().Add(3 * time.Minute)
+			deadline := time.Now().Add(10 * time.Minute)
 			for time.Now().Before(deadline) {
 				req, _ := http.NewRequest(http.MethodGet, "http://"+routerAddr+"/", nil)
 				req.Host = name + ".localhost"
@@ -79,7 +80,8 @@ func TestCatalog(t *testing.T) {
 				}
 				time.Sleep(5 * time.Second)
 			}
-			t.Fatalf("%s never answered without a server error, last status %d", id, status)
+			logs, _ := exec.Command("sh", "-c", "docker logs --tail 40 $(docker ps -aq --filter label=skiff.app="+name+" | head -1) 2>&1").Output()
+			t.Fatalf("%s never answered without a server error, last status %d. Its last output:\n%s", id, status, logs)
 		})
 	}
 }
