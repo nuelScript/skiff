@@ -72,7 +72,8 @@ func finishRun(id int64, status string, exitCode int, output string) {
 }
 
 func pruneRuns(job string) {
-	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job=? AND id NOT IN (SELECT id FROM job_runs WHERE job=? ORDER BY id DESC LIMIT ?)`, job, job, keepJobRuns)
+	// A run still going or waiting its turn is never pruned, however many have started since.
+	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job=? AND status NOT IN (?,?) AND id NOT IN (SELECT id FROM job_runs WHERE job=? ORDER BY id DESC LIMIT ?)`, job, runRunning, runQueued, job, keepJobRuns)
 }
 
 func listRuns(job string, limit int) []JobRun {

@@ -3,6 +3,7 @@ package docker
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,5 +74,20 @@ func TestDiskUsedCountsWhatsWritten(t *testing.T) {
 	}
 	if _, ok := diskUsed(filepath.Join(dir, "missing")); ok {
 		t.Error("a folder that can't be read was measured")
+	}
+}
+
+func TestTailBufferKeepsTheEnd(t *testing.T) {
+	b := &tailBuffer{max: 10}
+	for i := range 100 {
+		fmt.Fprintf(b, "%d,", i)
+	}
+	if got := b.String(); got != "…,97,98,99," || len(b.buf) > 20 {
+		t.Fatalf("kept %q (%d buffered)", got, len(b.buf))
+	}
+	small := &tailBuffer{max: 10}
+	small.Write([]byte("ok"))
+	if small.String() != "ok" {
+		t.Fatalf("short output: %q", small.String())
 	}
 }
