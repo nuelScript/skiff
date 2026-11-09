@@ -120,7 +120,7 @@ func (p *Panel) makePreviewDatabase(ctx context.Context, src Source, mode string
 	}
 	logln("→ starting a separate " + e.label + " database for this preview")
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
-		Name: container, Image: source.image(), Network: net, Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
+		Name: container, Image: source.image(), Network: net, Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd, TunePostgres: tunesPostgres(source),
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": src.Team, "skiff.preview": src.App},
 	}); err != nil {
 		return err

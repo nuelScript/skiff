@@ -203,6 +203,7 @@ Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes
 - **No app can take all the memory.** One with no limit of its own is capped at 75% of the server.
 - **The disk is watched.** The team that set up the server hears when it passes 80% full and again at 90%, with how long the space should last at the past week's rate. Skiff clears unused images and old build cache every day, and all build cache once the disk is 90% full.
 - **Each volume can have a budget.** Click a volume's size under **Volumes** in the project's settings to set one, and the team hears when it grows past it.
+- **Postgres fits the server.** Postgres's own defaults assume a tiny machine. A Postgres database Skiff creates gets its memory settings sized to what its container may use: a quarter for `shared_buffers`, with `work_mem`, `maintenance_work_mem`, `effective_cache_size` and its shared memory sized to match. A database created before this gets them the next time Skiff starts its container, such as when you make it public or move it to another disk. Databases adopted from outside Skiff keep their own settings.
 
 ## What Skiff doesn't do yet
 

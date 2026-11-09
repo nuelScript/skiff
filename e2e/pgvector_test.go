@@ -50,6 +50,13 @@ func TestPgvectorDatabase(t *testing.T) {
 		got, err := sql("select extname from pg_extension where extname='vector'")
 		return err == nil && got == "vector"
 	})
+	// Skiff sizes Postgres to the container instead of its 128 MB default.
+	if got, err := sql("show shared_buffers"); err != nil || got == "128MB" {
+		t.Errorf("shared_buffers: %q %v", got, err)
+	}
+	if out, _ := exec.Command("docker", "inspect", "-f", "{{.HostConfig.ShmSize}}", ctr).Output(); strings.TrimSpace(string(out)) == "67108864" {
+		t.Error("/dev/shm is still Docker's 64 MB")
+	}
 	if out, err := sql(`create table notes (id int, body text, embedding vector(3));
 		insert into notes values (1, 'cats', '[1,0,0]'), (2, 'dogs', '[0.9,0.1,0]'), (3, 'taxes', '[0,0,1]');
 		create index on notes using hnsw (embedding vector_l2_ops);`); err != nil {

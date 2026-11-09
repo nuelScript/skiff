@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 // DBRunSpec runs a managed resource (a database), deliberately unlabeled with skiff=1 so the app reaper leaves it alone.
@@ -25,6 +26,8 @@ type DBRunSpec struct {
 	Aliases    []string          // extra names on the network, such as a Compose service name
 	Binds      []string          // extra bind mounts, "host:container[:ro]" (e.g. the TLS cert dir)
 	Memory     string            // optional memory limit; otherwise the safety cap
+	// TunePostgres sizes Postgres's memory settings, and its shared memory, to the container's memory.
+	TunePostgres bool
 }
 
 // RunDatabase (re)creates a managed database container, returning the published host port when Publish is set (0 otherwise); reusing the same name + volume preserves the data.
@@ -37,6 +40,16 @@ func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	}
 	args = append(args, e.limitArgs()...)
 	args = append(args, "--memory", e.memoryOr(s.Memory))
+	if s.TunePostgres {
+		flags, shm := PostgresTuning(e.memoryBytes(s.Memory))
+		if shm > 0 {
+			args = append(args, "--shm-size", strconv.FormatInt(shm, 10))
+		}
+		if len(s.Cmd) == 0 {
+			s.Cmd = []string{"postgres"}
+		}
+		s.Cmd = append(append([]string{}, s.Cmd...), flags...)
+	}
 	for _, k := range sortedKeys(s.Labels) {
 		args = append(args, "--label", k+"="+s.Labels[k])
 	}
