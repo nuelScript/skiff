@@ -189,8 +189,8 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
 			return fmt.Errorf("the files are copied to %s but the volume couldn't be made there: %w", target, err)
 		}
 	} else {
-		// A volume in a folder leaves its files there when it's removed, so they're copied back from the folder itself.
-		if err := p.eng.RemoveVolume(volume); err != nil {
+		// The files stay in the folder when the volume is forgotten, and are copied back from there.
+		if err := p.eng.ForgetVolume(volume); err != nil {
 			return fmt.Errorf("couldn't let go of the old volume: %w", err)
 		}
 		if err := p.eng.CreateVolume(volume, "", labels); err != nil {
