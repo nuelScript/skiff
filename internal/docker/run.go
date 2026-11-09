@@ -275,6 +275,19 @@ func (e *Engine) EnsureNetwork(name string) error {
 	return nil
 }
 
+// NetworkAliases are the names a container answers to on a network.
+func (e *Engine) NetworkAliases(container, network string) []string {
+	out, err := e.command("inspect", "--format", "{{json .NetworkSettings.Networks}}", container).Output()
+	if err != nil {
+		return nil
+	}
+	var nets map[string]struct{ Aliases []string }
+	if json.Unmarshal(out, &nets) != nil {
+		return nil
+	}
+	return nets[network].Aliases
+}
+
 // ConnectNetwork attaches a container to an additional network; an already-connected container returns a benign error.
 // RemoveNetwork deletes a network nothing is using any more.
 func (e *Engine) RemoveNetwork(name string) error {

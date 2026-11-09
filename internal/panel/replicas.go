@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -129,7 +131,7 @@ func (p *Panel) startReplica(d dbRow, r replicaRow) error {
 	}
 	e := dbEngines[d.Engine]
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
-		Name: r.Container, Image: d.image(), Network: d.network(), Aliases: []string{readHost(d)},
+		Name: r.Container, Image: d.image(), Network: d.network(),
 		Volume: r.volume(), MountAt: e.mountAt,
 		Env:        map[string]string{"PGDATA": e.mountAt, "PGPASSWORD": d.Password},
 		Entrypoint: "sh",
@@ -140,8 +142,66 @@ func (p *Panel) startReplica(d dbRow, r replicaRow) error {
 	}); err != nil {
 		return err
 	}
-	p.linkReplica(d, r)
+	go guard("publishReplica", func() { p.publishReplica(d, r) })
 	return nil
+}
+
+// replicaReadyWait bounds how long a replica may take to copy the database before it's left out of the read name; a big database can take hours.
+var (
+	replicaReadyWait  = 24 * time.Hour
+	replicaReadyEvery = 5 * time.Second
+)
+
+// publishReplica puts a replica under the shared read name once it accepts connections. Until then a client could be sent to a replica still copying, which refuses it. The first replica to be ready gives attached apps their read address.
+func (p *Panel) publishReplica(d dbRow, r replicaRow) {
+	deadline := time.Now().Add(replicaReadyWait)
+	for !p.replicaAccepts(r) {
+		if time.Now().After(deadline) || p.eng.State(r.Container) == "missing" || !replicaListed(d.ID, r.ID) {
+			return
+		}
+		time.Sleep(replicaReadyEvery)
+	}
+	home := d.network()
+	if !slices.Contains(p.eng.NetworkAliases(r.Container, home), readHost(d)) {
+		// Docker only adds a name when a container joins a network, so it rejoins; streaming picks up again on its own.
+		_ = p.eng.DisconnectNetwork(home, r.Container)
+		if err := p.eng.ConnectNetwork(home, r.Container, readHost(d)); err != nil {
+			log.Printf("skiff: naming replica %s: %v", r.Container, err)
+			return
+		}
+	}
+	p.linkReplica(d, r)
+	for _, app := range dbAttachments(d.ID) {
+		if !slices.ContainsFunc(getEnv(app), func(e EnvVar) bool { return e.Key == replicaEnvVar }) {
+			_ = upsertEnvVar(app, replicaEnvVar, p.readURL(d), false)
+		}
+	}
+}
+
+// readyReplicas are the replicas already under the read name; one still copying joins it, and the networks of attached apps, when it's ready.
+func (p *Panel) readyReplicas(d dbRow) []replicaRow {
+	var out []replicaRow
+	for _, r := range listReplicas(d.ID) {
+		if slices.Contains(p.eng.NetworkAliases(r.Container, d.network()), readHost(d)) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (p *Panel) replicaAccepts(r replicaRow) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return p.eng.Exec(ctx, r.Container, []string{"pg_isready", "-q", "-h", "127.0.0.1"}, nil, io.Discard) == nil
+}
+
+func replicaListed(dbID, id string) bool {
+	for _, r := range listReplicas(dbID) {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // linkReplica puts a replica on every network the database is reachable from, under the shared read name.
@@ -199,6 +259,9 @@ func (p *Panel) addReplica(d dbRow) (replicaRow, error) {
 	if p.eng.State(d.Container) != "running" {
 		return replicaRow{}, errors.New("the database isn't running")
 	}
+	if err := p.roomForReplica(d); err != nil {
+		return replicaRow{}, err
+	}
 	r := replicaRow{ID: randToken()[:8], DBID: d.ID, Created: time.Now().Unix()}
 	r.Container = d.Container + "-replica-" + r.ID
 	if err := p.startReplica(d, r); err != nil {
@@ -209,12 +272,19 @@ func (p *Panel) addReplica(d dbRow) (replicaRow, error) {
 		p.stopReplica(d, r, true)
 		return replicaRow{}, err
 	}
-	if len(existing) == 0 {
-		for _, app := range dbAttachments(d.ID) {
-			_ = upsertEnvVar(app, replicaEnvVar, p.readURL(d), false)
-		}
-	}
 	return r, nil
+}
+
+// roomForReplica checks the server has space for another full copy of the database, with room to spare.
+func (p *Panel) roomForReplica(d dbRow) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := p.primarySQL(ctx, d, "SELECT sum(pg_database_size(datname)) FROM pg_database")
+	if err != nil {
+		return fmt.Errorf("couldn't tell how big the database is: %w", err)
+	}
+	size, _ := strconv.ParseInt(out, 10, 64)
+	return hasRoomFor(skiffDir(), 2*size)
 }
 
 func (p *Panel) removeReplica(d dbRow, r replicaRow) {
@@ -237,10 +307,13 @@ func (p *Panel) resyncReplicas(d dbRow) {
 	}
 }
 
-// recoverReplicas starts any replica whose container is gone; one whose volume went too is copied again.
+// recoverReplicas starts any replica whose container is gone; one whose volume went too is copied again. A replica still copying when Skiff stopped is watched again, to join the read name once it's ready.
 func (p *Panel) recoverReplicas(d dbRow) {
 	for _, r := range listReplicas(d.ID) {
 		if p.eng.State(r.Container) != "missing" {
+			if !slices.Contains(p.readyReplicas(d), r) {
+				go guard("publishReplica", func() { p.publishReplica(d, r) })
+			}
 			continue
 		}
 		if !p.eng.VolumeExists(r.volume()) {

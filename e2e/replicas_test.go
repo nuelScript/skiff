@@ -67,6 +67,10 @@ func TestReadReplicas(t *testing.T) {
 		t.Fatalf("after adding a replica: %+v", db)
 	}
 	first := db.Replicas[0]
+	// A replica still copying isn't under the read name yet, so no client is sent to one that would refuse it.
+	if out, err := exec.Command("docker", "exec", ctr, "getent", "hosts", ctr+"-read").CombinedOutput(); err == nil {
+		t.Errorf("the read name answered while the replica was copying: %s", out)
+	}
 	streaming := func(n int) bool {
 		var st []struct{ ID, Phase string }
 		getJSON(t, c, base+"/api/databases/replicas?id="+db.ID, &st)
@@ -94,9 +98,10 @@ func TestReadReplicas(t *testing.T) {
 		t.Errorf("writing to a replica: %v: %s", err, out)
 	}
 	// The shared read address reaches a replica, never the database itself.
-	if got, err := sqlIn(ctr, ctr+"-read", "select pg_is_in_recovery()"); err != nil || got != "t" {
-		t.Errorf("through the read address: %q %v", got, err)
-	}
+	eventually(t, time.Minute, func() bool {
+		got, err := sqlIn(ctr, ctr+"-read", "select pg_is_in_recovery()")
+		return err == nil && got == "t"
+	})
 
 	postJSON(t, c, base+"/api/databases/replicas?id="+db.ID, "", &db)
 	if len(db.Replicas) != 2 {
@@ -119,9 +124,10 @@ func TestReadReplicas(t *testing.T) {
 	if got, err := sqlIn(ctr, "", "select count(*) from pg_replication_slots"); err != nil || got != "1" {
 		t.Errorf("slots after removing one: %q %v", got, err)
 	}
-	if got, err := sqlIn(ctr, ctr+"-read", "select count(*) from items"); err != nil || got != "501" {
-		t.Errorf("the remaining replica: %q %v", got, err)
-	}
+	eventually(t, time.Minute, func() bool {
+		got, err := sqlIn(ctr, ctr+"-read", "select count(*) from items")
+		return err == nil && got == "501"
+	})
 
 	req, _ = http.NewRequest(http.MethodDelete, base+"/api/databases?id="+db.ID, nil)
 	if resp, err = c.Do(req); err != nil {
