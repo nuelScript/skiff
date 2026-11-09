@@ -20,6 +20,7 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
   const [sysctls, setSysctls] = useState('')
   const [privileged, setPrivileged] = useState(false)
   const [hostNetwork, setHostNetwork] = useState(false)
+  const [newPrivileges, setNewPrivileges] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -30,6 +31,7 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
     setSysctls((p.sysctls ?? []).join(', '))
     setPrivileged(!!p.privileged)
     setHostNetwork(!!p.hostNetwork)
+    setNewPrivileges(!!p.newPrivileges)
   }
   useEffect(() => {
     if (data) fill(data.granted)
@@ -49,6 +51,7 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
       sysctls: splitList(sysctls),
       privileged,
       hostNetwork,
+      newPrivileges,
     }
     const strong = next.privileged || next.hostNetwork || next.capabilities?.some((c) => data.strong.includes(c.toUpperCase().replace(/^CAP_/, '')))
     if (
@@ -115,6 +118,15 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
               <Input id="perm-sysctls" className="font-mono" placeholder="Like net.ipv4.ip_forward=1" value={sysctls} onChange={(e) => setSysctls(e.target.value)} />
               <FieldDescription>Only ones that stay inside the app: net.*, kernel.shm*, kernel.msg*, kernel.sem and fs.mqueue.*.</FieldDescription>
             </Field>
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-1" checked={newPrivileges} onChange={(e) => setNewPrivileges(e.target.checked)} />
+              <span>
+                <span className="font-medium">Setuid programs</span>
+                <span className="text-muted-foreground block text-xs">
+                  Skiff stops programs inside the app gaining privileges, the way sudo does. Allow it for images that need that.
+                </span>
+              </span>
+            </label>
             <label className="flex cursor-pointer items-start gap-2.5 text-sm">
               <input type="checkbox" className="mt-1" checked={privileged} onChange={(e) => setPrivileged(e.target.checked)} />
               <span>

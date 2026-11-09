@@ -58,6 +58,7 @@ func (e *Engine) settingsArgs(s Settings) []string {
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
 	}
+	args = append(args, s.Permissions.HardeningArgs()...)
 	args = append(args, s.Permissions.DockerArgs()...)
 	return append(args, s.Options.DockerArgs()...)
 }
