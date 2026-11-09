@@ -43,6 +43,31 @@ while True:
 
 `wait` holds the request open for up to 60 seconds until an event arrives. An event the agent takes but doesn't finish within five minutes, because it crashed or hung, goes back in the inbox, and `deliveries` says how many times it has been handed out. Finished events are kept for a week. The inbox holds up to 1,000 unfinished events; past that, webhooks are refused with `429`.
 
+## Sandboxes
+
+When an agent writes code, it can run it somewhere other than its own container. It sends the code and any files to Skiff, which runs them in a new container and removes it afterwards:
+
+```python title="agent.py"
+r = requests.post(base + "/sandboxes", headers=auth, timeout=960, json={
+    "command": "python main.py",
+    "files": {"main.py": code, "data/input.csv": csv_text},
+    # optional: "image": "node:22-alpine", "internet": True, "timeout": 300,
+    # and "binaryFiles": {"photo.jpg": "<base64>"}
+})
+result = r.json()
+# exitCode, output, and files: everything left in the working directory, base64-encoded
+```
+
+A sandbox:
+
+- Starts from `python:3.12-alpine` unless you name another image.
+- Has no network at all unless the request sets `"internet": true`, and even then it never joins your apps' network, so it can't reach your databases.
+- Runs with no Linux capabilities, 512 MB of memory, one CPU and at most 256 processes.
+- Stops after two minutes, or the `timeout` you give in seconds, up to fifteen.
+- Hands back up to 16 MB of files, 8 MB each; `skipped` lists any left out. Output is cut at 256 KB.
+
+An agent runs up to three sandboxes at once. The project's **Overview** lists the last few with their output, and **Stop agent** ends any that are running.
+
 ## Stop it
 
-**Stop agent** on the project's **Overview** does everything at once: its containers and any commands it's running stop, and Skiff refuses its model calls and holds its inbox. **Start** brings it back with its events still waiting.
+**Stop agent** on the project's **Overview** does everything at once: its containers, sandboxes and any commands it's running stop, and Skiff refuses its model calls and holds its inbox. **Start** brings it back with its events still waiting.

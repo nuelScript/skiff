@@ -105,6 +105,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.oomLoop()
 	go p.aiGatewayLoop()
 	go p.agentLoop()
+	go guard("clearLeftoverSandboxes", p.clearLeftoverSandboxes)
 	go p.crashLoopWatch()
 	return p, nil
 }

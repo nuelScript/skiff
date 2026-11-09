@@ -7,7 +7,7 @@ import { queryKeys } from '@/constants/query-keys'
 import { errText } from '@/lib/errors'
 import { relTime } from '@/lib/format'
 import { useConfirm } from '@/providers/confirm-provider'
-import { aiService, type AgentEvent } from '@/services/api.service'
+import { aiService, type AgentEvent, type Sandbox } from '@/services/api.service'
 import { JobWebhook } from './job-webhook'
 
 const sourceLabel: Record<string, string> = { webhook: 'Webhook', github: 'GitHub', schedule: 'Schedule' }
@@ -136,6 +136,17 @@ export function AgentPanel({ app }: { app: string }) {
         </div>
       </div>
 
+      {data.sandboxes.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-3">
+          <h3 className="text-xs font-medium">Sandboxes</h3>
+          <ul className="divide-y divide-foreground/6 overflow-hidden rounded-lg border border-foreground/8">
+            {data.sandboxes.map((s) => (
+              <SandboxRow key={s.id} s={s} />
+            ))}
+          </ul>
+        </div>
+      )}
+
       <pre className="overflow-x-auto rounded-lg bg-inset p-3 font-mono text-[11px] leading-relaxed">
         {`# the agent's loop
 r = requests.get(os.environ["SKIFF_AI_URL"] + "/_skiff/events?wait=60",
@@ -169,6 +180,43 @@ function EventRow({ e }: { e: AgentEvent }) {
         </p>
         <p className="text-muted-foreground">{relTime(e.created)}</p>
       </div>
+    </li>
+  )
+}
+
+const sandboxStatus: Record<Sandbox['status'], string> = {
+  running: 'running',
+  ok: 'exited 0',
+  failed: 'failed',
+  timeout: 'ran out of time',
+  stopped: 'stopped',
+}
+
+function SandboxRow({ s }: { s: Sandbox }) {
+  const status = s.status === 'failed' && s.exitCode > 0 ? `exited ${s.exitCode}` : sandboxStatus[s.status]
+  const took = s.finished ? `${Math.max(1, s.finished - s.started)}s` : ''
+  return (
+    <li className="text-xs">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2 hover:bg-foreground/[0.03]">
+          <div className="min-w-0">
+            <p className="truncate font-mono">{s.command}</p>
+            <p className="text-muted-foreground truncate">
+              {s.image} · {s.files} {s.files === 1 ? 'file' : 'files'} in · {s.internet ? 'internet on' : 'no network'}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className={s.status === 'ok' ? '' : s.status === 'running' ? 'text-warning' : 'text-danger'}>{status}</p>
+            <p className="text-muted-foreground">
+              {relTime(s.started)}
+              {took && ` · ${took}`}
+            </p>
+          </div>
+        </summary>
+        <pre className="max-h-48 overflow-auto border-t border-foreground/6 bg-inset px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">
+          {s.output || 'No output.'}
+        </pre>
+      </details>
     </li>
   )
 }

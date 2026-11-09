@@ -399,6 +399,20 @@ CREATE TABLE IF NOT EXISTS agent_events (
   done         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_agent_events_app ON agent_events(app, done, id);
+CREATE TABLE IF NOT EXISTS sandboxes (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  app       TEXT NOT NULL,
+  image     TEXT NOT NULL,
+  command   TEXT NOT NULL,
+  internet  INTEGER NOT NULL DEFAULT 0,
+  files     INTEGER NOT NULL DEFAULT 0,
+  started   INTEGER NOT NULL,
+  finished  INTEGER NOT NULL DEFAULT 0,
+  status    TEXT NOT NULL,
+  exit_code INTEGER NOT NULL DEFAULT 0,
+  output    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_sandboxes_app ON sandboxes(app, id);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

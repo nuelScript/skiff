@@ -58,7 +58,7 @@ func callGateway(token, path, body string) *httptest.ResponseRecorder {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
 	w := httptest.NewRecorder()
-	aiGateway(w, r)
+	(&Panel{}).aiGateway(w, r)
 	return w
 }
 
@@ -103,7 +103,7 @@ func TestAIGatewayKeepsTheKeyAndCountsTokens(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/claude/v1/messages", strings.NewReader(`{"stream":true}`))
 	r.Header.Set("x-api-key", a.token)
 	r.Header.Set("Content-Type", "application/json")
-	aiGateway(httptest.NewRecorder(), r)
+	(&Panel{}).aiGateway(httptest.NewRecorder(), r)
 	if f.apiKey != "sk-ant-real" || f.auth != "" {
 		t.Errorf("anthropic got key %q auth %q", f.apiKey, f.auth)
 	}
