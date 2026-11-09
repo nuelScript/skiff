@@ -1,11 +1,13 @@
 package panel
 
 import (
+	"cmp"
 	"fmt"
 
-	"github.com/nuelScript/skiff/internal/config"
 	"strconv"
 	"sync"
+
+	"github.com/nuelScript/skiff/internal/config"
 )
 
 // Disk levels that alert the server's owners, once each on the way up; falling below diskClear starts again.
@@ -60,18 +62,18 @@ var volumesOver = struct {
 
 // checkVolumeBudgets tells a team when one of its volumes grows past the budget set for it.
 func (p *Panel) checkVolumeBudgets() {
-	rows, err := sqlDB.Query(`SELECT app, name, budget FROM volumes WHERE budget > 0`)
+	rows, err := sqlDB.Query(`SELECT app, name, budget, owner FROM volumes WHERE budget > 0`)
 	if err != nil {
 		return
 	}
 	type budgeted struct {
-		app, name string
-		budget    int64
+		app, name, owner string
+		budget           int64
 	}
 	var list []budgeted
 	for rows.Next() {
 		var b budgeted
-		if rows.Scan(&b.app, &b.name, &b.budget) == nil {
+		if rows.Scan(&b.app, &b.name, &b.budget, &b.owner) == nil {
 			list = append(list, b)
 		}
 	}
@@ -81,7 +83,8 @@ func (p *Panel) checkVolumeBudgets() {
 	defer volumesOver.Unlock()
 	for _, b := range list {
 		key := b.app + "/" + b.name
-		size := sizes[config.VolumeName(b.app, b.name)]
+		// A borrowed volume is its holder's, under the holder's name.
+		size := sizes[config.VolumeName(cmp.Or(b.owner, b.app), b.name)]
 		switch {
 		case size > b.budget && !volumesOver.alerted[key]:
 			volumesOver.alerted[key] = true

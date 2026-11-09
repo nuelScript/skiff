@@ -2,6 +2,7 @@ package panel
 
 import (
 	"testing"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
 )
@@ -37,5 +38,23 @@ func TestVolumeBudgetsAreStored(t *testing.T) {
 	}
 	if got := volumeBudgets("shop"); got["data"] != 10<<30 {
 		t.Errorf("budgets = %v", got)
+	}
+}
+
+// A budget set on a borrowed volume is checked against the holder's volume, which is the one that grows.
+func TestABorrowedVolumesBudgetIsChecked(t *testing.T) {
+	openTestDB(t)
+	putSource(Source{App: "worker", Team: "t1", Port: "3000"})
+	_ = addVolume("worker", config.Volume{Name: "files", Path: "/data", Owner: "shop"})
+	_, _ = sqlDB.Exec(`UPDATE volumes SET budget=? WHERE app='worker'`, 1<<30)
+	volSizes.Lock()
+	volSizes.sizes, volSizes.at = map[string]int64{config.VolumeName("shop", "files"): 2 << 30}, time.Now()
+	volSizes.Unlock()
+	t.Cleanup(func() { volSizes.Lock(); volSizes.sizes = nil; volSizes.Unlock() })
+	(&Panel{}).checkVolumeBudgets()
+	volumesOver.Lock()
+	defer volumesOver.Unlock()
+	if !volumesOver.alerted["worker/files"] {
+		t.Error("the borrowed volume's budget wasn't checked against the holder's volume")
 	}
 }
