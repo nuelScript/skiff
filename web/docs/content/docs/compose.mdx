@@ -57,7 +57,7 @@ For a stack from a GitHub repository, push your Compose file. Safe changes apply
 - **Files and folders from your repository**, like `./nginx.conf:/etc/nginx.conf`, are built into the service's image, so changes reach it on the next deploy. A writable folder also becomes a volume that starts with the repository's copy and keeps its own changes. Pasted Compose files have no repository, so they can't mount files.
 - **Paths the repository doesn't have**, like `./data` or `/opt/data`, become volumes that start empty.
 - **The server's own files** aren't shared with apps. System folders like `/etc` and the Docker socket are refused.
-- **Shared volumes** are held by the first service that uses them, which also keeps their backups. That service has to keep mounting a volume while others use it. Managed databases keep their data to themselves, so they can't share one.
+- **Shared volumes** are held by the first service that uses them, which also keeps their backups. A service can mount the same volume at more than one path. That service has to keep mounting a volume while others use it. Managed databases keep their data to themselves, so they can't share one.
 - **Health checks** are used when they make an HTTP request, and `disable: true` turns one off. Otherwise a private service counts as ready once its port opens. Timings like `interval` and `retries` are ignored, because Skiff runs its own check.
 - **tmpfs volumes** (`type: tmpfs`) become in-memory folders, as they do in Compose.
 - **Build arguments and targets** (`build.args`, `build.target`) are passed to the build. An argument listed without a value takes the Dockerfile's default, since there is no shell to read it from.

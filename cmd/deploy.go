@@ -321,7 +321,9 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			ui.Fail("Couldn't create volume " + v.Name)
 			return err
 		}
-		mounts = append(mounts, docker.Mount{Name: name, Destination: v.Path})
+		for _, p := range v.Paths() {
+			mounts = append(mounts, docker.Mount{Name: name, Destination: p})
+		}
 	}
 
 	settings := docker.Settings{

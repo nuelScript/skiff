@@ -29,11 +29,11 @@ func TestVolumeDefs(t *testing.T) {
 
 	shop, _ := getSource("shop")
 	preview, _ := getSource("shop-feat-x")
-	if got := p.volumeDefs(shop); len(got) != 1 || got[0] != data {
+	if got := p.volumeDefs(shop); len(got) != 1 || !got[0].Equal(data) {
 		t.Fatalf("project defs = %+v", got)
 	}
 	// A preview mounts the same paths, but on volumes named after itself, so it never touches production's files.
-	if got := p.volumeDefs(preview); len(got) != 1 || got[0] != data {
+	if got := p.volumeDefs(preview); len(got) != 1 || !got[0].Equal(data) {
 		t.Fatalf("preview defs = %+v", got)
 	}
 	out := projectToml(preview, nil, teamNetwork(""), p.volumeDefs(preview))

@@ -111,7 +111,7 @@ func viewPlan(p *compose.Plan) stackPlanView {
 		iv := stackItemView{Service: it.Service, Name: it.Name, Kind: string(it.Kind), Image: it.Image, Builds: it.Build != nil,
 			Port: it.Port, Public: it.Public, Replicas: it.Replicas, WorkerOf: it.WorkerOf, Engine: it.Engine}
 		for _, vol := range it.Volumes {
-			iv.Volumes = append(iv.Volumes, vol.Name+" → "+vol.Path)
+			iv.Volumes = append(iv.Volumes, vol.Name+" → "+strings.Join(append([]string{vol.Path}, vol.Also...), ", "))
 		}
 		if it.Kind != compose.KindDatabase {
 			for k := range it.Env {
@@ -286,7 +286,7 @@ func checkStack(s *stackSource, team string, updating bool) {
 		}
 		vols := make([]config.Volume, 0, len(it.Volumes))
 		for _, v := range it.Volumes {
-			vols = append(vols, config.Volume{Name: v.Name, Path: v.Path})
+			vols = append(vols, config.Volume{Name: v.Name, Path: v.Path, Also: v.Also})
 		}
 		if err := config.ValidateVolumes(vols); err != nil {
 			p.Problems = append(p.Problems, it.Service+": "+err.Error())

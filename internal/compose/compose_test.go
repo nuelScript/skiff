@@ -108,7 +108,7 @@ func TestPlanForATypicalBackend(t *testing.T) {
 		t.Errorf("cache: %+v", c)
 	}
 	s := item(t, p, "search")
-	if s.Kind != KindApp || s.Public || s.Port != 7700 || len(s.Volumes) != 1 || s.Volumes[0] != (PlanVolume{Name: "search", Path: "/meili_data"}) {
+	if s.Kind != KindApp || s.Public || s.Port != 7700 || len(s.Volumes) != 1 || !s.Volumes[0].equal(PlanVolume{Name: "search", Path: "/meili_data"}) {
 		t.Errorf("search: %+v", s)
 	}
 	pos := map[string]int{}
@@ -328,7 +328,7 @@ func TestMounts(t *testing.T) {
 		t.Errorf("files: %v", a.Files)
 	}
 	wantVolumes := []PlanVolume{{Name: "seed", Path: "/seed"}, {Name: "data", Path: "/data"}, {Name: "opt-stuff", Path: "/stuff"}}
-	if !slices.Equal(a.Volumes, wantVolumes) {
+	if !slices.EqualFunc(a.Volumes, wantVolumes, PlanVolume.equal) {
 		t.Errorf("volumes: %v", a.Volumes)
 	}
 
@@ -371,7 +371,7 @@ func TestMounts(t *testing.T) {
 			t.Fatalf("problems: %v", got.Problems)
 		}
 		a, b := item(t, got, "a"), item(t, got, "b")
-		if a.Volumes[0] != (PlanVolume{Name: "data", Path: "/data"}) || b.Volumes[0] != (PlanVolume{Name: "data", Path: "/other", Owner: "a"}) {
+		if !a.Volumes[0].equal(PlanVolume{Name: "data", Path: "/data"}) || !b.Volumes[0].equal(PlanVolume{Name: "data", Path: "/other", Owner: "a"}) {
 			t.Errorf("a: %+v, b: %+v", a.Volumes, b.Volumes)
 		}
 	})
@@ -939,5 +939,22 @@ services:
 	repo["loop.yml"] = "include: [loop.yml]\nservices:\n  l: {image: x}\n"
 	if _, err := ParseWith([]byte("include: [loop.yml]\nservices:\n  a: {image: x}\n"), noEnv, read); err == nil {
 		t.Error("an include circle should be refused")
+	}
+}
+
+func TestOneVolumeAtTwoPaths(t *testing.T) {
+	p := plan(t, `services:
+  web:
+    image: nginx
+    ports: ["80"]
+    volumes: ["data:/a", "data:/b", "other:/c"]
+volumes: {data: {}, other: {}}
+`)
+	web := item(t, p, "web")
+	if len(web.Volumes) != 2 || !web.Volumes[0].equal(PlanVolume{Name: "data", Path: "/a", Also: []string{"/b"}}) {
+		t.Errorf("volumes: %+v", web.Volumes)
+	}
+	if len(p.Problems) != 0 {
+		t.Errorf("problems: %v", p.Problems)
 	}
 }

@@ -1037,7 +1037,7 @@ const sharedVolumeFile = `services:
   reader:
     image: busybox:1.36
     command: sleep 100001
-    volumes: ["uploads:/incoming"]
+    volumes: ["uploads:/incoming", "uploads:/also"]
 volumes: {uploads: {}}
 `
 
@@ -1099,6 +1099,9 @@ func TestComposeStackSharedVolume(t *testing.T) {
 	dockerExec(t, running("web"), "echo shared > /files/note")
 	if got := dockerExec(t, running("reader"), "cat /incoming/note"); got != "shared" {
 		t.Fatalf("the other service should see the file: %q", got)
+	}
+	if got := dockerExec(t, running("reader"), "cat /also/note"); got != "shared" {
+		t.Fatalf("a volume mounted at a second path should show the same files: %q", got)
 	}
 	volumes := func() string {
 		out, _ := exec.Command("docker", "volume", "ls", "-q", "--filter", "name=skiff-"+stack).Output()

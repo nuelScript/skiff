@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 func listVolumes(app string) []config.Volume {
-	rows, err := sqlDB.Query(`SELECT name, path, owner FROM volumes WHERE app=? ORDER BY created, name`, app)
+	rows, err := sqlDB.Query(`SELECT name, path, owner, also FROM volumes WHERE app=? ORDER BY created, name`, app)
 	if err != nil {
 		return nil
 	}
@@ -21,7 +22,9 @@ func listVolumes(app string) []config.Volume {
 	var out []config.Volume
 	for rows.Next() {
 		var v config.Volume
-		if rows.Scan(&v.Name, &v.Path, &v.Owner) == nil {
+		var also string
+		if rows.Scan(&v.Name, &v.Path, &v.Owner, &also) == nil {
+			_ = json.Unmarshal([]byte(also), &v.Also)
 			out = append(out, v)
 		}
 	}
@@ -29,8 +32,13 @@ func listVolumes(app string) []config.Volume {
 }
 
 func addVolume(app string, v config.Volume) error {
-	_, err := sqlDB.Exec(`INSERT INTO volumes (app, name, path, created, owner) VALUES (?, ?, ?, ?, ?)`,
-		app, v.Name, v.Path, time.Now().Unix(), v.Owner)
+	also := ""
+	if len(v.Also) > 0 {
+		b, _ := json.Marshal(v.Also)
+		also = string(b)
+	}
+	_, err := sqlDB.Exec(`INSERT INTO volumes (app, name, path, created, owner, also) VALUES (?, ?, ?, ?, ?, ?)`,
+		app, v.Name, v.Path, time.Now().Unix(), v.Owner, also)
 	return err
 }
 
@@ -73,6 +81,10 @@ func (p *Panel) mountedVolumes(app string) []config.Volume {
 	var out []config.Volume
 	for _, m := range rt.Mounts {
 		if name, ok := strings.CutPrefix(m.Name, prefix); ok {
+			if i := slices.IndexFunc(out, func(v config.Volume) bool { return v.Name == name }); i >= 0 {
+				out[i].Also = append(out[i].Also, m.Destination)
+				continue
+			}
 			out = append(out, config.Volume{Name: name, Path: m.Destination})
 		}
 	}

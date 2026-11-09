@@ -100,7 +100,7 @@ func TestLoadVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Volumes) != 2 || c.Volumes[1] != (Volume{Name: "uploads", Path: "/app/public/uploads"}) {
+	if len(c.Volumes) != 2 || !c.Volumes[1].Equal(Volume{Name: "uploads", Path: "/app/public/uploads"}) {
 		t.Fatalf("volumes = %+v", c.Volumes)
 	}
 	if got := VolumeName("app", "data"); got != "skiff-app_data" {
@@ -262,6 +262,21 @@ command = "node report.js"
 		_, err := Load(write(t, "skiff.toml", "name = \"shop\"\n\n"+body+"\n"))
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: got %v, want an error about %s", body, err, want)
+		}
+	}
+}
+
+func TestVolumeAtSeveralPaths(t *testing.T) {
+	if err := ValidateVolumes([]Volume{{Name: "data", Path: "/a", Also: []string{"/b"}}}); err != nil {
+		t.Errorf("one volume at two paths: %v", err)
+	}
+	for _, bad := range [][]Volume{
+		{{Name: "data", Path: "/a", Also: []string{"/a"}}},
+		{{Name: "data", Path: "/a", Also: []string{"relative"}}},
+		{{Name: "data", Path: "/a"}, {Name: "logs", Path: "/l", Also: []string{"/a"}}},
+	} {
+		if ValidateVolumes(bad) == nil {
+			t.Errorf("should be refused: %+v", bad)
 		}
 	}
 }
