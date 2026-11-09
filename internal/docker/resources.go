@@ -3,6 +3,8 @@ package docker
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 )
@@ -89,9 +91,16 @@ func (e *Engine) PullImage(image string) error {
 
 // RunOnce runs a throwaway container executing a shell command (sh -c), for release commands (migrations) and scheduled jobs, with the same settings as the app it belongs to.
 func (e *Engine) RunOnce(ctx context.Context, image, cmd string, s Settings) (string, error) {
-	args := append([]string{"run", "--rm"}, e.settingsArgs(s)...)
+	var id [6]byte
+	_, _ = rand.Read(id[:])
+	name := "skiff-run-" + hex.EncodeToString(id[:])
+	args := append([]string{"run", "--rm", "--name", name}, e.settingsArgs(s)...)
 	args = append(args, image, "sh", "-c", cmd)
 	out, err := e.contextCommand(ctx, args...).CombinedOutput()
+	// Cancelling only stops the docker client, so the container is removed here or it would keep running.
+	if ctx.Err() != nil {
+		_ = e.command("rm", "-f", name).Run()
+	}
 	return string(out), err
 }
 

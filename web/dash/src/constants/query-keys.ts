@@ -33,6 +33,7 @@ export const queryKeys = {
     ['logs', 'history', app, q, errors, since, until] as const,
   uptime: (app: string) => ['uptime', app] as const,
   jobs: (app: string) => ['jobs', app] as const,
+  jobRuns: (id: string) => ['job-runs', id] as const,
   workers: (app: string) => ['workers', app] as const,
   stacks: ['stacks'] as const,
   tcpPort: (app: string) => ['tcp-port', app] as const,

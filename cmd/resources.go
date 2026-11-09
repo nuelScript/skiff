@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -266,6 +267,32 @@ type remoteJob struct {
 	Name     string `json:"name"`
 	Schedule string `json:"schedule"`
 	Command  string `json:"command"`
+	LastRun  int64  `json:"lastRun"`
+	LastOk   bool   `json:"lastOk"`
+	Running  bool   `json:"running"`
+}
+
+type remoteJobRun struct {
+	Trigger  string `json:"trigger"`
+	Attempt  int    `json:"attempt"`
+	Started  int64  `json:"started"`
+	Finished int64  `json:"finished"`
+	Status   string `json:"status"`
+	ExitCode int    `json:"exitCode"`
+	Output   string `json:"output"`
+}
+
+// lastResult says how a job's latest run went, for the job list.
+func (j remoteJob) lastResult() string {
+	switch {
+	case j.Running:
+		return "running"
+	case j.LastRun == 0:
+		return "never run"
+	case j.LastOk:
+		return "ok"
+	}
+	return "failed"
 }
 
 // jobID finds one of the app's jobs by name, so people don't have to copy ids around.
@@ -297,16 +324,18 @@ func newJobCmd() *cobra.Command {
 			}
 			rows := [][]string{}
 			for _, j := range list {
-				rows = append(rows, []string{j.Name, j.Schedule, j.Command})
+				rows = append(rows, []string{j.Name, j.Schedule, j.lastResult(), j.Command})
 			}
-			return table("NAME\tSCHEDULE\tCOMMAND", rows)
+			return table("NAME\tSCHEDULE\tLAST RUN\tCOMMAND", rows)
 		},
 	})
-	var schedule, command string
+	var schedule, command, catchUp string
+	var timeout time.Duration
+	var retries int
 	add := &cobra.Command{
 		Use: "add <app> <name>", Short: "Add a job that runs on a cron schedule", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]string{"name": args[1], "schedule": schedule, "command": command}
+			body := map[string]any{"name": args[1], "schedule": schedule, "command": command, "timeout": int(timeout / time.Second), "retries": retries, "catchUp": catchUp}
 			if err := remoteDo(http.MethodPost, "/apps/"+url.PathEscape(args[0])+"/jobs", body, nil); err != nil {
 				return err
 			}
@@ -316,6 +345,9 @@ func newJobCmd() *cobra.Command {
 	}
 	add.Flags().StringVarP(&schedule, "schedule", "s", "", "cron schedule in the server's time zone, like \"0 3 * * *\"")
 	add.Flags().StringVarP(&command, "command", "c", "", "what the job runs")
+	add.Flags().DurationVar(&timeout, "timeout", 0, "how long a run may take, like 2h (default 30m)")
+	add.Flags().IntVar(&retries, "retries", 0, "how many more times a failed run is tried, up to 10")
+	add.Flags().StringVar(&catchUp, "catch-up", "", "\"skip\" drops runs missed while the server was down (default: run once)")
 	_ = add.MarkFlagRequired("schedule")
 	_ = add.MarkFlagRequired("command")
 	job.AddCommand(add)
@@ -342,6 +374,32 @@ func newJobCmd() *cobra.Command {
 				return fmt.Errorf("%s failed", args[1])
 			}
 			return nil
+		},
+	})
+	job.AddCommand(&cobra.Command{
+		Use: "runs <app> <job>", Short: "Show a job's recent runs, newest first", Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := jobID(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			var runs []remoteJobRun
+			if err := remoteDo(http.MethodGet, "/apps/"+url.PathEscape(args[0])+"/jobs/"+url.PathEscape(id)+"/runs", nil, &runs); err != nil {
+				return err
+			}
+			if len(runs) == 0 {
+				ui.Note("No runs yet")
+				return nil
+			}
+			rows := [][]string{}
+			for _, r := range runs {
+				took := "-"
+				if r.Finished >= r.Started && r.Finished > 0 {
+					took = (time.Duration(r.Finished-r.Started) * time.Second).String()
+				}
+				rows = append(rows, []string{time.Unix(r.Started, 0).Format("Jan 2 15:04"), r.Status, r.Trigger, strconv.Itoa(r.ExitCode), took})
+			}
+			return table("STARTED\tSTATUS\tTRIGGER\tEXIT\tTOOK", rows)
 		},
 	})
 	job.AddCommand(&cobra.Command{

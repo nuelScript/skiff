@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/robfig/cron/v3"
@@ -43,6 +44,21 @@ type Job struct {
 	Name     string `toml:"name" json:"name"`
 	Schedule string `toml:"schedule" json:"schedule"`
 	Command  string `toml:"command" json:"command"`
+	// Timeout is how long a run may take, like "2h"; empty means 30 minutes.
+	Timeout string `toml:"timeout" json:"timeout,omitempty"`
+	// Retries is how many more times a failed run is tried.
+	Retries int `toml:"retries" json:"retries,omitempty"`
+	// CatchUp is "skip" to drop runs missed while the server was down; empty runs a missed job once.
+	CatchUp string `toml:"catch_up" json:"catchUp,omitempty"`
+}
+
+// TimeoutSeconds is the job's timeout in seconds, 0 for the default. Validation has already checked it parses.
+func (j Job) TimeoutSeconds() int {
+	d, err := time.ParseDuration(j.Timeout)
+	if err != nil {
+		return 0
+	}
+	return int(d / time.Second)
 }
 
 // Volume is a named directory that outlives the app's containers.
@@ -356,6 +372,18 @@ func ValidateJobs(jobs []Job) error {
 		}
 		if _, err := cron.ParseStandard(j.Schedule); err != nil {
 			return fmt.Errorf("job %q: schedule %q isn't cron syntax like \"0 3 * * *\"", j.Name, j.Schedule)
+		}
+		if j.Timeout != "" {
+			d, err := time.ParseDuration(j.Timeout)
+			if err != nil || d < time.Minute || d > 24*time.Hour {
+				return fmt.Errorf("job %q: timeout %q should be between 1m and 24h", j.Name, j.Timeout)
+			}
+		}
+		if j.Retries < 0 || j.Retries > 10 {
+			return fmt.Errorf("job %q: retries should be between 0 and 10", j.Name)
+		}
+		if j.CatchUp != "" && j.CatchUp != "skip" {
+			return fmt.Errorf("job %q: catch_up is either \"skip\" or left out", j.Name)
 		}
 	}
 	return nil

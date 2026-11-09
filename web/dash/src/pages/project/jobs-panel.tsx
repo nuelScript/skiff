@@ -1,17 +1,20 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Play, Plus, Trash2 } from 'lucide-react'
+import { Controller, useForm } from 'react-hook-form'
+import { History, Loader2, Play, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { queryKeys } from '@/constants/query-keys'
 import { relTime } from '@/lib/format'
 import { errText } from '@/lib/errors'
+import { jobSettingsSummary } from '@/lib/jobs'
 import { useConfirm } from '@/providers/confirm-provider'
 import { projectsService, type Job } from '@/services/api.service'
 import { jobSchema, type JobInput } from '@/validations/job'
+import { JobHistory } from '@/pages/project/job-history'
 
 export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
   const qc = useQueryClient()
@@ -19,8 +22,10 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
   const { data: jobs = [] } = useQuery<Job[]>({
     queryKey: queryKeys.jobs(app),
     queryFn: () => projectsService.jobs(app),
+    refetchInterval: (q) => (q.state.data?.some((j) => j.running) ? 3000 : false),
   })
   const [adding, setAdding] = useState(false)
+  const [history, setHistory] = useState('')
   const [busy, setBusy] = useState('')
   const [serverError, setServerError] = useState('')
   const [output, setOutput] = useState<{ id: string; ok: boolean; text: string } | null>(null)
@@ -28,13 +33,20 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
 
   const form = useForm<JobInput>({
     resolver: zodResolver(jobSchema),
-    defaultValues: { name: '', schedule: '0 3 * * *', command: '' },
+    defaultValues: { name: '', schedule: '0 3 * * *', command: '', timeoutMinutes: '', retries: '', catchUp: '' },
   })
 
   const create = form.handleSubmit(async (values) => {
     setServerError('')
     try {
-      await projectsService.createJob(app, values.name || 'job', values.schedule, values.command)
+      await projectsService.createJob(app, {
+        name: values.name || 'job',
+        schedule: values.schedule,
+        command: values.command,
+        timeout: values.timeoutMinutes ? +values.timeoutMinutes * 60 : 0,
+        retries: values.retries ? +values.retries : 0,
+        catchUp: values.catchUp,
+      })
       form.reset()
       setAdding(false)
       reload()
@@ -51,6 +63,7 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
       const r = await projectsService.runJob(id)
       setOutput({ id, ok: r.ok, text: r.output?.trim() || (r.ok ? 'Done.' : 'Failed.') })
       reload()
+      qc.invalidateQueries({ queryKey: queryKeys.jobRuns(id) })
     } catch (err) {
       setServerError(errText(err, 'Could not run the job.'))
     } finally {
@@ -118,6 +131,52 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
               />
               <FieldError errors={[form.formState.errors.command]} />
             </Field>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field data-invalid={!!form.formState.errors.timeoutMinutes}>
+                <FieldLabel htmlFor="job-timeout">Timeout (minutes)</FieldLabel>
+                <Input
+                  id="job-timeout"
+                  inputMode="numeric"
+                  placeholder="30"
+                  aria-invalid={!!form.formState.errors.timeoutMinutes}
+                  {...form.register('timeoutMinutes')}
+                />
+                <FieldError errors={[form.formState.errors.timeoutMinutes]} />
+              </Field>
+              <Field data-invalid={!!form.formState.errors.retries}>
+                <FieldLabel htmlFor="job-retries">Retries</FieldLabel>
+                <Input
+                  id="job-retries"
+                  inputMode="numeric"
+                  placeholder="0"
+                  aria-invalid={!!form.formState.errors.retries}
+                  {...form.register('retries')}
+                />
+                <FieldError errors={[form.formState.errors.retries]} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="job-catchup">After downtime</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="catchUp"
+                  render={({ field }) => (
+                    <Select value={field.value || 'once'} onValueChange={(v) => field.onChange(v === 'skip' ? 'skip' : '')}>
+                      <SelectTrigger id="job-catchup" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="once">Run once</SelectItem>
+                        <SelectItem value="skip">Skip missed runs</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+            </div>
+            <FieldDescription>
+              A failed run is tried again after 30 seconds, then a minute, then two, up to ten minutes apart. Your
+              alert channels hear when a job starts failing and when it works again.
+            </FieldDescription>
           </FieldGroup>
           {serverError && <p className="text-xs text-danger">{serverError}</p>}
           <div className="flex items-center justify-end gap-3">
@@ -159,12 +218,29 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                     {j.schedule}
                   </span>
                   <button
-                    onClick={() => run(j.id)}
-                    disabled={busy === j.id}
-                    title="Run now"
-                    className="text-muted-foreground hover:text-foreground p-1.5 disabled:opacity-40"
+                    onClick={() => setHistory(history === j.id ? '' : j.id)}
+                    title="Run history"
+                    aria-label={`Run history of ${j.name}`}
+                    aria-expanded={history === j.id}
+                    className={
+                      'cursor-pointer p-1.5 transition-colors ' +
+                      (history === j.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')
+                    }
                   >
-                    <Play className="h-3.5 w-3.5" />
+                    <History className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => run(j.id)}
+                    disabled={busy === j.id || j.running}
+                    title={j.running ? 'Already running' : 'Run now'}
+                    aria-label={`Run ${j.name} now`}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer p-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {busy === j.id || j.running ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Play className="h-3.5 w-3.5" />
+                    )}
                   </button>
                   {!cli && (
                     <button
@@ -181,7 +257,9 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                   <span>next {fmtWhen(j.next)}</span>
                   <span>
                     last run{' '}
-                    {j.lastRun ? (
+                    {j.running ? (
+                      <span className="text-foreground">running now</span>
+                    ) : j.lastRun ? (
                       <>
                         {relTime(j.lastRun)} ·{' '}
                         <span className={j.lastOk ? 'text-success' : 'text-danger'}>
@@ -192,8 +270,14 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                       'never'
                     )}
                   </span>
+                  <span>{jobSettingsSummary(j)}</span>
                 </div>
-                {output?.id === j.id && (
+                {history === j.id && (
+                  <div className="mt-3">
+                    <JobHistory id={j.id} live={j.running} />
+                  </div>
+                )}
+                {output?.id === j.id && history !== j.id && (
                   <pre
                     className={
                       'mt-2 max-h-40 overflow-auto rounded-md border p-2.5 font-mono text-[11px] whitespace-pre-wrap ' +

@@ -101,19 +101,43 @@ func resourceTools(c *apiClient) []mcp.Tool {
 				return call(http.MethodDelete, "/apps/"+v[0]+"/workers/"+v[1], nil, "Removed.")
 			},
 		},
-		list("list_jobs", "A project's scheduled jobs: id, schedule, command, when each last ran and whether it worked.", "/jobs"),
+		list("list_jobs", "A project's scheduled jobs: id, schedule, command, timeout, retries, when each last ran and whether it worked.", "/jobs"),
 		{
 			Name: "add_job", Description: "Add a scheduled job to a project. The schedule is cron syntax in the server's time zone.",
 			InputSchema: schema(map[string]any{
 				"name": nameProp, "job": prop("job name"),
 				"schedule": prop("cron schedule, like \"0 3 * * *\""), "command": prop("what it runs"),
+				"timeout": map[string]any{"type": "integer", "description": "seconds a run may take, 60 to 86400 (default 1800)"},
+				"retries": map[string]any{"type": "integer", "description": "how many more times a failed run is tried, 0 to 10 (default 0)"},
+				"catchUp": map[string]any{"type": "string", "enum": []string{"", "skip"}, "description": "\"skip\" drops runs missed while the server was down; empty runs a missed job once"},
 			}, "name", "job", "schedule", "command"),
 			Run: func(args map[string]any) (string, error) {
 				n, err := app(args)
 				if err != nil {
 					return "", err
 				}
-				return call(http.MethodPost, "/apps/"+n+"/jobs", map[string]string{"name": str(args, "job"), "schedule": str(args, "schedule"), "command": str(args, "command")}, "")
+				body := map[string]any{"name": str(args, "job"), "schedule": str(args, "schedule"), "command": str(args, "command"), "catchUp": str(args, "catchUp")}
+				for _, k := range []string{"timeout", "retries"} {
+					if f, ok := args[k].(float64); ok {
+						body[k] = int(f)
+					}
+				}
+				return call(http.MethodPost, "/apps/"+n+"/jobs", body, "")
+			},
+		},
+		{
+			Name: "list_job_runs", Description: "A job's recent runs, newest first: what started each, its status (ok, failed, timeout, skipped), exit code and output, which the project's code writes." + untrustedNote,
+			InputSchema: schema(map[string]any{"name": nameProp, "id": jobProp}, "name", "id"),
+			Run: func(args map[string]any) (string, error) {
+				v, err := need(args, "name", "id")
+				if err != nil {
+					return "", err
+				}
+				out, err := c.get("/apps/" + v[0] + "/jobs/" + v[1] + "/runs")
+				if err != nil {
+					return "", err
+				}
+				return untrusted("job-runs", out), nil
 			},
 		},
 		{

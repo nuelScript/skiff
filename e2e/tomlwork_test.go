@@ -112,6 +112,18 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 	if !strings.Contains(ran.Output, "67108864") {
 		t.Errorf("the job didn't get the app's 64m memory limit: %q", ran.Output)
 	}
+	type jobRun struct {
+		Trigger, Status, Output string
+		ExitCode                int
+	}
+	runs := func(id string) []jobRun {
+		var out []jobRun
+		fetch("/api/jobs/runs?id="+id, &out)
+		return out
+	}
+	if r := runs(first.ID); len(r) != 1 || r[0].Status != "ok" || r[0].Trigger != "manual" || !strings.Contains(r[0].Output, "job-ran") {
+		t.Errorf("the run should be in the job's history: %+v", r)
+	}
 	resp, err = c.Post(base+"/api/workers?app="+app, "application/json", strings.NewReader(`{"name":"other","command":"sleep 1","replicas":1}`))
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +134,7 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 	}
 
 	// A changed schedule keeps the job, and when it last ran.
-	deploy("[[workers]]\nname = \"queue\"\ncommand = \"sleep 100000\"\n\n[[jobs]]\nname = \"report\"\nschedule = \"0 4 * * *\"\ncommand = \"echo job-ran\"\n")
+	deploy("[[workers]]\nname = \"queue\"\ncommand = \"sleep 100000\"\n\n[[jobs]]\nname = \"report\"\nschedule = \"0 4 * * *\"\ncommand = \"echo job-ran; exit 4\"\ntimeout = \"5m\"\nretries = 2\n")
 	if got := workers(); len(got) != 1 {
 		t.Errorf("%d workers after lowering replicas, want 1", len(got))
 	}
@@ -132,6 +144,20 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 	})
 	if j := jobs(); j[0].ID != first.ID {
 		t.Errorf("the job was replaced, not changed: %s became %s", first.ID, j[0].ID)
+	}
+	var settings []struct{ Timeout, Retries int }
+	fetch("/api/jobs?app="+app, &settings)
+	if len(settings) != 1 || settings[0].Timeout != 300 || settings[0].Retries != 2 {
+		t.Errorf("timeout and retries from skiff.toml: %+v", settings)
+	}
+	// Running it by hand tries once, and the history keeps the exit code.
+	resp, err = c.Post(base+"/api/jobs/run?id="+first.ID, "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if r := runs(first.ID); len(r) != 2 || r[0].Status != "failed" || r[0].ExitCode != 4 {
+		t.Errorf("a failed run should keep its exit code: %+v", r)
 	}
 
 	deploy("")

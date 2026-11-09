@@ -68,6 +68,17 @@ command = "node report.js"
 
 For these apps, `skiff.toml` decides, so the dashboard, the API and `skiff worker` or `skiff job` can't change them. Running a job now still works. A deploy without a `[[workers]]` section stops the app's workers.
 
+## Scheduled jobs
+
+A job runs a command from your app's build on a cron schedule, in a one-off container with the app's environment and limits.
+
+- **Every run is kept:** what started it, how it ended, its exit code, how long it took and the end of its output. The last 50 runs are under the job's history on **Jobs & workers**, and in `skiff job runs`.
+- **A timeout per job,** 30 minutes unless you set one, up to 24 hours. A run past it is stopped.
+- **Retries:** a failed run can be tried again up to 10 times, after 30 seconds, then a minute, then two, up to ten minutes apart. Running a job by hand tries once.
+- **No overlap:** if a run is still going when the next one is due, the next is skipped, and the history says so.
+- **After downtime,** a job that missed its time runs once when Skiff is back, unless you set it to skip missed runs.
+- **Alerts:** your alert channels hear when a job starts failing, after its retries, and when it works again.
+
 ## From the terminal
 
 After `skiff login`, the CLI manages the same things as the dashboard. Attached databases and buckets reach an app on its next deploy.
@@ -79,12 +90,14 @@ skiff bucket create media
 skiff bucket attach media shop-api   # adds S3_ENDPOINT, S3_BUCKET and its keys
 skiff worker set shop-api queue --command "node queue.js" --replicas 2
 skiff job add shop-api report --schedule "0 3 * * *" --command "node report.js"
+skiff job add shop-api sync --schedule "*/15 * * * *" --command "node sync.js" --timeout 10m --retries 2
 skiff job run shop-api report        # runs it now and prints its output
+skiff job runs shop-api report       # its recent runs
 ```
 
 Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes`. The same actions are in the [API](/api).
 
 ## What Skiff doesn't do yet
 
-- **Raw TCP or UDP from outside.** The router speaks HTTP and gRPC, and a deploy needs an answer in one of them to pass its health check.
+- **UDP from outside.** Public ports forward TCP only.
 - **More than one server.** Replicas and autoscaling work within your server. There's no failover if it goes down, and no database replicas.

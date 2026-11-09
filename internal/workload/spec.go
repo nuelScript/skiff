@@ -52,7 +52,11 @@ type Run struct {
 
 // When is when it runs: always, with replicas, or on a schedule.
 type When struct {
-	Schedule   string `json:"schedule,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
+	// Timeout is how many seconds a job's run may take, 0 for the default; Retries is how many more times a failed run is tried; CatchUp is "skip" to drop missed runs.
+	Timeout    int    `json:"timeout,omitempty"`
+	Retries    int    `json:"retries,omitempty"`
+	CatchUp    string `json:"catchUp,omitempty"`
 	Replicas   int    `json:"replicas,omitempty"`
 	Autoscale  bool   `json:"autoscale,omitempty"`
 	ScaleMin   int    `json:"scaleMin,omitempty"`

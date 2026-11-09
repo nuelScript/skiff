@@ -100,6 +100,30 @@ export type Job = {
   lastOk: boolean
   next: number
   created: number
+  timeout: number
+  retries: number
+  catchUp: '' | 'skip'
+  running: boolean
+}
+
+export type JobRun = {
+  id: number
+  trigger: 'schedule' | 'catch-up' | 'manual' | 'retry'
+  attempt: number
+  started: number
+  finished: number
+  status: 'running' | 'ok' | 'failed' | 'timeout' | 'skipped'
+  exitCode: number
+  output: string
+}
+
+export type JobSettings = {
+  name: string
+  schedule: string
+  command: string
+  timeout: number
+  retries: number
+  catchUp: '' | 'skip'
 }
 
 export type Worker = {
@@ -233,8 +257,12 @@ class ProjectsService extends BaseService {
     return this.get<Job[]>('/jobs', { params: { app } })
   }
 
-  createJob(app: string, name: string, schedule: string, command: string) {
-    return this.post<Job>('/jobs', { name, schedule, command }, { params: { app } })
+  createJob(app: string, job: JobSettings) {
+    return this.post<Job>('/jobs', job, { params: { app } })
+  }
+
+  jobRuns(id: string) {
+    return this.get<JobRun[]>('/jobs/runs', { params: { id } })
   }
 
   deleteJob(id: string) {
@@ -242,7 +270,9 @@ class ProjectsService extends BaseService {
   }
 
   runJob(id: string) {
-    return this.post<{ ok: boolean; output: string }>('/jobs/run', null, { params: { id } })
+    return this.post<{ ok: boolean; status: JobRun['status']; output: string }>('/jobs/run', null, {
+      params: { id },
+    })
   }
 
   workers(app: string) {
