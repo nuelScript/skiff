@@ -38,3 +38,16 @@ func TestMemoryBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestUnlimitedPostgresTunesForAShare(t *testing.T) {
+	serverCap := int64(6 << 30)
+	if got := tuningMemory("", serverCap); got != serverCap/sharedDatabases {
+		t.Errorf("no limit of its own: %d", got)
+	}
+	if got := tuningMemory("2g", 2<<30); got != 2<<30 {
+		t.Errorf("its own limit: %d", got)
+	}
+	if got := tuningMemory("", 1<<30); got != 512<<20 {
+		t.Errorf("a small server: %d", got)
+	}
+}
