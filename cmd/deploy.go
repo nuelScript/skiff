@@ -398,11 +398,17 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		held = nil
 	}
 	defer release()
-	// On the server's own network the old version holds the port, so it stops first and comes back if the new one fails.
+	// On the server's own network the old version holds the port, and with GPUs it holds their memory, as a model server takes most of a card. Either way it stops first and comes back if the new one fails.
 	var stoppedOld []string
-	if cfg.Deploy.Permissions.HostNetwork {
-		replicas = 1
-		for _, name := range eng.AppContainers(cfg.Name) {
+	if cfg.Deploy.Permissions.HostNetwork || len(gpus) > 0 {
+		if cfg.Deploy.Permissions.HostNetwork {
+			replicas = 1
+		}
+		old := eng.AppContainers(cfg.Name)
+		if len(old) > 0 && len(gpus) > 0 {
+			ui.Step("Stopping the old version first, to free its GPUs")
+		}
+		for _, name := range old {
 			if eng.Stop(name) == nil {
 				stoppedOld = append(stoppedOld, name)
 			}
