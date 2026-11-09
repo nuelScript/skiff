@@ -101,7 +101,7 @@ func TestSecretColumnsReadBothForms(t *testing.T) {
 		t.Fatalf("drain: %+v", d)
 	}
 	exec(`INSERT INTO registry_creds(app,username,password) VALUES('a','u',?)`, s("regpass"))
-	if u, p, ok := getRegistryCreds("a"); !ok || u != "u" || p != "regpass" {
+	if _, u, p, ok := getRegistryCreds("a"); !ok || u != "u" || p != "regpass" {
 		t.Fatalf("registry: %q %q", u, p)
 	}
 	exec(`INSERT INTO backup_targets(team,endpoint,bucket,access_key,secret_key,updated) VALUES('t','e','b',?,?,1)`, s("ak"), s("sk"))
@@ -140,7 +140,7 @@ func TestWritesAreSealed(t *testing.T) {
 	if err := saveLogDrain(LogDrain{Team: "t", URL: "v8", HeaderName: "H", HeaderValue: "v9"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := setRegistryCreds("a", "u", "v10"); err != nil {
+	if err := setRegistryCreds("a", "docker.io", "u", "v10"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setOffsite("t", OffsiteTarget{Endpoint: "e", Bucket: "b", AccessKey: "v11", SecretKey: "v12"}); err != nil {

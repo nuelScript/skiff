@@ -168,7 +168,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	var ctxDir string
 	var childEnv []string
 	if src.Image != "" {
-		if user, pass, ok := getRegistryCreds(src.App); ok {
+		if user, pass, ok := pullLogin(src.App, src.Image); ok {
 			childEnv = append(childEnv, "SKIFF_REGISTRY_USER="+user, "SKIFF_REGISTRY_PASSWORD="+pass)
 		}
 	}

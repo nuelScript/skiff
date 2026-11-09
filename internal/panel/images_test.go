@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/seal"
 )
 
 func TestImageProjectToml(t *testing.T) {
@@ -45,17 +46,39 @@ func TestRegistryCreds(t *testing.T) {
 	if got, _ := getSource("api"); got.Image != "ghcr.io/acme/api:1" {
 		t.Fatalf("image didn't round-trip: %q", got.Image)
 	}
-	if _, _, ok := getRegistryCreds("api"); ok {
+	if _, _, _, ok := getRegistryCreds("api"); ok {
 		t.Fatal("credentials before any were set")
 	}
-	_ = setRegistryCreds("api", "bot", "one")
-	_ = setRegistryCreds("api", "bot", "two")
-	if u, pw, ok := getRegistryCreds("api"); !ok || u != "bot" || pw != "two" {
-		t.Fatalf("creds = %q %q %v", u, pw, ok)
+	_ = setRegistryCreds("api", "ghcr.io", "bot", "one")
+	_ = setRegistryCreds("api", "ghcr.io", "bot", "two")
+	if host, u, pw, ok := getRegistryCreds("api"); !ok || host != "ghcr.io" || u != "bot" || pw != "two" {
+		t.Fatalf("creds = %q %q %q %v", host, u, pw, ok)
+	}
+	if u, pw, ok := pullLogin("api", "ghcr.io/acme/api:2"); !ok || u != "bot" || pw != "two" {
+		t.Errorf("login for the same registry: %q %q %v", u, pw, ok)
+	}
+	// Pointing the project at another registry must not hand that registry the login.
+	if _, _, ok := pullLogin("api", "evil.example.com/acme/api:1"); ok {
+		t.Error("the login was offered to another registry")
 	}
 	deleteSource("api")
-	if _, _, ok := getRegistryCreds("api"); ok {
+	if _, _, _, ok := getRegistryCreds("api"); ok {
 		t.Fatal("deleting the project left its registry credentials behind")
+	}
+}
+
+// A login saved before hosts were kept belongs to the image the project runs when it's first used.
+func TestOldRegistryLoginTakesItsImagesHost(t *testing.T) {
+	openTestDB(t)
+	sealed, _ := seal.Seal("pw")
+	if _, err := sqlDB.Exec(`INSERT INTO registry_creds(app,username,password) VALUES('api','bot',?)`, sealed); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := pullLogin("api", "ghcr.io/acme/api:1"); !ok {
+		t.Fatal("an old login wasn't used for its own image")
+	}
+	if _, _, ok := pullLogin("api", "registry.example.com/x:1"); ok {
+		t.Error("an old login went to another registry after its first use")
 	}
 }
 

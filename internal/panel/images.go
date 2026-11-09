@@ -11,23 +11,38 @@ import (
 	"github.com/nuelScript/skiff/internal/seal"
 )
 
-func getRegistryCreds(app string) (user, pass string, ok bool) {
-	err := sqlDB.QueryRow(`SELECT username,password FROM registry_creds WHERE app=?`, app).Scan(&user, &pass)
+// getRegistryCreds is an app's registry login and the registry it's for; a login saved before the registry was kept with it has no host.
+func getRegistryCreds(app string) (host, user, pass string, ok bool) {
+	err := sqlDB.QueryRow(`SELECT host,username,password FROM registry_creds WHERE app=?`, app).Scan(&host, &user, &pass)
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	_ = seal.OpenAll(&pass)
-	return user, pass, true
+	return host, user, pass, true
 }
 
-func setRegistryCreds(app, user, pass string) error {
+func setRegistryCreds(app, host, user, pass string) error {
 	pass, err := seal.Seal(pass)
 	if err != nil {
 		return err
 	}
-	_, err = sqlDB.Exec(`INSERT INTO registry_creds(app,username,password) VALUES(?,?,?)
-		ON CONFLICT(app) DO UPDATE SET username=excluded.username, password=excluded.password`, app, user, pass)
+	_, err = sqlDB.Exec(`INSERT INTO registry_creds(app,host,username,password) VALUES(?,?,?,?)
+		ON CONFLICT(app) DO UPDATE SET host=excluded.host, username=excluded.username, password=excluded.password`, app, host, user, pass)
 	return err
+}
+
+// pullLogin is the login to pull image with: only the one saved for that image's registry, so changing the image can't send it somewhere else. A login from before hosts were kept belongs to the image the app runs when it's first used.
+func pullLogin(app, image string) (user, pass string, ok bool) {
+	host, user, pass, ok := getRegistryCreds(app)
+	if !ok {
+		return "", "", false
+	}
+	want := config.RegistryHost(image)
+	if host == "" {
+		_, _ = sqlDB.Exec(`UPDATE registry_creds SET host=? WHERE app=? AND host=''`, want, app)
+		host = want
+	}
+	return user, pass, host == want
 }
 
 func deleteRegistryCreds(app string) {
@@ -97,7 +112,7 @@ func (p *Panel) handleImageProject(w http.ResponseWriter, r *http.Request) {
 	}
 	envStage.release(name)
 	if user != "" {
-		_ = setRegistryCreds(name, user, body.Password)
+		_ = setRegistryCreds(name, config.RegistryHost(img), user, body.Password)
 	}
 	id := newDeployID()
 	p.audit(r, "deploy", name, "new app from image")
@@ -120,8 +135,13 @@ func (p *Panel) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		user, _, set := getRegistryCreds(app)
-		writeJSON(w, map[string]any{"username": user, "set": set, "host": config.RegistryHost(src.Image)})
+		saved, user, _, set := getRegistryCreds(app)
+		host := config.RegistryHost(src.Image)
+		// A login for another registry isn't used for this image, so it doesn't count as set.
+		if saved != "" && saved != host {
+			user, set = "", false
+		}
+		writeJSON(w, map[string]any{"username": user, "set": set, "host": host})
 	case http.MethodPut:
 		var body struct{ Username, Password string }
 		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body)
@@ -130,7 +150,7 @@ func (p *Panel) handleRegistry(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "enter both the username and the password or token", http.StatusBadRequest)
 			return
 		}
-		if err := setRegistryCreds(app, user, body.Password); err != nil {
+		if err := setRegistryCreds(app, config.RegistryHost(src.Image), user, body.Password); err != nil {
 			http.Error(w, "couldn't save the credentials", http.StatusInternalServerError)
 			return
 		}

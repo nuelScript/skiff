@@ -56,11 +56,11 @@ func routeScope(pattern string) string {
 	return scopeWork
 }
 
-// teamWide routes act on the whole team's resources rather than one app, so a token limited to some apps can't use them.
+// teamWide routes act on the whole team's resources rather than one app, so a token limited to some apps can't use them. Attaching a database or bucket counts too: it hands the app that resource's credentials.
 func teamWide(pattern string) bool {
 	_, path, _ := strings.Cut(pattern, " ")
-	return path == "/api/v1/databases" || path == "/api/v1/buckets" || strings.HasPrefix(path, "/api/v1/databases/{name}") && !strings.Contains(path, "/apps/") ||
-		strings.HasPrefix(path, "/api/v1/buckets/{name}") && !strings.Contains(path, "/apps/")
+	return path == "/api/v1/databases" || path == "/api/v1/buckets" ||
+		strings.HasPrefix(path, "/api/v1/databases/{name}") || strings.HasPrefix(path, "/api/v1/buckets/{name}")
 }
 
 func apiGrant(r *http.Request) tokenGrant {

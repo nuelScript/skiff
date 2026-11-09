@@ -19,7 +19,7 @@ With no port, Skiff uses the one the image exposes, and falls back to 8080 if it
 <Step>
 ### Add credentials if the image is private
 
-A username and a password or access token for the registry. For GitHub Container Registry, that's your GitHub username and a token with `read:packages`. You can change them later under the project's **Settings**.
+A username and a password or access token for the registry. For GitHub Container Registry, that's your GitHub username and a token with `read:packages`. You can change them later under the project's **Settings**. They're kept for that registry only: if the project later runs an image from another registry, they aren't sent there, and you add that registry's login instead.
 </Step>
 </Steps>
 
