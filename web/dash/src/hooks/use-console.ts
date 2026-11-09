@@ -44,8 +44,8 @@ export function useConsole(onDeployed: () => void) {
   }, [])
 
   const deploy = useCallback(
-    (git: string, name: string, port: string, token?: string) =>
-      start('Deploying ' + name, deployUrl(git, name, port, token), onDeployed, name),
+    (git: string, name: string, port: string, token?: string, agent?: boolean) =>
+      start('Deploying ' + name, deployUrl(git, name, port, token, agent), onDeployed, name),
     [start, onDeployed],
   )
 
@@ -58,10 +58,11 @@ export function useConsole(onDeployed: () => void) {
       port: string,
       auto: boolean,
       rootDir: string,
+      agent?: boolean,
     ) =>
       start(
         'Deploying ' + name,
-        githubDeployUrl(repo, clone, branch, name, port, auto, rootDir),
+        githubDeployUrl(repo, clone, branch, name, port, auto, rootDir, agent),
         onDeployed,
         name,
       ),

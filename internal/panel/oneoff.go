@@ -25,6 +25,7 @@ const (
 // liveRun is a one-off run in progress, with its output so far for anyone following it.
 type liveRun struct {
 	team   string
+	app    string
 	mu     sync.Mutex
 	out    []byte
 	cut    bool
@@ -96,7 +97,7 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration) (
 	}
 	id, _ := res.LastInsertId()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	live := &liveRun{team: src.Team, done: make(chan struct{}), cancel: cancel}
+	live := &liveRun{team: src.Team, app: src.App, done: make(chan struct{}), cancel: cancel}
 	liveRuns[id] = live
 	liveMu.Unlock()
 	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job='' AND app=? AND id NOT IN (SELECT id FROM job_runs WHERE job='' AND app=? ORDER BY id DESC LIMIT ?)`,
@@ -284,4 +285,15 @@ func (p *Panel) apiStopRun(w http.ResponseWriter, r *http.Request) {
 	recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "run.stop", Target: app, Detail: fmt.Sprintf("run %d via api", run.ID)})
 	stopped, _ := getOneOff(app, run.ID)
 	apiJSON(w, http.StatusOK, stopped)
+}
+
+// cancelAppRuns stops every one-off run of an app.
+func cancelAppRuns(app string) {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	for _, live := range liveRuns {
+		if live.app == app {
+			live.cancel()
+		}
+	}
 }

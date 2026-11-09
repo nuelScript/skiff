@@ -19,6 +19,7 @@ import { WorkersPanel } from './project/workers-panel'
 import { TCPPortSection } from './project/tcp-port-section'
 import { UDPPortSection } from './project/udp-port-section'
 import { AISection } from './project/ai-section'
+import { AgentPanel } from './project/agent-panel'
 import { VolumesPanel } from './project/volumes-panel'
 import { RegistryPanel } from './project/registry-panel'
 import { DangerZone, SettingsForm } from './project/settings-form'
@@ -198,6 +199,7 @@ export default function ProjectDetailPage() {
 
         {/* Above the waterline: what's live. Below it: the work that got it there. */}
         <TabsContent value="overview" className="flex min-w-0 flex-1 flex-col">
+          <AgentPanel app={project.name} />
           <dl className="grid gap-x-8 gap-y-5 pb-7 sm:grid-cols-2 lg:grid-cols-4">
             {project.domains.length > 0 && !project.private && (
               <Fact label={project.domains.length > 1 ? 'Custom domains' : 'Custom domain'}>

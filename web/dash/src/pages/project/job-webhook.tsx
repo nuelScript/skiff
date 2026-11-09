@@ -3,7 +3,7 @@ import { Check, Copy, Eye, EyeOff } from 'lucide-react'
 import { useCopy } from '@/hooks/use-copy'
 
 // JobWebhook shows where to send a job's webhook and the secret to sign it with.
-export function JobWebhook({ url, secret }: { url: string; secret: string }) {
+export function JobWebhook({ url, secret, after }: { url: string; secret: string; after?: React.ReactNode }) {
   const [shown, setShown] = useState(false)
   const full = url.startsWith('/') ? window.location.origin + url : url
   return (
@@ -27,7 +27,12 @@ export function JobWebhook({ url, secret }: { url: string; secret: string }) {
       <p className="text-muted-foreground leading-relaxed">
         POST to it with the body signed by HMAC-SHA256 of this secret, sent as{' '}
         <code className="font-mono">X-Skiff-Signature: sha256=…</code>. A GitHub webhook with this secret works
-        as it is. The run gets the body in <code className="font-mono">SKIFF_WEBHOOK_BODY</code>.
+        as it is.{' '}
+        {after ?? (
+          <>
+            The run gets the body in <code className="font-mono">SKIFF_WEBHOOK_BODY</code>.
+          </>
+        )}
       </p>
     </div>
   )

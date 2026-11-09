@@ -226,7 +226,9 @@ func deleteSource(app string) {
 		del(`DELETE FROM registry_creds WHERE app=?`) &&
 		del(`DELETE FROM log_drain_cursors WHERE app=?`) &&
 		del(`DELETE FROM ai_apps WHERE app=?`) &&
-		del(`DELETE FROM ai_usage WHERE app=?`) {
+		del(`DELETE FROM ai_usage WHERE app=?`) &&
+		del(`DELETE FROM agents WHERE app=?`) &&
+		del(`DELETE FROM agent_events WHERE app=?`) {
 		_ = tx.Commit()
 	}
 }

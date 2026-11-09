@@ -301,7 +301,15 @@ func aiGateway(w http.ResponseWriter, r *http.Request) {
 		gatewayError(w, http.StatusUnauthorized, "unknown SKIFF_AI_TOKEN; redeploy the app if its AI access was just turned on")
 		return
 	}
+	if agentStopped(a.App) {
+		gatewayError(w, http.StatusForbidden, a.App+" was stopped in Skiff; start it again to continue")
+		return
+	}
 	name, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	if name == "_skiff" {
+		agentInbox(w, r, a, rest)
+		return
+	}
 	p, ok := teamProvider(a.Team, name)
 	if !ok {
 		gatewayError(w, http.StatusNotFound, fmt.Sprintf("your team has no AI provider named %q; add one in Skiff under Settings → Integrations", name))

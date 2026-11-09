@@ -378,6 +378,27 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   output   INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (app, month, provider)
 );
+CREATE TABLE IF NOT EXISTS agents (
+  app         TEXT PRIMARY KEY,
+  team        TEXT NOT NULL,
+  hook_secret TEXT NOT NULL,
+  schedule    TEXT NOT NULL DEFAULT '',
+  last_tick   INTEGER NOT NULL DEFAULT 0,
+  stopped     INTEGER NOT NULL DEFAULT 0,
+  created     INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agent_events (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  app          TEXT NOT NULL,
+  source       TEXT NOT NULL,
+  kind         TEXT NOT NULL DEFAULT '',
+  body         TEXT NOT NULL DEFAULT '',
+  created      INTEGER NOT NULL,
+  leased_until INTEGER NOT NULL DEFAULT 0,
+  deliveries   INTEGER NOT NULL DEFAULT 0,
+  done         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_app ON agent_events(app, done, id);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

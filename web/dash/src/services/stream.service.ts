@@ -20,8 +20,10 @@ export function openStream(url: string, h: StreamHandlers): EventSource {
 
 const q = (s: string) => encodeURIComponent(s)
 
-export const deployUrl = (git: string, name: string, port: string, token = '') =>
-  `/api/deploy?git=${q(git)}&name=${q(name)}&port=${q(port)}` + (token ? `&token=${q(token)}` : '')
+export const deployUrl = (git: string, name: string, port: string, token = '', agent = false) =>
+  `/api/deploy?git=${q(git)}&name=${q(name)}&port=${q(port)}` +
+  (token ? `&token=${q(token)}` : '') +
+  (agent ? '&agent=1' : '')
 
 export const logsUrl = (name: string) => `/api/logs?app=${q(name)}`
 
@@ -33,9 +35,11 @@ export const githubDeployUrl = (
   port: string,
   auto: boolean,
   rootDir = '',
+  agent = false,
 ) =>
   `/api/github/deploy?repo=${q(repo)}&clone=${q(clone)}&branch=${q(branch)}` +
-  `&name=${q(name)}&port=${q(port)}&auto=${auto ? '1' : '0'}&rootdir=${q(rootDir)}`
+  `&name=${q(name)}&port=${q(port)}&auto=${auto ? '1' : '0'}&rootdir=${q(rootDir)}` +
+  (agent ? '&agent=1' : '')
 
 export const deployLogUrl = (app: string, id: string) =>
   `/api/deploys/log?app=${q(app)}&id=${q(id)}`

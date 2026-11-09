@@ -40,6 +40,7 @@ export const queryKeys = {
   udpPort: (app: string) => ['udp-port', app] as const,
   aiProviders: ['ai-providers'] as const,
   projectAI: (app: string) => ['project-ai', app] as const,
+  agent: (app: string) => ['agent', app] as const,
   previewData: (app: string) => ['preview-data', app] as const,
   volumes: (app: string) => ['volumes', app] as const,
   volumeBackups: (app: string, volume: string) => ['volume-backups', app, volume] as const,
