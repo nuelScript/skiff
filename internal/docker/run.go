@@ -226,6 +226,32 @@ func (e *Engine) RunWorker(s WorkerSpec) error {
 	return nil
 }
 
+// LabelWorkerSpec fingerprints what a worker container was started with, so one that still matches is left running.
+const LabelWorkerSpec = "skiff.worker.spec"
+
+// WorkerSpecs maps each of an app's worker containers, running or not, to its fingerprint.
+func (e *Engine) WorkerSpecs(app string) map[string]string {
+	out, err := e.command("ps", "-a", "--filter", "label=skiff.worker.app="+app, "--format", `{{.Names}} {{.Label "`+LabelWorkerSpec+`"}}`).Output()
+	if err != nil {
+		return nil
+	}
+	specs := map[string]string{}
+	for _, l := range splitLines(out) {
+		name, spec, _ := strings.Cut(l, " ")
+		specs[name] = spec
+	}
+	return specs
+}
+
+// ImageID is the ID an image reference points at now, or "" when there's no such image.
+func (e *Engine) ImageID(ref string) string {
+	out, err := e.command("image", "inspect", "--format", "{{.Id}}", ref).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // WorkerContainers lists an app's worker containers (running or not); all of them when app is "".
 func (e *Engine) WorkerContainers(app string) []string {
 	filter := "label=skiff.kind=worker"

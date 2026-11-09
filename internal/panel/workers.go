@@ -1,8 +1,14 @@
 package panel
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"log"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -72,7 +78,7 @@ func toWorker(w workerRow, containers []string) Worker {
 	prefix := docker.WorkerPrefix(w.App, w.Name)
 	running := 0
 	for _, c := range containers {
-		if strings.HasPrefix(c, prefix) {
+		if replicaOfWorker(c, prefix) {
 			running++
 		}
 	}
@@ -88,7 +94,7 @@ func toWorker(w workerRow, containers []string) Worker {
 
 var workerLocks sync.Map // app → *sync.Mutex
 
-// reconcileWorkers replaces the app's worker containers with what its rows ask for. A deploy and a change to a worker can both ask at once, and each removes every worker before starting its own, so one runs at a time per app.
+// reconcileWorkers brings the app's worker containers in line with its rows. A container started from the same image, command and settings as its worker asks for now is left running, so changing one worker doesn't restart the others. The rest stop gracefully before their replacements start. A deploy and a change to a worker can both ask at once, so one runs at a time per app.
 func (p *Panel) reconcileWorkers(app string) {
 	mu, _ := workerLocks.LoadOrStore(app, &sync.Mutex{})
 	mu.(*sync.Mutex).Lock()
@@ -97,24 +103,73 @@ func (p *Panel) reconcileWorkers(app string) {
 	if !ok {
 		return
 	}
-	for _, c := range p.eng.WorkerContainers(app) {
-		_ = p.eng.Remove(c)
-	}
+	existing := p.eng.WorkerSpecs(app)
 	image := "skiff-" + app + ":latest"
-	if !p.eng.ImageExists(image) {
+	imageID := p.eng.ImageID(image)
+	if imageID == "" {
+		p.stopWorkers(slices.Collect(maps.Keys(existing)))
 		return
 	}
 	settings := p.appSettings(src)
+	keep := map[string]bool{}
+	type start struct{ name, command, spec string }
+	var starts []start
 	for _, w := range listWorkers(app) {
-		reps := w.Replicas
-		if reps < 1 {
-			reps = 1
+		spec := workerFingerprint(imageID, w.Command, settings)
+		prefix := docker.WorkerPrefix(app, w.Name)
+		reps := max(w.Replicas, 1)
+		for _, name := range slices.Sorted(maps.Keys(existing)) {
+			if reps > 0 && !keep[name] && replicaOfWorker(name, prefix) && existing[name] == spec {
+				keep[name] = true
+				reps--
+			}
 		}
 		for range reps {
-			name := docker.WorkerPrefix(app, w.Name) + replicaSuffix()
-			_ = p.eng.RunWorker(docker.WorkerSpec{Settings: settings, Name: name, App: app, Image: image, Command: w.Command})
+			starts = append(starts, start{prefix + replicaSuffix(), w.Command, spec})
 		}
 	}
+	var stale []string
+	for name := range existing {
+		if !keep[name] {
+			stale = append(stale, name)
+		}
+	}
+	p.stopWorkers(stale)
+	for _, s := range starts {
+		st := settings
+		st.Labels = maps.Clone(settings.Labels)
+		if st.Labels == nil {
+			st.Labels = map[string]string{}
+		}
+		st.Labels[docker.LabelWorkerSpec] = s.spec
+		if err := p.eng.RunWorker(docker.WorkerSpec{Settings: st, Name: s.name, App: app, Image: image, Command: s.command}); err != nil {
+			log.Printf("skiff: starting worker %s: %v", s.name, err)
+		}
+	}
+}
+
+// workerFingerprint is what a worker container is started with, in short.
+func workerFingerprint(imageID, command string, s docker.Settings) string {
+	sum := sha256.Sum256([]byte(imageID + "\x00" + command + "\x00" + fmt.Sprint(s)))
+	return hex.EncodeToString(sum[:8])
+}
+
+// replicaOfWorker says whether a container belongs to the worker with this name prefix: its prefix followed by a replica suffix alone, so a worker named queue doesn't claim queue-high's containers.
+func replicaOfWorker(container, prefix string) bool {
+	rest, ok := strings.CutPrefix(container, prefix)
+	return ok && rest != "" && !strings.Contains(rest, "-")
+}
+
+// stopWorkers gives each worker the usual grace period to finish what it's doing, all at once, then removes it.
+func (p *Panel) stopWorkers(names []string) {
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Go(func() {
+			_ = p.eng.Stop(name)
+			_ = p.eng.Remove(name)
+		})
+	}
+	wg.Wait()
 }
 
 func (p *Panel) handleWorkers(w http.ResponseWriter, r *http.Request) {
