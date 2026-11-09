@@ -30,3 +30,5 @@ export const fmtMoney = (v: number, currency: string) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(v)
+
+export const fmtCount = (n: number) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n)

@@ -14,6 +14,7 @@ import { LogDrainSection } from './settings/log-drain-section'
 import { StatusPageSection } from './settings/status-page-section'
 import { OffsiteSection } from './settings/offsite-section'
 import { TokensSection } from './settings/tokens-section'
+import { AIProvidersSection } from './settings/ai-providers-section'
 import { ConnectionsSection } from './settings/connections-section'
 import { DangerSection } from './settings/danger-section'
 
@@ -69,6 +70,7 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="integrations" className="flex max-w-3xl flex-col gap-4 pb-12">
           <TokensSection />
+          <AIProvidersSection isOwner={isOwner} />
           <ConnectionsSection gh={gh} />
         </TabsContent>
       </Tabs>

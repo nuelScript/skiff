@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -237,4 +238,21 @@ func (e *Engine) DisconnectNetwork(network, container string) error {
 		return cmdErr(out, err)
 	}
 	return nil
+}
+
+// BridgeGateway is this server's address on Docker's default bridge, which containers on any network can reach.
+func (e *Engine) BridgeGateway() string {
+	if e.IsRemote() {
+		return ""
+	}
+	out, err := e.command("network", "inspect", "bridge", "-f", "{{range .IPAM.Config}}{{.Gateway}} {{end}}").Output()
+	if err != nil {
+		return ""
+	}
+	for _, ip := range strings.Fields(string(out)) {
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() != nil {
+			return ip
+		}
+	}
+	return ""
 }

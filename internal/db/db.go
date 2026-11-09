@@ -353,6 +353,31 @@ CREATE TABLE IF NOT EXISTS job_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_app ON job_runs(app);
+CREATE TABLE IF NOT EXISTS ai_providers (
+  team     TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  kind     TEXT NOT NULL,
+  base_url TEXT NOT NULL DEFAULT '',
+  api_key  TEXT NOT NULL,
+  created  INTEGER NOT NULL,
+  PRIMARY KEY (team, name)
+);
+CREATE TABLE IF NOT EXISTS ai_apps (
+  app        TEXT PRIMARY KEY,
+  team       TEXT NOT NULL,
+  token      TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  budget     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS ai_usage (
+  app      TEXT NOT NULL,
+  month    TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  requests INTEGER NOT NULL DEFAULT 0,
+  input    INTEGER NOT NULL DEFAULT 0,
+  output   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (app, month, provider)
+);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',
