@@ -60,6 +60,26 @@ func TestCatalog(t *testing.T) {
 				}
 				_ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+name+") ; docker volume rm -f $(docker volume ls -q --filter label=skiff.volume.app="+name+")").Run()
 			})
+			if needsGPU(t, id) {
+				// The runners have no GPU, so the install has to refuse with the reason before creating anything.
+				resp, err := c.Post(base+"/api/catalog", "application/json", strings.NewReader(`{"id":"`+id+`","name":"`+name+`"}`))
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "needs an NVIDIA GPU") {
+					t.Fatalf("installing without a GPU = %d %s", resp.StatusCode, body)
+				}
+				var apps []struct{ Name string }
+				getJSON(t, c, base+"/api/apps", &apps)
+				for _, a := range apps {
+					if a.Name == name {
+						t.Fatalf("a refused install left the project behind")
+					}
+				}
+				return
+			}
 			var created struct{ App, ID string }
 			postJSON(t, c, base+"/api/catalog", `{"id":"`+id+`","name":"`+name+`"}`, &created)
 			if ok, log := streamResult(t, c, base+"/api/deploys/log?app="+name+"&id="+created.ID); !ok {
@@ -135,4 +155,13 @@ func tail(s string, lines int) string {
 		parts = parts[len(parts)-lines:]
 	}
 	return strings.Join(parts, "\n")
+}
+
+// needsGPU reads whether a recipe refuses to install without a GPU.
+func needsGPU(t *testing.T, id string) bool {
+	b, err := os.ReadFile(filepath.Join("..", "internal", "panel", "catalog", id+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Contains(string(b), "\nneeds_gpu = true")
 }

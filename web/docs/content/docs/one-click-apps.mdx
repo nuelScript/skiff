@@ -51,6 +51,7 @@ Don't skip the first-run step. These apps are on the public internet from the mo
 | Metabase | Dashboards over your databases, with Postgres | 1.5 GB | Go through the setup to create the admin |
 | JupyterLab | Notebooks for Python, pandas and DuckDB | 1 GB | Open it with the token in `JUPYTER_TOKEN` |
 | Ollama | Open models with an OpenAI-compatible API | 4 GB | Pull a model in the Console; call it with the key in `ACCESS_TOKEN` |
+| vLLM | Fast model serving on an NVIDIA GPU, with an OpenAI-compatible API | 16 GB and a GPU | Call `/v1` with the key in `ACCESS_TOKEN`; change the model in the Start command |
 | Prefect | Python workflow server and UI, with Postgres | 1 GB | Sign in as admin with the password in `PREFECT_SERVER_API_AUTH_STRING` |
 | Airflow | Data pipelines in Python, with Postgres | 2 GB | Sign in as admin with the password Airflow makes in `/opt/airflow/state/passwords.json` |
 | Grafana | Dashboards and alerts | 256 MB | Sign in as admin with the generated password |
@@ -67,6 +68,17 @@ Don't skip the first-run step. These apps are on the public internet from the mo
 | DocuSeal | Document signing and PDF forms, with Postgres | 1 GB | Create the admin account |
 | PrivateBin | Encrypted pastebin | 64 MB | None, but anyone with the address can create pastes |
 | IT Tools | Developer tools in the browser | 32 MB | None, but anyone with the address can use it |
+
+### Models on a GPU
+
+Ollama and vLLM put a key in front of their API from the start, kept in `ACCESS_TOKEN` under **Environment**. Use the app's address followed by `/v1` as the base URL in OpenAI's clients, with that key as the API key.
+
+- **Ollama** takes a GPU when the server has one free, and runs small models on the CPU otherwise.
+- **vLLM** needs an NVIDIA GPU, and won't install without a free one. It starts with a small Qwen model. To serve another, put its Hugging Face name in the **Start command** under **Settings**, with any options after it, like `Qwen/Qwen3-8B --max-model-len 16384`, and redeploy. Add `HF_TOKEN` under **Environment** for a gated model.
+- **Models are kept on a volume,** so a redeploy doesn't download them again, and another project can [share that volume](/volumes#sharing-with-another-project).
+- **A first start can take a while:** the image and the model download before the API answers. Skiff waits up to 30 minutes.
+
+See [GPUs](/backends#gpus) for setting up the server.
 
 ## After installing
 

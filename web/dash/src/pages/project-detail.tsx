@@ -443,6 +443,7 @@ export default function ProjectDetailPage() {
             healthTimeout={project.healthTimeout}
             defaultHealthTimeout={project.defaultHealthTimeout}
             image={project.image}
+            command={project.command}
             maxReplicas={project.maxReplicas}
             isPrivate={project.private}
             rateLimit={project.rateLimit}

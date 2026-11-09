@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Box,
+  Cpu,
   Database,
   GitBranch,
   LayoutGrid,
@@ -616,6 +617,12 @@ function CatalogPicker({ onDeployed }: { onDeployed: (app: string, id: string) =
         {picked.database && (
           <span className="flex items-center gap-1.5">
             <Database className="h-3.5 w-3.5" /> Includes a {DB_LABEL[picked.database] ?? picked.database} database
+          </span>
+        )}
+        {(picked.gpus ?? 0) > 0 && (
+          <span className="flex items-center gap-1.5">
+            <Cpu className="h-3.5 w-3.5" />
+            {picked.needsGpu ? 'Needs an NVIDIA GPU' : 'Uses a GPU when the server has one free'}
           </span>
         )}
       </div>

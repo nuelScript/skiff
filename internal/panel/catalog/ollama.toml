@@ -6,6 +6,7 @@ port = 11434
 memory = "4 GB"
 timeout = 180
 access_token = true
+gpus = 1
 setup = "Download a model from the project's Console, like ollama pull llama3.2. Call the API at this app's address with the key in ACCESS_TOKEN under Environment, sent as Authorization: Bearer. For OpenAI's clients, use the address followed by /v1 as the base URL and the key as the API key."
 
 [[volumes]]

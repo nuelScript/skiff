@@ -152,8 +152,23 @@ type projectView struct {
 	Domains []string `json:"domains"`
 	// Image is set for a project that runs a prebuilt image instead of building a repo.
 	Image string `json:"image,omitempty"`
+	// Command replaces an image project's own start command; empty means the image's.
+	Command []string `json:"command,omitempty"`
 	// CrashLoop says the app keeps exiting and being restarted.
 	CrashLoop *crashLoop `json:"crashLoop,omitempty"`
+}
+
+// checkCommand checks a start command's arguments: a few dozen, none huge.
+func checkCommand(args []string) string {
+	if len(args) > 64 {
+		return "the start command can have up to 64 arguments"
+	}
+	for _, a := range args {
+		if len(a) > 4096 || strings.ContainsRune(a, 0) {
+			return "each part of the start command must be under 4 KB of plain text"
+		}
+	}
+	return ""
 }
 
 func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +206,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			HealthPath: src.HealthPath, HealthTimeout: src.HealthTimeout, DefaultHealthTimeout: defaultHealthTimeout(src),
 			PreviewProtected: previewPasswordHash(app) != "",
 			Image:            src.Image,
+			Command:          stackCommand(src),
 			MaxReplicas:      maxReplicas(),
 			Private:          src.Private, RateLimit: src.RateLimit,
 			InternalURL: internalURL(app, src, containerPort),
@@ -203,26 +219,27 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 		})
 	case http.MethodPut:
 		var body struct {
-			Branch        string `json:"branch"`
-			RootDir       string `json:"rootDir"`
-			Port          string `json:"port"`
-			Auto          bool   `json:"auto"`
-			PreviewAuto   bool   `json:"previewAuto"`
-			Replicas      int    `json:"replicas"`
-			Release       string `json:"release"`
-			Autoscale     bool   `json:"autoscale"`
-			ScaleMin      int    `json:"scaleMin"`
-			ScaleMax      int    `json:"scaleMax"`
-			ScaleCPU      int    `json:"scaleCpu"`
-			SleepAfter    int    `json:"sleepAfter"`
-			HealthPath    string `json:"healthPath"`
-			HealthTimeout int    `json:"healthTimeout"`
-			Image         string `json:"image"`
-			Memory        string `json:"memory"`
-			CPU           string `json:"cpu"`
-			GPUs          *int   `json:"gpus"`
-			Private       bool   `json:"private"`
-			RateLimit     int    `json:"rateLimit"`
+			Branch        string    `json:"branch"`
+			RootDir       string    `json:"rootDir"`
+			Port          string    `json:"port"`
+			Auto          bool      `json:"auto"`
+			PreviewAuto   bool      `json:"previewAuto"`
+			Replicas      int       `json:"replicas"`
+			Release       string    `json:"release"`
+			Autoscale     bool      `json:"autoscale"`
+			ScaleMin      int       `json:"scaleMin"`
+			ScaleMax      int       `json:"scaleMax"`
+			ScaleCPU      int       `json:"scaleCpu"`
+			SleepAfter    int       `json:"sleepAfter"`
+			HealthPath    string    `json:"healthPath"`
+			HealthTimeout int       `json:"healthTimeout"`
+			Image         string    `json:"image"`
+			Memory        string    `json:"memory"`
+			CPU           string    `json:"cpu"`
+			GPUs          *int      `json:"gpus"`
+			Command       *[]string `json:"command"`
+			Private       bool      `json:"private"`
+			RateLimit     int       `json:"rateLimit"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		src, ok := getSource(app)
@@ -270,6 +287,17 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			src.Image, src.Port = img, port
+			if body.Command != nil {
+				if problem := checkCommand(*body.Command); problem != "" {
+					http.Error(w, problem, http.StatusBadRequest)
+					return
+				}
+				src.Command = ""
+				if len(*body.Command) > 0 {
+					b, _ := json.Marshal(*body.Command)
+					src.Command = string(b)
+				}
+			}
 		} else {
 			src.Branch = strings.TrimSpace(body.Branch)
 			src.RootDir = strings.TrimSpace(body.RootDir)
