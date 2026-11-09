@@ -141,7 +141,12 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 		// Builds the panel runs for a team pull their base images, so they can't use another team's local ones.
 		onPanel := os.Getenv("SKIFF_DEPLOY_ID") != ""
 		out := &pullSniffer{w: termSafe(os.Stdout)}
-		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, onPanel, docker.BuildOptions{Args: cfg.Build.Args, Target: cfg.Build.Target}, out); err != nil {
+		opts := docker.BuildOptions{Args: cfg.Build.Args, Target: cfg.Build.Target}
+		// A service built on a private image, with files from its repository on top, pulls that image with the app's own login.
+		if user := os.Getenv("SKIFF_REGISTRY_USER"); user != "" {
+			opts.Auth = &docker.RegistryAuth{Host: config.RegistryHost(baseImage(dockerfile)), Username: user, Password: os.Getenv("SKIFF_REGISTRY_PASSWORD")}
+		}
+		if err := eng.BuildFromDockerfile(ctx, image, dockerfile, contextDir, onPanel, opts, out); err != nil {
 			switch ctx.Err() {
 			case context.DeadlineExceeded:
 				ui.Fail(fmt.Sprintf("Build exceeded %s — canceled", buildTimeout))
@@ -653,4 +658,20 @@ func showOutput(output string) {
 func keptExiting(eng *docker.Engine, container string) bool {
 	state := eng.State(container)
 	return state != "missing" && (state != "running" || eng.Restarts(container) > 1)
+}
+
+// baseImage is the image a Dockerfile's first stage starts from.
+func baseImage(dockerfile string) string {
+	for _, line := range strings.Split(dockerfile, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || !strings.EqualFold(f[0], "FROM") {
+			continue
+		}
+		for _, w := range f[1:] {
+			if !strings.HasPrefix(w, "--") {
+				return w
+			}
+		}
+	}
+	return ""
 }

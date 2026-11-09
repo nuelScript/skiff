@@ -119,4 +119,31 @@ func TestPrivateRegistry(t *testing.T) {
 			t.Fatal("not running after skiff deploy")
 		}
 	})
+
+	// A build on top of the private image, as a Compose service with files from its repository gets, pulls it with the same login.
+	t.Run("build on it", func(t *testing.T) {
+		const app = "e2e-private-build"
+		t.Cleanup(func() {
+			_ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+app+")").Run()
+		})
+		_ = exec.Command("docker", "rmi", image).Run()
+		dir := filepath.Join(root, "build-app")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]string{
+			"Dockerfile": "FROM " + image + "\nCOPY hello.txt /hello.txt\n",
+			"hello.txt":  "hi\n",
+			"skiff.toml": "name = \"" + app + "\"\n\n[build]\nport = 80\n",
+		}
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run(t, dir, append(env, "SKIFF_REGISTRY_USER="+user, "SKIFF_REGISTRY_PASSWORD="+password), bin, "deploy")
+		if !running(app) {
+			t.Fatal("not running after building on the private image")
+		}
+	})
 }
