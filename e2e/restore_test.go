@@ -106,10 +106,10 @@ func TestRestoreReturnsToBackup(t *testing.T) {
 			exec: func(ctr, stmt string) []string {
 				return []string{"exec", ctr, "sh", "-c", `clickhouse-client --user skiff --password "$CLICKHOUSE_PASSWORD" --database chrestore --multiquery -q "` + stmt + `"`}
 			},
-			seed:   "DROP VIEW IF EXISTS tv; DROP TABLE IF EXISTS t; CREATE TABLE t (id UInt32, v String) ENGINE = MergeTree ORDER BY id; INSERT INTO t VALUES (1,'original'),(2,'original'); CREATE VIEW tv AS SELECT id FROM t;",
+			seed:   "DROP VIEW IF EXISTS tv; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS empty; CREATE TABLE t (id UInt32, v String) ENGINE = MergeTree ORDER BY id; INSERT INTO t VALUES (1,'original'),(2,'original'); CREATE TABLE empty (id UInt8) ENGINE = MergeTree ORDER BY id; CREATE VIEW tv AS SELECT id FROM t;",
 			change: "INSERT INTO t VALUES (3,'later'); CREATE TABLE later (id UInt8) ENGINE = MergeTree ORDER BY id; DROP VIEW tv;",
 			state:  "SELECT (SELECT arrayStringConcat(groupArray(concat(toString(id), v)), ',') FROM (SELECT * FROM t ORDER BY id)), (SELECT arrayStringConcat(groupArray(name), ',') FROM (SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY name))",
-			want:   "1original,2original\tt,tv",
+			want:   "1original,2original\tempty,t,tv",
 		},
 	}
 

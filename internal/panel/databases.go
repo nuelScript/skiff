@@ -259,7 +259,7 @@ ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AN
 ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND engine LIKE '%View' ORDER BY name" > views
 while IFS= read -r t; do
   ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$t\` + "`" + `" --format TSVRaw > "$t.table.sql"
-  ch "$@" -q "SELECT * FROM \` + "`" + `$t\` + "`" + ` FORMAT Native" > "$t.native"
+  ch "$@" -q "SELECT * FROM \` + "`" + `$t\` + "`" + ` FORMAT Native" | gzip -1 > "$t.native.gz"
 done < tables
 while IFS= read -r v; do
   ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$v\` + "`" + `" --format TSVRaw > "$v.view.sql"
@@ -277,8 +277,10 @@ for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDa
 done
 while IFS= read -r t; do
   ch "$@" --multiquery < "$t.table.sql"
-  # An empty table dumps to an empty file, which ClickHouse won't take as an insert.
-  if [ -s "$t.native" ]; then ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native" < "$t.native"; fi
+  # An empty table dumps to nothing, which ClickHouse won't take as an insert. Backups from before compression have plain .native files.
+  if [ -f "$t.native.gz" ]; then
+    if [ "$(gunzip -c "$t.native.gz" | head -c1 | wc -c)" -gt 0 ]; then gunzip -c "$t.native.gz" | ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native"; fi
+  elif [ -s "$t.native" ]; then ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native" < "$t.native"; fi
 done < tables
 while IFS= read -r v; do
   ch "$@" --multiquery < "$v.view.sql"
