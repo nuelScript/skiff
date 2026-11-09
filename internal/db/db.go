@@ -432,6 +432,18 @@ CREATE TABLE IF NOT EXISTS spans (
   PRIMARY KEY (app, trace_id, span_id)
 );
 CREATE INDEX IF NOT EXISTS idx_spans_start ON spans(app, start_ns);
+CREATE TABLE IF NOT EXISTS approvals (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  app         TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  detail      TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL,
+  note        TEXT NOT NULL DEFAULT '',
+  answered_by TEXT NOT NULL DEFAULT '',
+  created     INTEGER NOT NULL,
+  answered    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_approvals_app ON approvals(app, status, id);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

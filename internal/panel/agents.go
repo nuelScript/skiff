@@ -163,6 +163,8 @@ func (p *Panel) agentAPI(w http.ResponseWriter, r *http.Request, a aiApp, path s
 	switch {
 	case path == otlpPath:
 		handleOTLP(w, r, a)
+	case path == "approvals" || strings.HasPrefix(path, "approvals/"):
+		agentApprovals(w, r, a, path)
 	case path == "sandboxes" && r.Method == http.MethodPost:
 		p.runSandbox(w, r, a)
 	case path == "events" && r.Method == http.MethodGet:
@@ -191,7 +193,7 @@ func (p *Panel) agentAPI(w http.ResponseWriter, r *http.Request, a aiApp, path s
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		gatewayError(w, http.StatusNotFound, "agents have GET /_skiff/events, POST /_skiff/events/<id>/done and POST /_skiff/sandboxes")
+		gatewayError(w, http.StatusNotFound, "agents have /_skiff/events, /_skiff/sandboxes, /_skiff/approvals and /_skiff/otlp/v1/traces")
 	}
 }
 
@@ -278,6 +280,7 @@ func (p *Panel) stopAgent(a agentRow) error {
 	}
 	cancelAppRuns(a.App)
 	p.stopSandboxes(a.App)
+	denyPendingApprovals(a.App, "The agent was stopped.", time.Now())
 	var failed []string
 	for _, c := range append(p.eng.AppContainers(a.App), p.eng.WorkerContainers(a.App)...) {
 		if err := p.eng.Stop(c); err != nil {
