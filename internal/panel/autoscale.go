@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/health"
 	"github.com/nuelScript/skiff/internal/registry"
@@ -148,32 +147,31 @@ func scaleBounds(src Source) (min, max int, target float64) {
 	return min, max, target
 }
 
+// replicaSpec is how an added replica starts: with the same settings as the app's other containers, including its isolation, outbound limits, permissions and GPUs.
+func (p *Panel) replicaSpec(app registry.App, src Source) docker.RunSpec {
+	return docker.RunSpec{
+		App:           app.Name,
+		Image:         fmt.Sprintf("skiff-%s:latest", app.Name),
+		ContainerPort: app.Port,
+		Settings:      p.appSettings(src),
+		Aliases:       stackAliases(src),
+		Command:       stackCommand(src),
+	}
+}
+
 func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	image := fmt.Sprintf("skiff-%s:latest", app.Name)
 	if !p.eng.ImageExists(image) {
 		return 0
 	}
-	env, net := p.appRuntime(src)
-	_ = p.eng.EnsureNetwork(net)
-	mounts := p.appMounts(src)
 	check := p.healthPath(src, app.Container)
-	memory, cpu := p.replicaLimits(src, app.Container)
+	spec := p.replicaSpec(app, src)
 
 	added := 0
 	for range count {
 		container := fmt.Sprintf("%s-%s", app.Name, replicaSuffix())
-		hostPort, err := p.eng.Run(docker.RunSpec{
-			Name:          container,
-			App:           app.Name,
-			Image:         image,
-			ContainerPort: app.Port,
-			Settings: docker.Settings{
-				Env: env, Network: net, Volumes: mounts, Memory: memory, CPU: cpu,
-				Options: config.DecodeRunOptions(src.RunOptions),
-			},
-			Aliases: stackAliases(src),
-			Command: stackCommand(src),
-		})
+		spec.Name = container
+		hostPort, err := p.eng.Run(spec)
 		if err != nil {
 			break
 		}
