@@ -76,3 +76,18 @@ func TestRemoveUnlistedBackups(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupsScaleWithTheDatabase(t *testing.T) {
+	if got := backupRoom("clickhouse", 10<<30); got != 20<<30 {
+		t.Errorf("ClickHouse stages its tables, so it needs twice the room: %d", got)
+	}
+	if got := backupRoom("postgres", 10<<30); got != 10<<30 {
+		t.Errorf("postgres room: %d", got)
+	}
+	if got := backupTimeout(0); got != 15*time.Minute {
+		t.Errorf("a small database keeps 15 minutes: %s", got)
+	}
+	if got := backupTimeout(100 << 30); got < 2*time.Hour {
+		t.Errorf("100 GB gets %s", got)
+	}
+}

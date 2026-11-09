@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -180,6 +181,31 @@ func allDatabases() []dbRow {
 	return out
 }
 
+// dataSize is how much space a database's files take in its container, or 0 when that can't be read.
+func (p *Panel) dataSize(d dbRow) int64 {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	var out bytes.Buffer
+	if p.eng.Exec(ctx, d.Container, []string{"du", "-sk", dbEngines[d.Engine].mountAt}, nil, &out) != nil {
+		return 0
+	}
+	kb, _ := strconv.ParseInt(strings.Fields(out.String() + " 0")[0], 10, 64)
+	return kb << 10
+}
+
+// backupRoom is the free space a backup of a database this size needs: about its size, and twice that for ClickHouse, which stages its tables before handing them over.
+func backupRoom(engine string, size int64) int64 {
+	if engine == "clickhouse" {
+		return 2 * size
+	}
+	return size
+}
+
+// backupTimeout gives a big database time to dump: 15 minutes, and a second more for every 10 MB of data.
+func backupTimeout(size int64) time.Duration {
+	return 15*time.Minute + time.Duration(size/(10<<20))*time.Second
+}
+
 func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	e := dbEngines[d.Engine]
 	if e.backupExt == "" {
@@ -198,7 +224,13 @@ func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	if err != nil {
 		return backupRow{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	data := p.dataSize(d)
+	if err := hasRoomFor(dir, backupRoom(d.Engine, data)); err != nil {
+		f.Close()
+		_ = os.Remove(path)
+		return backupRow{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), backupTimeout(data))
 	defer cancel()
 	derr := p.eng.Exec(ctx, d.Container, e.dumpCmd(d.Username, d.Password, d.DBName), nil, f)
 	_ = f.Close()
