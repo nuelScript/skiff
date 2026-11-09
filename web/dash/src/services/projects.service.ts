@@ -159,6 +159,7 @@ export type Volume = {
   path: string
   size: number
   attached: boolean
+  budget: number
 }
 
 export type PreviewDataMode = '' | 'empty' | 'copy'
@@ -355,6 +356,10 @@ class ProjectsService extends BaseService {
 
   addVolume(app: string, name: string, path: string) {
     return this.post('/volumes', { name, path }, { params: { app } })
+  }
+
+  setVolumeBudget(app: string, name: string, budget: number) {
+    return this.put('/volumes', { name, budget }, { params: { app } })
   }
 
   deleteVolume(app: string, name: string) {
