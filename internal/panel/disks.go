@@ -133,6 +133,18 @@ func moveStatus(volume string) moveState {
 	return moves.m[volume]
 }
 
+func movesRunning() int {
+	moves.Lock()
+	defer moves.Unlock()
+	n := 0
+	for _, m := range moves.m {
+		if m.Moving {
+			n++
+		}
+	}
+	return n
+}
+
 func startMove(volume, to string) bool {
 	moves.Lock()
 	defer moves.Unlock()

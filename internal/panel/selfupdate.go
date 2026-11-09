@@ -318,16 +318,17 @@ func waitForDeploys(limit, every time.Duration, log func(string, ...any)) {
 	deadline := time.Now().Add(limit)
 	logged := false
 	for {
-		running := buildingDeploys()
-		if len(running) == 0 {
+		running, moving := len(buildingDeploys()), movesRunning()
+		if running+moving == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			log("→ restarting with %d deploy(s) still running", len(running))
+			// A move cut off here is finished or undone when the panel starts again.
+			log("→ restarting with %d deploy(s) and %d move(s) still running", running, moving)
 			return
 		}
 		if !logged {
-			log("→ waiting for %d running deploy(s) to finish", len(running))
+			log("→ waiting for %d running deploy(s) and %d move(s) to finish", running, moving)
 			logged = true
 		}
 		time.Sleep(every)
