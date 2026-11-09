@@ -52,6 +52,18 @@ skiff volume rm shop-api data --yes
 - **Previews** mount the same paths on empty volumes of their own. A preview never reads or changes production's files, and its volumes are deleted with it.
 - **Apps that don't run as root** can write to a new volume. Skiff gives it to the user the image runs as, or the one set with `user:`. A volume that already exists keeps its owner.
 
+## Sharing with another project
+
+A project can mount a volume that another project in the team keeps, so both see the same files. It's how a model downloaded once is ready for every app that needs it, without downloading it again on each deploy or for each app.
+
+Under **Volumes** in the project's settings, click **Add volume** and pick the other project's volume in the **Volume** menu, then choose where to mount it. Redeploy to mount it.
+
+- **The volume stays the other project's.** Its budget, backups and disk are set there. Deleting it from the project that mounts it only stops that project using it; the files stay.
+- **It can't be deleted while another project uses it,** and neither can the project that keeps it. Remove it from the others first. The volume's row says which projects use it.
+- **Moving it to another disk** stops every project that uses it, and deploys each again afterwards.
+- **Previews** of the project that mounts it get an empty volume of their own, as with any volume.
+- **Stacks** share volumes among their own services in their compose file, so a stack's volumes aren't offered here.
+
 ## Deleting
 
 Deleting a volume from the dashboard removes its files on the next deploy, once no container uses it. Deleting a project deletes its volumes too. `skiff down` keeps them, so redeploying the same app picks its files back up.

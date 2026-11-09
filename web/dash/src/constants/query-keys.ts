@@ -53,6 +53,7 @@ export const queryKeys = {
   permissions: (app: string) => ['permissions', app] as const,
   previewData: (app: string) => ['preview-data', app] as const,
   volumes: (app: string) => ['volumes', app] as const,
+  sharedVolumes: (app: string) => ['volumes', app, 'shared'] as const,
   volumeBackups: (app: string, volume: string) => ['volume-backups', app, volume] as const,
   registry: (app: string) => ['registry', app] as const,
   backups: (dbId: string) => ['backups', dbId] as const,

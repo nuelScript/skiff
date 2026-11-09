@@ -547,6 +547,10 @@ func (p *Panel) handleDown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if users := volumeBorrowers(name, ""); len(users) > 0 {
+		http.Error(w, strings.Join(users, ", ")+" use a volume of this app. Remove it from them first.", http.StatusConflict)
+		return
+	}
 	p.removeApp(name)
 	p.audit(r, "project.delete", name, "")
 	w.WriteHeader(http.StatusNoContent)

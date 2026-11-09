@@ -71,15 +71,95 @@ func (p *Panel) volumeDefs(src Source) []config.Volume {
 	if src.Origin == originCLI {
 		return p.mountedVolumes(src.App)
 	}
-	owner := src.App
-	if src.Parent != "" {
-		owner = src.Parent
+	if src.Parent == "" {
+		return listVolumes(src.App)
 	}
-	return listVolumes(owner)
+	vols := listVolumes(src.Parent)
+	for i := range vols {
+		vols[i].Owner = ""
+	}
+	return vols
 }
 
-// mountedVolumes reads the volumes the app's running container has, as defined in skiff.toml.
-func (p *Panel) mountedVolumes(app string) []config.Volume {
+// volumeBorrowers is every app outside app's stack that mounts the volume app holds under name, or any of its volumes with an empty name.
+func volumeBorrowers(app, name string) []string {
+	holder, _ := getSource(app)
+	return slices.DeleteFunc(appsMounting(app, name), func(a string) bool {
+		s, ok := getSource(a)
+		return ok && holder.Stack != "" && s.Stack == holder.Stack
+	})
+}
+
+// appsMounting is every other app that mounts the volume app holds under name, or any of its volumes with an empty name.
+func appsMounting(app, name string) []string {
+	rows, err := sqlDB.Query(`SELECT DISTINCT app FROM volumes WHERE owner=? AND (?='' OR name=?) ORDER BY app`, app, name, name)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var apps []string
+	for rows.Next() {
+		var a string
+		if rows.Scan(&a) == nil {
+			apps = append(apps, a)
+		}
+	}
+	return apps
+}
+
+// shareable says whether a project can hold a volume other apps mount: stacks share among their own services, and previews and CLI apps don't keep theirs here.
+func shareable(s Source) bool {
+	return s.Stack == "" && volumeKind(s) == "project"
+}
+
+type sharedVolume struct {
+	App  string `json:"app"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// handleSharedVolumes lists the volumes of the team's other projects that app could mount.
+func (p *Panel) handleSharedVolumes(w http.ResponseWriter, r *http.Request) {
+	app := sanitizeName(r.URL.Query().Get("app"))
+	src, ok := getSource(app)
+	if !ok || !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	out := []sharedVolume{}
+	for _, s := range allSources() {
+		if s.App == app || s.Team != src.Team || !shareable(s) || !p.canAccess(r, s.App) {
+			continue
+		}
+		for _, v := range listVolumes(s.App) {
+			if v.Owner == "" {
+				out = append(out, sharedVolume{App: s.App, Name: v.Name, Path: v.Path})
+			}
+		}
+	}
+	writeJSON(w, out)
+}
+
+// borrow checks that app may mount the volume holder keeps under name.
+func (p *Panel) borrow(r *http.Request, src Source, holder, name string) string {
+	h, ok := getSource(holder)
+	switch {
+	case !ok || h.Team != src.Team || !p.canAccess(r, holder):
+		return "no such app"
+	case holder == src.App:
+		return "this volume is already this app's"
+	case !shareable(src):
+		return "a stack's services share volumes in its compose file"
+	case !shareable(h):
+		return "only a project's own volumes can be shared"
+	case !slices.ContainsFunc(listVolumes(holder), func(v config.Volume) bool { return v.Name == name && v.Owner == "" }):
+		return holder + " has no volume named " + name
+	}
+	return ""
+}
+
+// runtimeMounts is the volume mounts of the app's running container.
+func (p *Panel) runtimeMounts(app string) []docker.Mount {
 	apps, err := registry.Load()
 	if err != nil {
 		return nil
@@ -92,9 +172,14 @@ func (p *Panel) mountedVolumes(app string) []config.Volume {
 	if err != nil {
 		return nil
 	}
+	return rt.Mounts
+}
+
+// mountedVolumes reads the volumes the app's running container has, as defined in skiff.toml.
+func (p *Panel) mountedVolumes(app string) []config.Volume {
 	prefix := config.VolumeName(app, "")
 	var out []config.Volume
-	for _, m := range rt.Mounts {
+	for _, m := range p.runtimeMounts(app) {
 		if name, ok := strings.CutPrefix(m.Name, prefix); ok {
 			if i := slices.IndexFunc(out, func(v config.Volume) bool { return v.Name == name }); i >= 0 {
 				out[i].Also = append(out[i].Also, m.Destination)
@@ -169,6 +254,10 @@ type volumeView struct {
 	// Disk is the added disk it keeps its files on; empty means Docker's own storage.
 	Disk string    `json:"disk,omitempty"`
 	Move moveState `json:"move"`
+	// Owner is the project whose volume this app mounts; empty means the app's own.
+	Owner string `json:"owner,omitempty"`
+	// UsedBy is the other projects that mount this volume.
+	UsedBy []string `json:"usedBy,omitempty"`
 }
 
 // volumeKind says who sets an app's volumes: the dashboard for a project, skiff.toml for a CLI app, the parent project for a preview.
@@ -192,8 +281,8 @@ func volumeLock(src Source) string {
 
 func (p *Panel) volumeViews(src Source) []volumeView {
 	mounted := map[string]bool{}
-	for _, v := range p.mountedVolumes(src.App) {
-		mounted[v.Name+"\x00"+v.Path] = true
+	for _, m := range p.runtimeMounts(src.App) {
+		mounted[m.Name+"\x00"+m.Destination] = true
 	}
 	sizes := p.volumeSizes()
 	budgets := volumeBudgets(src.App)
@@ -204,9 +293,15 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 		view := volumeView{
 			Name: v.Name, Path: v.Path,
 			Size:     sizes[name],
-			Attached: mounted[v.Name+"\x00"+v.Path] || v.Owner != "",
+			Attached: mounted[name+"\x00"+v.Path] || (v.Owner != "" && src.Stack != ""),
 			Budget:   budgets[v.Name],
 			Move:     moveStatus(name),
+		}
+		if src.Stack == "" {
+			view.Owner = v.Owner
+			if v.Owner == "" {
+				view.UsedBy = volumeBorrowers(src.App, v.Name)
+			}
 		}
 		if folder := p.eng.VolumeFolder(name); folder != "" {
 			view.Disk = diskOf(folder, disks)
@@ -222,7 +317,7 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 	return out
 }
 
-// newVolume checks a volume added by hand against the app's others. Only a stack shares one app's volume with another, so it always belongs to this app.
+// newVolume checks a volume added by hand against the app's others, as this app's own.
 func newVolume(app string, v config.Volume) (config.Volume, string) {
 	v.Name, v.Path, v.Owner = strings.TrimSpace(v.Name), strings.TrimSpace(v.Path), ""
 	if err := config.ValidateVolumes(append(listVolumes(app), v)); err != nil {
@@ -262,7 +357,15 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		holder := sanitizeName(v.Owner)
 		v, problem := newVolume(app, v)
+		if problem == "" && holder != "" {
+			if diskID != "" {
+				problem = "a shared volume stays on " + holder + "'s disk"
+			} else if problem = p.borrow(r, src, holder, v.Name); problem == "" {
+				v.Owner = holder
+			}
+		}
 		if problem != "" {
 			http.Error(w, problem, http.StatusBadRequest)
 			return
@@ -271,7 +374,11 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "couldn't save the volume", http.StatusInternalServerError)
 			return
 		}
-		p.audit(r, "volume.add", app, v.Name+" → "+v.Path)
+		detail := v.Name + " → " + v.Path
+		if v.Owner != "" {
+			detail = v.Owner + "'s " + detail
+		}
+		p.audit(r, "volume.add", app, detail)
 		w.WriteHeader(http.StatusCreated)
 
 	case http.MethodPut:
@@ -293,6 +400,10 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodDelete:
 		name := r.URL.Query().Get("name")
+		if users := volumeBorrowers(app, name); len(users) > 0 {
+			http.Error(w, strings.Join(users, ", ")+" also use this volume. Remove it from them first.", http.StatusConflict)
+			return
+		}
 		if !deleteVolume(app, name) {
 			http.Error(w, "no such volume", http.StatusNotFound)
 			return
