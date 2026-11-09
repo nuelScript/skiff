@@ -117,6 +117,8 @@ Environment=HOME=/root
 ExecStart=/usr/local/bin/skiff router --domain $DOMAIN --panel 127.0.0.1:7070 --site-app $SITE_APP
 Restart=always
 RestartSec=2
+# When memory runs out, the kernel stops apps before the router and the dashboard.
+OOMScoreAdjust=-900
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -132,6 +134,8 @@ Environment=HOME=/root
 ExecStart=/usr/local/bin/skiff panel --addr 127.0.0.1:%i --domain $DOMAIN
 Restart=always
 RestartSec=2
+# When memory runs out, the kernel stops apps before the router and the dashboard.
+OOMScoreAdjust=-900
 KillMode=process
 [Install]
 WantedBy=multi-user.target

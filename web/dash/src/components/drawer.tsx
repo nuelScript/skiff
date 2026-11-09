@@ -9,6 +9,7 @@ export function lineClass(line: string): string {
   if (t.startsWith('✓')) return 'text-success'
   if (t.startsWith('✗')) return 'text-danger'
   if (t.startsWith('→')) return 'text-info/80'
+  if (t.startsWith('!')) return 'text-warning'
   return 'text-foreground/70'
 }
 

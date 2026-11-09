@@ -123,6 +123,7 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 	return docker.Settings{
 		Env: env, Network: net, Volumes: p.appMounts(src),
 		Memory: memory, CPU: cpu, Options: config.DecodeRunOptions(src.RunOptions),
+		OOMScore: oomScoreFor(src),
 	}
 }
 

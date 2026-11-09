@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -328,7 +329,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 
 	settings := docker.Settings{
 		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, Env: runtimeEnv, Network: network, Volumes: mounts,
-		Options: options,
+		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300),
 	}
 
 	// Release command (e.g. migrations) runs once before the new version goes live; on failure abort — the old version keeps serving.
