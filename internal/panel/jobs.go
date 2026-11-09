@@ -174,8 +174,12 @@ func toJob(j jobRow) Job {
 // missedAfter is how late a scheduled time can be before it counts as missed, such as while Skiff was down.
 const missedAfter = 2 * time.Minute
 
+// runsAdopted closes once runs left going by the last Skiff are taken over, so the queue never starts a job whose run is still live.
+var runsAdopted = make(chan struct{})
+
 func (p *Panel) jobLoop() {
 	p.adoptRunsAfterRestart()
+	close(runsAdopted)
 	time.Sleep(90 * time.Second)
 	for {
 		guard("jobLoop", func() { p.runDueJobs(time.Now()) })

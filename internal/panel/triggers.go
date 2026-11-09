@@ -112,6 +112,7 @@ func enqueueRun(j jobRow, trigger, input string) (int64, error) {
 
 // queueLoop starts queued runs, one at a time per job, in the order they arrived.
 func (p *Panel) queueLoop() {
+	<-runsAdopted
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
