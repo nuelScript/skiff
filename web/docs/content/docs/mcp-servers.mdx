@@ -1,0 +1,55 @@
+---
+title: Host an MCP server
+description: "Run any MCP server on your own server, with an access token in front, and connect Claude, Cursor or any other MCP client to it."
+---
+
+An MCP server that speaks HTTP is an ordinary web app to Skiff: deploy it from its repository or image like any other. What it needs that most apps don't is a key in front, so only your clients can use its tools. That's what **access tokens** are for.
+
+## Require a token
+
+On the project's **Settings** tab, under **Access tokens**, name a token (one per client, like `claude-desktop`) and choose **Require a token**. Copy it; it's shown once.
+
+From then on every request to the app must carry one of its tokens:
+
+```
+Authorization: Bearer skat_...
+```
+
+Requests without one get `401`. Skiff checks the token at the router and removes it before the request reaches the server, so the server never sees it and needs no auth code of its own. Revoke a token and its client is cut off at once; revoke the last one and the app is open again. Previews use their project's tokens. A token covers the app's web address and its custom domains, not a public TCP or UDP port.
+
+## Connect a client
+
+Most clients take the address and a header. With Claude Code:
+
+```sh title="shell"
+claude mcp add --transport http github https://github-mcp.example.com/mcp \
+  --header "Authorization: Bearer skat_..."
+```
+
+In a client's JSON config:
+
+```json title="mcp config"
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://github-mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer skat_..." }
+    }
+  }
+}
+```
+
+## Servers that only speak stdio
+
+Many MCP servers are a command that talks over standard input and output, like `npx -y @modelcontextprotocol/server-github`. [Supergateway](https://github.com/supercorp-ai/supergateway) runs such a command and serves it over HTTP. Put this Dockerfile in a repository and deploy it with port `8000`:
+
+```dockerfile title="Dockerfile"
+FROM supercorp/supergateway
+CMD ["--stdio", "npx -y @modelcontextprotocol/server-github", \
+     "--outputTransport", "streamableHttp", "--port", "8000"]
+```
+
+The server is then at `/mcp` on the app's address. Set what it needs, like `GITHUB_PERSONAL_ACCESS_TOKEN`, under the project's **Environment**; the command gets the app's variables. For servers run with `uvx`, start from `supercorp/supergateway:uvx` instead.
+
+Then require a token as above.

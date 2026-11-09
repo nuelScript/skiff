@@ -38,6 +38,7 @@ export const queryKeys = {
   stacks: ['stacks'] as const,
   tcpPort: (app: string) => ['tcp-port', app] as const,
   udpPort: (app: string) => ['udp-port', app] as const,
+  accessTokens: (app: string) => ['access-tokens', app] as const,
   aiProviders: ['ai-providers'] as const,
   projectAI: (app: string) => ['project-ai', app] as const,
   agent: (app: string) => ['agent', app] as const,

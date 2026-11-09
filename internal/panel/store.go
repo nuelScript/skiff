@@ -225,6 +225,7 @@ func deleteSource(app string) {
 		del(`DELETE FROM volumes WHERE app=?`) &&
 		del(`DELETE FROM registry_creds WHERE app=?`) &&
 		del(`DELETE FROM log_drain_cursors WHERE app=?`) &&
+		del(`DELETE FROM access_tokens WHERE app=?`) &&
 		del(`DELETE FROM ai_apps WHERE app=?`) &&
 		del(`DELETE FROM ai_usage WHERE app=?`) &&
 		del(`DELETE FROM agents WHERE app=?`) &&

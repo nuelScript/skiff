@@ -91,6 +91,8 @@ export type CatalogApp = {
   setup: string
 }
 
+export type AccessToken = { id: string; name: string; created: number; token?: string }
+
 export type ImageProject = {
   name: string
   image: string
@@ -313,6 +315,18 @@ class ProjectsService extends BaseService {
 
   setTCPPort(app: string, port: number) {
     return this.put('/project/tcp-port', { port }, { params: { app } })
+  }
+
+  accessTokens(app: string) {
+    return this.get<{ tokens: AccessToken[] }>('/project/access-tokens', { params: { app } })
+  }
+
+  createAccessToken(app: string, name: string) {
+    return this.post<AccessToken>('/project/access-tokens', { name }, { params: { app } })
+  }
+
+  revokeAccessToken(app: string, id: string) {
+    return this.delete('/project/access-tokens', { params: { app, id } })
   }
 
   udpPort(app: string) {
