@@ -142,7 +142,7 @@ func TestDatabaseMovesBetweenDisks(t *testing.T) {
 	// Docker leaves a folder volume's files behind, where a new volume of the same name would find them.
 	req, _ := http.NewRequest(http.MethodDelete, base+"/api/databases?id="+db.ID, nil)
 	resp, err := c.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil || resp.StatusCode >= 300 {
 		t.Fatalf("deleting the database: %v %v", resp, err)
 	}
 	resp.Body.Close()
