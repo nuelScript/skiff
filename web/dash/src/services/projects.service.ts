@@ -26,6 +26,13 @@ export type CrashLoop = {
   last: number
 }
 
+export type EgressMode = '' | 'private' | 'list'
+
+export type EgressPolicy = {
+  mode?: EgressMode
+  allow?: string[]
+}
+
 export type ProjectDetail = {
   crashLoop?: CrashLoop
   parent?: string
@@ -335,6 +342,14 @@ class ProjectsService extends BaseService {
 
   setIsolation(app: string, isolation: '' | 'strong') {
     return this.put('/project/isolation', { isolation }, { params: { app } })
+  }
+
+  egress(app: string) {
+    return this.get<{ policy: EgressPolicy; available: boolean }>('/project/egress', { params: { app } })
+  }
+
+  setEgress(app: string, policy: EgressPolicy) {
+    return this.put('/project/egress', policy, { params: { app } })
   }
 
   udpPort(app: string) {

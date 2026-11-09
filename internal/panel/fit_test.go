@@ -33,6 +33,7 @@ func TestFitCheck(t *testing.T) {
 }
 
 func TestPreviewsGiveWayFirst(t *testing.T) {
+	openTestDB(t)
 	if oomScoreFor(Source{App: "web"}) >= oomScoreFor(Source{App: "web-pr-1", Parent: "web"}) {
 		t.Error("a preview should give way before production")
 	}

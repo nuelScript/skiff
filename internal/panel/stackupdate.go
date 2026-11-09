@@ -510,7 +510,7 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 			want.RateLimit, want.SleepAfter, want.PreviewAuto, want.Release = old.RateLimit, old.SleepAfter, old.PreviewAuto, old.Release
 			want.Autoscale, want.ScaleMin, want.ScaleMax, want.ScaleCPU = old.Autoscale, old.ScaleMin, old.ScaleMax, old.ScaleCPU
 			// Set in the dashboard, not the file.
-			want.TCPPort, want.UDPPort, want.Isolation = old.TCPPort, old.UDPPort, old.Isolation
+			want.TCPPort, want.UDPPort, want.Isolation, want.Egress = old.TCPPort, old.UDPPort, old.Isolation, old.Egress
 		}
 		if err := putSource(want); err != nil {
 			return err

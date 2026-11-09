@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/nuelScript/skiff/internal/egress"
 	"github.com/robfig/cron/v3"
 )
 
@@ -179,6 +180,14 @@ type Deploy struct {
 	OOMScoreAdj int `toml:"oom_score_adj"`
 	// Isolation is "strong" to run the app under gVisor's sandbox, for code you don't trust; empty is Docker's usual isolation.
 	Isolation string `toml:"isolation"`
+	// Egress limits where the app may connect: "private" for the team's own apps and databases only, "list" to add EgressAllow's hosts, or empty for anywhere.
+	Egress      string   `toml:"egress"`
+	EgressAllow []string `toml:"egress_allow"`
+}
+
+// EgressPolicy is the app's outbound policy, normalized.
+func (d Deploy) EgressPolicy() egress.Policy {
+	return egress.Policy{Mode: d.Egress, Allow: d.EgressAllow}.Normalize()
 }
 
 // ValidateHealth checks a health-check path and timeout (seconds, 0 for the default).
@@ -319,6 +328,9 @@ func (c *Config) applyDefaults() {
 func (c *Config) validate() error {
 	if c.Deploy.Isolation != "" && c.Deploy.Isolation != "strong" {
 		return fmt.Errorf(`[deploy] isolation is either "strong" or left out`)
+	}
+	if err := c.Deploy.EgressPolicy().Validate(); err != nil {
+		return fmt.Errorf("[deploy] %w", err)
 	}
 	if c.Deploy.UDPPort < 0 || c.Deploy.UDPPort > 65535 {
 		return fmt.Errorf("[deploy] udp_port must be a port from 1 to 65535")

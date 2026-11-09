@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/egress"
 	"github.com/nuelScript/skiff/internal/health"
 )
 
@@ -665,6 +666,12 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	}
 	if src.Isolation == "strong" {
 		b.WriteString("isolation = \"strong\"\n")
+	}
+	if policy := egress.Decode(src.Egress); policy.Restricted() {
+		fmt.Fprintf(&b, "egress = %s\n", tomlQuote(policy.Mode))
+		if len(policy.Allow) > 0 {
+			fmt.Fprintf(&b, "egress_allow = %s\n", tomlList(policy.Allow))
+		}
 	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))

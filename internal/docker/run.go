@@ -24,6 +24,8 @@ type Settings struct {
 	OOMScore int
 	// Runtime runs the container under another OCI runtime, such as runsc for gVisor's stronger sandbox.
 	Runtime string
+	// Labels go on every container these settings start, such as the app's outbound policy.
+	Labels map[string]string
 }
 
 // settingsArgs is the one place Settings become docker flags, so a limit or start setting means the same for an app, its workers, its jobs and its release command.
@@ -42,6 +44,11 @@ func (e *Engine) settingsArgs(s Settings) []string {
 	}
 	if s.Runtime != "" {
 		args = append(args, "--runtime", s.Runtime)
+	}
+	for _, k := range sortedKeys(s.Labels) {
+		if s.Labels[k] != "" {
+			args = append(args, "--label", k+"="+s.Labels[k])
+		}
 	}
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))

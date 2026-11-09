@@ -85,6 +85,14 @@ apt-get update && apt-get install -y runsc
 runsc install && systemctl restart docker
 ```
 
+## Outbound network
+
+By default an app can connect anywhere, like any server. Under **Outbound network** in the project's settings, a team owner can limit it to **the team's own services** (its apps and databases, and nothing on the internet), or to **those and hosts you list**, like `api.openai.com` or a range such as `203.0.113.0/24`. It covers the app's workers, jobs and one-off runs too, and applies on the next deploy. In `skiff.toml`, set `egress = "private"`, or `egress = "list"` with `egress_allow = ["api.openai.com"]`, under `[deploy]`.
+
+- **Listed host names** are looked up every five minutes. A service whose addresses change often, like some CDNs, is better listed as a range.
+- **It needs Linux,** with Skiff running as root as the installer sets it up, since it writes the server's firewall rules. Elsewhere, the setting says it isn't available.
+- **On a network with a limited app,** a new container is held back from the internet for a moment after it starts, until the rules know it, so a limited app is never briefly open.
+
 ## Scheduled jobs
 
 A job runs a command from your app's build in a one-off container with the app's environment and limits. It runs on a cron schedule, when its webhook is called, for each new file in a bucket, or any mix of those.
