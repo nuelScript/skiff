@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/nuelScript/skiff/internal/config"
 )
@@ -263,6 +264,10 @@ func (p *Panel) apiRemoveVolume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("volume")
+	if users := volumeBorrowers(src.App, name); len(users) > 0 {
+		apiErr(w, http.StatusConflict, strings.Join(users, ", ")+" also use this volume. Remove it from them first.")
+		return
+	}
 	if !deleteVolume(src.App, name) {
 		apiErr(w, http.StatusNotFound, "volume not found")
 		return
