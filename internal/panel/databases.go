@@ -278,7 +278,8 @@ for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDa
 done
 while IFS= read -r t; do
   ch "$@" --multiquery < "$t.table.sql"
-  ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native" < "$t.native"
+  # An empty table dumps to an empty file, which ClickHouse won't take as an insert.
+  if [ -s "$t.native" ]; then ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native" < "$t.native"; fi
 done < tables
 while IFS= read -r v; do
   ch "$@" --multiquery < "$v.view.sql"
