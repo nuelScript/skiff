@@ -87,3 +87,7 @@ See [GPUs](/backends#gpus) for setting up the server.
 - **Upgrades are up to you.** The version is pinned, so an app only changes when you change its image under **Settings** and redeploy. Check the app's release notes first.
 - **Adding a custom domain?** Several apps store their address in an environment variable: Ghost (`url`), n8n (`WEBHOOK_URL`), Vaultwarden (`DOMAIN`), Gitea (`GITEA__server__ROOT_URL`), NocoDB (`NC_SITE_URL`), Open WebUI (`WEBUI_URL`), Linkwarden (`NEXTAUTH_URL`), WordPress (`WORDPRESS_CONFIG_EXTRA`), Mattermost (`MM_SERVICESETTINGS_SITEURL`), Metabase (`MB_SITE_URL`), Prefect (`PREFECT_UI_API_URL`), Grafana (`GF_SERVER_ROOT_URL`), Directus (`PUBLIC_URL`), Miniflux (`BASE_URL`), Vikunja (`VIKUNJA_SERVICE_PUBLICURL`), linkding (`LD_CSRF_TRUSTED_ORIGINS`) and Planka (`BASE_URL`). Update it under **Environment** and redeploy.
 - **Deleting the project keeps its database.** Delete that separately under **Databases** when you're sure you don't need the data.
+
+## Suggest an app
+
+Each app is a short file in Skiff's repository, and anyone can add one with a pull request. [CONTRIBUTING.md](https://github.com/nuelScript/skiff/blob/main/CONTRIBUTING.md#adding-a-one-click-app) shows the format. Every app is installed in CI before its pull request is merged, and again every week.

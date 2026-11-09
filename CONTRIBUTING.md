@@ -83,23 +83,58 @@ make dash        # builds web/dash and copies it into internal/panel/dist
 
 ### Adding a one-click app
 
-Each one-click app is a file in `internal/panel/catalog/`, named for its id,
-like `uptime-kuma.toml`. Copy one that's close to yours. Pin the image to a
-version, and write `setup` as the first thing someone must do after
-installing. Then check it installs, starts and answers:
+Anyone can add one. Each one-click app is a file in `internal/panel/catalog/`,
+named for its id, like `uptime-kuma.toml`. Copy one that's close to yours:
+
+```toml
+name = "Umami"                 # shown in the dashboard
+category = "Analytics"
+blurb = "Privacy-friendly website analytics, with a Postgres database included."
+image = "ghcr.io/umami-software/umami:postgresql-v2.19.0"   # pinned, never :latest
+port = 3000
+memory = "512 MB"              # roughly what it needs, database included
+timeout = 240                  # seconds its first start may take, up to 1800
+setup = "Sign in with admin / umami, then change the password."
+database = "postgres"          # optional: postgres, mysql, mongodb, redis or clickhouse
+database_var = "DATABASE_URL"
+
+[env]
+DATABASE_URL = "{{db.url}}"
+APP_SECRET = "{{secret}}"
+
+# [[volumes]]
+# name = "data"
+# path = "/app/data"
+```
+
+- `setup` is the first thing someone must do after installing, written for
+  someone who has never used the app. If the app has no login, say who can use it.
+- In `[env]`, `{{secret}}` becomes a new random value, `{{url}}` and `{{host}}`
+  the app's address, and `{{db.url}}`, `{{db.host}}`, `{{db.port}}`,
+  `{{db.user}}`, `{{db.password}}` and `{{db.name}}` its database.
+- `access_token = true` puts a key in front of an API with no login of its own.
+  `command` replaces the image's command. `gpus = 1` gives it a GPU when one is
+  free, and `needs_gpu = true` refuses to install without one.
+
+Then check it installs, starts and answers:
 
 ```bash
 go test ./internal/panel -run Catalog
 SKIFF_CATALOG=1 SKIFF_CATALOG_ONLY=uptime-kuma go test -tags e2e -run '^TestCatalog$' ./e2e/
 ```
 
+Every pull request that adds or changes an app installs every app in CI the
+same way, and is merged only once that passes. CI installs each one
+again every week, so an image that disappears gets noticed. An app that needs
+a GPU is checked to refuse cleanly on CI's machines, which have none.
+
 ### Tests
 
 Prefer table-driven tests with `t.Run` subtests, and keep them dependency-free
-(the suite uses the standard `testing` package). Behavior that needs a live
-Docker daemon is verified manually against real Docker rather than in committed
-tests — keep committed tests to pure logic and anything backed by a temp SQLite
-database (`db.OpenAt(t.TempDir())`).
+(the suite uses the standard `testing` package). Unit tests stay to pure logic
+and anything backed by a temp SQLite database. Behavior that needs a live
+Docker daemon goes in `e2e/` (build tag `e2e`), which CI runs against the real
+binary and real Docker.
 
 ## Commit messages
 
