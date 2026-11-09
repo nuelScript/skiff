@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"cmp"
 	"fmt"
 	"os/exec"
 	"slices"
@@ -78,21 +79,32 @@ func gpuArgs(uuids []string) []string {
 	return []string{"--gpus", `"device=` + strings.Join(uuids, ",") + `"`, "--label", LabelGPUs + "=" + strings.Join(uuids, ",")}
 }
 
+// LabelGPUsApp names the app whose GPUs a job or one-off run is using; those containers don't carry skiff.app, which would make them routes.
+const LabelGPUsApp = "skiff.gpus-app"
+
+// gpuUnknownOwner stands for a container holding GPUs that names no app, so its GPUs still count as taken.
+const gpuUnknownOwner = "another container"
+
 // GPUsInUse maps each GPU that a running container was given to that container's app.
 func (e *Engine) GPUsInUse() map[string]string {
-	out, err := e.command("ps", "--filter", "label="+LabelGPUs, "--format", `{{.Label "skiff.app"}} {{.Label "`+LabelGPUs+`"}}`).Output()
+	out, err := e.command("ps", "--filter", "label="+LabelGPUs, "--format", `{{.Label "skiff.app"}}|{{.Label "`+LabelGPUsApp+`"}}|{{.Label "`+LabelGPUs+`"}}`).Output()
 	if err != nil {
 		return nil
 	}
+	return parseGPUsInUse(string(out))
+}
+
+func parseGPUsInUse(out string) map[string]string {
 	used := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		app, ids, ok := strings.Cut(line, " ")
-		if !ok {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
 			continue
 		}
-		for _, id := range strings.Split(ids, ",") {
+		owner := cmp.Or(parts[0], parts[1], gpuUnknownOwner)
+		for _, id := range strings.Split(parts[2], ",") {
 			if id != "" {
-				used[id] = app
+				used[id] = owner
 			}
 		}
 	}

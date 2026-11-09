@@ -126,13 +126,17 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 	if src.GPUs > 0 && src.Parent == "" {
 		gpus, _ = docker.PickGPUs(src.App, src.GPUs, p.eng.GPUs(), p.eng.GPUsInUse())
 	}
+	labels := egressLabels(src)
+	if len(gpus) > 0 {
+		labels[docker.LabelGPUsApp] = src.App
+	}
 	return docker.Settings{
 		GPUs: gpus,
 		Env:  env, Network: net, Volumes: p.appMounts(src),
 		Memory: memory, CPU: cpu, Options: config.DecodeRunOptions(src.RunOptions),
 		OOMScore:    oomScoreFor(src),
 		Runtime:     runtimeFor(src.Isolation),
-		Labels:      egressLabels(src),
+		Labels:      labels,
 		Permissions: config.DecodePermissions(src.Permissions),
 	}
 }
