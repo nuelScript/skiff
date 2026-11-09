@@ -14,22 +14,37 @@ import (
 	"time"
 )
 
-// addedDisk finds a folder on a disk other than the system's, as /mnt is on GitHub's runners, or skips.
+// addedDisk gives the test a folder on a disk other than the system's: /mnt where that's separate, or else a small file system made in an image and mounted through a loop device.
 func addedDisk(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS != "linux" {
 		t.Skip("needs Linux")
 	}
+	sudo := func(script string) error { return exec.Command("sudo", "-n", "sh", "-c", script).Run() }
 	dir := fmt.Sprintf("/mnt/skiff-e2e-%d", time.Now().UnixNano())
-	if err := exec.Command("sudo", "-n", "sh", "-c", fmt.Sprintf("mkdir -p %s && chown %d %s", dir, os.Getuid(), dir)).Run(); err != nil {
-		t.Skip("no added disk to test with")
+	if sudo(fmt.Sprintf("mkdir -p %s", dir)) != nil {
+		t.Skip("can't make a folder under /mnt")
 	}
-	t.Cleanup(func() { _ = exec.Command("sudo", "-n", "rm", "-rf", dir).Run() })
-	var a, b syscall.Stat_t
-	if syscall.Stat(dir, &a) != nil || syscall.Stat("/", &b) != nil || a.Dev == b.Dev {
-		t.Skip("/mnt is on the system disk here")
+	t.Cleanup(func() { _ = sudo("rm -rf " + dir) })
+	if !separateDevice(dir) {
+		img := dir + ".img"
+		if err := sudo(fmt.Sprintf("truncate -s 1G %s && mkfs.ext4 -q -F %s && mount -o loop %s %s", img, img, img, dir)); err != nil {
+			t.Fatalf("making a disk to test with: %v", err)
+		}
+		t.Cleanup(func() { _ = sudo(fmt.Sprintf("umount %s; rm -f %s", dir, img)) })
+	}
+	if err := sudo(fmt.Sprintf("chown %d %s", os.Getuid(), dir)); err != nil {
+		t.Fatal(err)
+	}
+	if !separateDevice(dir) {
+		t.Fatal("the test disk is on the system disk")
 	}
 	return dir
+}
+
+func separateDevice(dir string) bool {
+	var a, b syscall.Stat_t
+	return syscall.Stat(dir, &a) == nil && syscall.Stat("/", &b) == nil && a.Dev != b.Dev
 }
 
 // TestDatabaseMovesBetweenDisks creates a database on an added disk, moves it to Docker's storage and back, and checks its rows each time.
