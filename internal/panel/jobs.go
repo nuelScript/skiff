@@ -175,7 +175,7 @@ func toJob(j jobRow) Job {
 const missedAfter = 2 * time.Minute
 
 func (p *Panel) jobLoop() {
-	settleRunsAfterRestart()
+	p.adoptRunsAfterRestart()
 	time.Sleep(90 * time.Second)
 	for {
 		guard("jobLoop", func() { p.runDueJobs(time.Now()) })
@@ -341,7 +341,7 @@ func newJob(app string, in jobInput) (jobRow, string) {
 func checkJobLimits(timeout, retries int, catchUp string) string {
 	switch {
 	case timeout != 0 && (timeout < 60 || timeout > maxJobTimeout):
-		return "the timeout must be between 1 minute and 24 hours"
+		return "the timeout must be between 1 minute and 7 days"
 	case retries < 0 || retries > maxJobRetries:
 		return fmt.Sprintf("retries must be between 0 and %d", maxJobRetries)
 	case catchUp != "" && catchUp != "skip":

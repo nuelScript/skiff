@@ -15,7 +15,7 @@ export const jobSchema = z
     timeoutMinutes: z
       .string()
       .trim()
-      .refine((s) => s === '' || (/^\d+$/.test(s) && +s >= 1 && +s <= 1440), 'From 1 to 1440 minutes'),
+      .refine((s) => s === '' || (/^\d+$/.test(s) && +s >= 1 && +s <= 10080), 'From 1 to 10080 minutes (a week)'),
     retries: z
       .string()
       .trim()

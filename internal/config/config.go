@@ -449,8 +449,8 @@ func ValidateJobs(jobs []Job) error {
 		}
 		if j.Timeout != "" {
 			d, err := time.ParseDuration(j.Timeout)
-			if err != nil || d < time.Minute || d > 24*time.Hour {
-				return fmt.Errorf("job %q: timeout %q should be between 1m and 24h", j.Name, j.Timeout)
+			if err != nil || d < time.Minute || d > 7*24*time.Hour {
+				return fmt.Errorf("job %q: timeout %q should be between 1m and 168h (a week)", j.Name, j.Timeout)
 			}
 		}
 		if j.Retries < 0 || j.Retries > 10 {

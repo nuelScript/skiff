@@ -130,7 +130,7 @@ Commands from the app's build that run on a schedule. The dashboard runs them, s
 | `name` | 1 to 32 lowercase letters, digits or dashes. |
 | `schedule` | Cron syntax in the server's time zone, like `0 3 * * *` for 3am every day. |
 | `command` | What it runs, through `sh -c`. |
-| `timeout` | How long a run may take, from `1m` to `24h`. Default `30m`. A run past it is stopped. |
+| `timeout` | How long a run may take, from `1m` to `168h` (a week). Default `30m`. A run past it is stopped. |
 | `retries` | How many more times a failed run is tried, up to 10. Default `0`. |
 | `catch_up` | `"skip"` drops runs missed while Skiff wasn't running. Left out, a missed job runs once when Skiff is back. |
 | `webhook` | `true` gives the job an address that starts it when a signed request arrives. The dashboard shows the address and its secret. |

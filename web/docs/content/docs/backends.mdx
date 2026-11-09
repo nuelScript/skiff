@@ -112,9 +112,10 @@ A Compose file that asks for any of these shows what it asked for, with a button
 A job runs a command from your app's build in a one-off container with the app's environment and limits. It runs on a cron schedule, when its webhook is called, for each new file in a bucket, or any mix of those.
 
 - **Every run is kept:** what started it, how it ended, its exit code, how long it took and the end of its output. The last 50 runs are under the job's history on **Jobs & workers**, and in `skiff job runs`.
-- **A timeout per job,** 30 minutes unless you set one, up to 24 hours. A run past it is stopped.
+- **A timeout per job,** 30 minutes unless you set one, up to a week. A run past it is stopped.
 - **Retries:** a failed run can be tried again up to 10 times, after 30 seconds, then a minute, then two, up to ten minutes apart. Running a job by hand tries once.
 - **No overlap:** if a run is still going when the next one is due, the next is skipped, and the history says so.
+- **When Skiff restarts,** such as for an upgrade, a run still going keeps going, and Skiff picks it back up: its history gets the whole output and how it ended. A run whose container stopped too, or a job with steps, is marked failed and tried again if it has retries left.
 - **After downtime,** a job that missed its time runs once when Skiff is back, unless you set it to skip missed runs.
 - **Alerts:** your alert channels hear when a job starts failing, after its retries, and when it works again.
 
@@ -206,6 +207,16 @@ On a server with NVIDIA GPUs, an app can have some: choose how many under **Limi
 - **Keep downloaded models on a volume,** mounted where the model server looks: `/root/.ollama` for Ollama, or `/root/.cache/huggingface` for vLLM and anything else using Hugging Face (or set `HF_HOME` to the volume's path). Other projects can [share that volume](/volumes#sharing-with-another-project) instead of downloading the same model again.
 - **A large model can take minutes to load.** Raise the health check **Timeout (seconds)** in the project's settings, or `health_timeout` in `skiff.toml`, up to 1800, so the deploy waits for it before switching traffic.
 - **A sleeping app frees its GPUs.** With **Sleep when idle** on, the app's containers stop after the idle time, so the GPU memory is free for other work. While it sleeps, another deploy may be given those GPUs; when it wakes, both share them.
+
+### Training and batch runs on a GPU
+
+A long run, like training a model or embedding a large dataset, is a job with GPUs and a volume:
+
+1. Give the app a GPU (see [GPUs](#gpus)) and a [volume](/volumes) for checkpoints, such as `/checkpoints`.
+2. Have the script save a checkpoint there every so often, and start from the latest one if it finds any.
+3. Add a job with the command, a timeout long enough for the whole run (up to a week), a few retries and a webhook. Start the run by calling the webhook: the call returns straight away, and the run gets its retries. **Run now** tries once and waits for the end, so keep it for short runs.
+
+If the run crashes, runs out of memory or the server restarts, the retry starts from the last checkpoint instead of from the beginning. Its jobs, workers and one-off runs share the app's GPUs, so give a long run an app of its own if the app also serves traffic on them.
 
 ## On a small server
 
