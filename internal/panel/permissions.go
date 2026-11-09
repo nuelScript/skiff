@@ -67,6 +67,9 @@ func describePermissions(g config.Permissions) string {
 	if g.HostNetwork {
 		parts = append(parts, "host network")
 	}
+	if g.NewPrivileges {
+		parts = append(parts, "setuid")
+	}
 	if len(g.Capabilities) > 0 {
 		parts = append(parts, "capabilities "+strings.Join(g.Capabilities, ","))
 	}

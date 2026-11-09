@@ -21,6 +21,28 @@ type Permissions struct {
 	Privileged bool `json:"privileged,omitempty" toml:"privileged"`
 	// HostNetwork puts the container on the server's own network, for software that needs to see it, like some VPNs and discovery tools. The app then runs one copy, and a deploy stops the old version first.
 	HostNetwork bool `json:"hostNetwork,omitempty" toml:"host_network"`
+	// NewPrivileges lets programs gain privileges through setuid, like sudo, which Skiff blocks by default.
+	NewPrivileges bool `json:"newPrivileges,omitempty" toml:"new_privileges"`
+}
+
+// droppedByDefault are capabilities Docker gives every container that apps rarely use: raw sockets, making device files and writing the kernel's audit log. Granting one gives it back.
+var droppedByDefault = []string{"NET_RAW", "MKNOD", "AUDIT_WRITE"}
+
+// HardeningArgs are Skiff's safer defaults, less whatever this grant gives back. A privileged container gets everything anyway.
+func (p Permissions) HardeningArgs() []string {
+	if p.Privileged {
+		return nil
+	}
+	var args []string
+	if !p.NewPrivileges {
+		args = append(args, "--security-opt", "no-new-privileges")
+	}
+	for _, c := range droppedByDefault {
+		if !slices.Contains(p.Capabilities, c) {
+			args = append(args, "--cap-drop", c)
+		}
+	}
+	return args
 }
 
 func (p Permissions) IsZero() bool { return reflect.ValueOf(p).IsZero() }

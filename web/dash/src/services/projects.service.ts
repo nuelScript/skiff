@@ -39,6 +39,7 @@ export type Permissions = {
   sysctls?: string[]
   privileged?: boolean
   hostNetwork?: boolean
+  newPrivileges?: boolean
 }
 
 export type ProjectDetail = {

@@ -38,3 +38,15 @@ func TestPermissions(t *testing.T) {
 		t.Errorf("round trip: %+v", got)
 	}
 }
+
+func TestSaferDefaults(t *testing.T) {
+	if got := (Permissions{}).HardeningArgs(); !slices.Equal(got, []string{"--security-opt", "no-new-privileges", "--cap-drop", "NET_RAW", "--cap-drop", "MKNOD", "--cap-drop", "AUDIT_WRITE"}) {
+		t.Errorf("defaults = %v", got)
+	}
+	if got := (Permissions{Capabilities: []string{"NET_RAW"}, NewPrivileges: true}).HardeningArgs(); !slices.Equal(got, []string{"--cap-drop", "MKNOD", "--cap-drop", "AUDIT_WRITE"}) {
+		t.Errorf("a grant gives its capability back: %v", got)
+	}
+	if got := (Permissions{Privileged: true}).HardeningArgs(); got != nil {
+		t.Errorf("privileged gets everything: %v", got)
+	}
+}
