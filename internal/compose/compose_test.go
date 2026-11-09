@@ -1012,3 +1012,35 @@ func TestIPv6LoopbackPortStaysPrivate(t *testing.T) {
 		t.Error("a bracketed address without a port was accepted")
 	}
 }
+
+// Merge keys in an included file share their settings between services; the paths in them are moved to the file's folder once.
+func TestIncludedSharedSettingsAreRebasedOnce(t *testing.T) {
+	repo := map[string]string{"deploy/compose.yaml": `x-app: &app
+  build: {dockerfile: Dockerfile}
+  env_file: app.env
+  volumes: ["./conf:/conf"]
+services:
+  api:
+    <<: *app
+  worker:
+    <<: *app
+  cron:
+    <<: *app
+`}
+	read := func(name string) ([]byte, error) {
+		if s, ok := repo[path.Clean(name)]; ok {
+			return []byte(s), nil
+		}
+		return nil, fmt.Errorf("no %s", name)
+	}
+	f, err := ParseWith([]byte("include: [deploy/compose.yaml]\n"), noEnv, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"api", "worker", "cron"} {
+		s := f.Services[name]
+		if s.Build == nil || s.Build.Context != "deploy" || !slices.Equal(s.EnvFiles, []string{"deploy/app.env"}) || len(s.Volumes) != 1 || s.Volumes[0].Source != "./deploy/conf" {
+			t.Errorf("%s: build %+v env %v volumes %+v", name, s.Build, s.EnvFiles, s.Volumes)
+		}
+	}
+}

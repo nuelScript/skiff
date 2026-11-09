@@ -142,88 +142,102 @@ func rebaseFile(root *yaml.Node, dir string) {
 	if dir == "." || dir == "" {
 		return
 	}
+	// Merge keys share one node between services; each is rewritten once.
+	r := rebaser{dir: dir, done: map[*yaml.Node]bool{}}
 	if services := mapValue(root, "services"); services != nil && services.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(services.Content); i += 2 {
-			rebaseService(services.Content[i+1], dir)
+			r.service(services.Content[i+1])
 		}
 	}
 	for _, key := range []string{"secrets", "configs"} {
 		if defs := mapValue(root, key); defs != nil && defs.Kind == yaml.MappingNode {
 			for i := 0; i+1 < len(defs.Content); i += 2 {
-				rebaseScalar(mapValue(defs.Content[i+1], "file"), dir)
+				r.scalar(mapValue(defs.Content[i+1], "file"))
 			}
 		}
 	}
 	if inc := mapValue(root, "include"); inc != nil {
 		for _, e := range inc.Content {
 			if e.Kind == yaml.ScalarNode {
-				rebaseScalar(e, dir)
+				r.scalar(e)
 				continue
 			}
 			p := mapValue(e, "path")
 			if p != nil && p.Kind == yaml.SequenceNode {
 				for _, n := range p.Content {
-					rebaseScalar(n, dir)
+					r.scalar(n)
 				}
 			} else {
-				rebaseScalar(p, dir)
+				r.scalar(p)
 			}
 		}
 	}
 }
 
-func rebaseService(s *yaml.Node, dir string) {
+type rebaser struct {
+	dir  string
+	done map[*yaml.Node]bool
+}
+
+func (r rebaser) service(s *yaml.Node) {
 	if s.Kind != yaml.MappingNode {
 		return
 	}
 	if b := mapValue(s, "build"); b != nil {
 		if b.Kind == yaml.ScalarNode {
-			rebaseScalar(b, dir)
+			r.scalar(b)
 		} else if c := mapValue(b, "context"); c != nil {
-			rebaseScalar(c, dir)
+			r.scalar(c)
 		} else {
-			b.Content = append(b.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "context"}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: dir})
+			c := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: r.dir}
+			r.done[c] = true
+			b.Content = append(b.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "context"}, c)
 		}
 	}
 	if ext := mapValue(s, "extends"); ext != nil {
-		rebaseScalar(mapValue(ext, "file"), dir)
+		r.scalar(mapValue(ext, "file"))
 	}
 	if env := mapValue(s, "env_file"); env != nil {
 		switch env.Kind {
 		case yaml.ScalarNode:
-			rebaseScalar(env, dir)
+			r.scalar(env)
 		case yaml.SequenceNode:
 			for _, e := range env.Content {
 				if e.Kind == yaml.ScalarNode {
-					rebaseScalar(e, dir)
+					r.scalar(e)
 				} else {
-					rebaseScalar(mapValue(e, "path"), dir)
+					r.scalar(mapValue(e, "path"))
 				}
 			}
 		}
 	}
 	if vols := mapValue(s, "volumes"); vols != nil && vols.Kind == yaml.SequenceNode {
 		for _, v := range vols.Content {
+			if r.done[v] {
+				continue
+			}
+			r.done[v] = true
 			if v.Kind == yaml.MappingNode {
 				if t := mapValue(v, "type"); t != nil && t.Value == "bind" {
-					rebaseScalar(mapValue(v, "source"), dir)
+					r.scalar(mapValue(v, "source"))
 				}
 				continue
 			}
 			src, rest, ok := strings.Cut(v.Value, ":")
 			if ok && (strings.HasPrefix(src, ".") || strings.Contains(src, "/")) && !strings.HasPrefix(src, "/") && !strings.HasPrefix(src, "~") && !strings.HasPrefix(src, "$") {
-				v.Value = "./" + path.Join(dir, src) + ":" + rest
+				v.Value = "./" + path.Join(r.dir, src) + ":" + rest
 			}
 		}
 	}
 }
 
-// rebaseScalar puts dir in front of a relative path.
-func rebaseScalar(n *yaml.Node, dir string) {
-	if n == nil || n.Kind != yaml.ScalarNode || n.Value == "" || path.IsAbs(n.Value) || strings.HasPrefix(n.Value, "~") || strings.Contains(n.Value, "://") {
+// scalar puts dir in front of a relative path.
+func (r rebaser) scalar(n *yaml.Node) {
+	if n == nil || r.done[n] || n.Kind != yaml.ScalarNode || n.Value == "" || path.IsAbs(n.Value) || strings.HasPrefix(n.Value, "~") || strings.Contains(n.Value, "://") {
 		return
 	}
-	n.Value = path.Join(dir, n.Value)
+	r.done[n] = true
+	n.Value = path.Join(r.dir, n.Value)
 }
 
 // extendFromFile merges service base from another file into node.
