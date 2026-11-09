@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS sources (
   build_args   TEXT NOT NULL DEFAULT '',
   build_target TEXT NOT NULL DEFAULT '',
   udp_port     INTEGER NOT NULL DEFAULT 0,
-  isolation    TEXT NOT NULL DEFAULT ''
+  isolation    TEXT NOT NULL DEFAULT '',
   egress       TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS deploys (
