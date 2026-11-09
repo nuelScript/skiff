@@ -79,6 +79,17 @@ A job runs a command from your app's build on a cron schedule, in a one-off cont
 - **After downtime,** a job that missed its time runs once when Skiff is back, unless you set it to skip missed runs.
 - **Alerts:** your alert channels hear when a job starts failing, after its retries, and when it works again.
 
+## One-off runs
+
+Run a command once in a fresh container from your app's latest build, with its environment and limits, for a migration, a backfill or a CI step:
+
+```sh title="shell"
+skiff run shop-api -- npm run migrate
+skiff run shop-api --timeout 2h -- "python backfill.py && echo done"
+```
+
+The output prints as it comes, and `skiff run` exits with the command's exit code, so a CI step fails when the command does. Ctrl-C stops the run. Runs time out after 30 minutes unless you say otherwise, and a team can have 3 going at once. The same is in the [API](/api#one-off-runs), and agents can use it through the MCP tool `run_command`.
+
 ## From the terminal
 
 After `skiff login`, the CLI manages the same things as the dashboard. Attached databases and buckets reach an app on its next deploy.

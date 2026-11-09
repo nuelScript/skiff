@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/nuelScript/skiff/internal/mcp"
 )
@@ -123,6 +124,41 @@ func resourceTools(c *apiClient) []mcp.Tool {
 					}
 				}
 				return call(http.MethodPost, "/apps/"+n+"/jobs", body, "")
+			},
+		},
+		{
+			Name: "run_command", Description: "Run a command once in a fresh container from a project's latest build, with its environment, and wait up to the timeout for it. Returns its status, exit code and output, which the project's code writes." + untrustedNote,
+			InputSchema: schema(map[string]any{
+				"name": nameProp, "command": prop("what to run, through sh -c"),
+				"timeout": map[string]any{"type": "integer", "description": "seconds it may take, 60 to 86400 (default 600)"},
+			}, "name", "command"),
+			Run: func(args map[string]any) (string, error) {
+				n, err := app(args)
+				if err != nil {
+					return "", err
+				}
+				timeout := 600
+				if f, ok := args["timeout"].(float64); ok {
+					timeout = int(f)
+				}
+				var run struct {
+					ID       int64  `json:"id"`
+					Status   string `json:"status"`
+					ExitCode int    `json:"exitCode"`
+					Output   string `json:"output"`
+				}
+				if err := c.do(http.MethodPost, "/apps/"+n+"/runs", map[string]any{"command": str(args, "command"), "timeout": timeout}, &run); err != nil {
+					return "", err
+				}
+				path := fmt.Sprintf("/apps/%s/runs/%d", n, run.ID)
+				deadline := time.Now().Add(time.Duration(timeout)*time.Second + 30*time.Second)
+				for run.Status == "running" && time.Now().Before(deadline) {
+					time.Sleep(2 * time.Second)
+					if err := c.do(http.MethodGet, path, nil, &run); err != nil {
+						return "", err
+					}
+				}
+				return fmt.Sprintf("status: %s\nexit code: %d\n%s", run.Status, run.ExitCode, untrusted("run-output", run.Output)), nil
 			},
 		},
 		{

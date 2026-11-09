@@ -199,7 +199,7 @@ func mcpTools(c *apiClient, readOnly bool) []mcp.Tool {
 // changingTools are left out in read-only mode. Nothing here deletes a database, bucket or volume: that stays with a person.
 var changingTools = map[string]bool{
 	"deploy": true, "rollback": true, "set_env": true,
-	"set_worker": true, "remove_worker": true, "add_job": true, "run_job": true, "remove_job": true,
+	"set_worker": true, "remove_worker": true, "add_job": true, "run_job": true, "remove_job": true, "run_command": true,
 	"create_database": true, "attach_database": true, "detach_database": true,
 	"create_bucket": true, "attach_bucket": true, "detach_bucket": true,
 	"add_volume": true,

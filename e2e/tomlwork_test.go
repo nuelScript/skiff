@@ -4,10 +4,12 @@ package e2e
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +160,52 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 	resp.Body.Close()
 	if r := runs(first.ID); len(r) != 2 || r[0].Status != "failed" || r[0].ExitCode != 4 {
 		t.Errorf("a failed run should keep its exit code: %+v", r)
+	}
+
+	// A one-off run through the API streams its output, keeps its exit code, and can be stopped.
+	var token struct{ Token string }
+	postJSON(t, c, base+"/api/tokens", `{"name":"ci"}`, &token)
+	api := func(method, path, body string, into any) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, base+"/api/v1/apps/"+app+path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token.Token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if into != nil {
+			_ = json.Unmarshal(raw, into)
+		}
+		return resp.StatusCode, string(raw)
+	}
+	type oneOff struct {
+		ID             int64
+		Status, Output string
+		ExitCode       int
+	}
+	var started oneOff
+	if code, msg := api(http.MethodPost, "/runs", `{"command":"echo out-1; sleep 2; echo out-2; exit 7"}`, &started); code != http.StatusAccepted || started.Status != "running" {
+		t.Fatalf("starting a run: %d %s", code, msg)
+	}
+	runPath := "/runs/" + strconv.FormatInt(started.ID, 10)
+	if _, streamed := api(http.MethodGet, runPath+"/logs", "", nil); !strings.Contains(streamed, "out-1") || !strings.Contains(streamed, "out-2") {
+		t.Errorf("streamed output: %q", streamed)
+	}
+	var finished oneOff
+	api(http.MethodGet, runPath, "", &finished)
+	if finished.Status != "failed" || finished.ExitCode != 7 || !strings.Contains(finished.Output, "out-2") {
+		t.Errorf("a finished run: %+v", finished)
+	}
+	var long oneOff
+	api(http.MethodPost, "/runs", `{"command":"sleep 120"}`, &long)
+	if code, msg := api(http.MethodDelete, "/runs/"+strconv.FormatInt(long.ID, 10), "", &long); code != http.StatusOK || long.Status != "failed" || !strings.Contains(long.Output, "Stopped by request") {
+		t.Errorf("stopping a run: %d %s", code, msg)
+	}
+	if out, _ := exec.Command("docker", "ps", "-q", "--filter", "name=skiff-run-").Output(); strings.TrimSpace(string(out)) != "" {
+		t.Errorf("a stopped run's container is still there: %s", out)
 	}
 
 	deploy("")
