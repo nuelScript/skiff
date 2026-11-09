@@ -44,7 +44,7 @@ import {
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onDeployUrl: (git: string, name: string, port: string, token: string) => void
+  onDeployUrl: (git: string, name: string, port: string, token: string, agent: boolean) => void
   onDeployRepo: (
     repo: string,
     clone: string,
@@ -53,6 +53,7 @@ type Props = {
     port: string,
     auto: boolean,
     rootDir: string,
+    agent: boolean,
   ) => void
   onDeployImage: (app: string, id: string) => void
 }
@@ -83,6 +84,7 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
   const [port, setPort] = useState('3000')
   const [rootDir, setRootDir] = useState('')
   const [auto, setAuto] = useState(true)
+  const [agent, setAgent] = useState(false)
   const [envVars, setEnvVars] = useState<EnvVar[]>([blankVar()])
   const [showEnv, setShowEnv] = useState(false)
 
@@ -106,6 +108,7 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
     setPort('3000')
     setRootDir('')
     setAuto(true)
+    setAgent(false)
     setEnvVars([blankVar()])
     setShowEnv(false)
   }
@@ -128,6 +131,7 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
       port.trim() || '3000',
       auto,
       rootDir.trim(),
+      agent,
     )
   }
 
@@ -192,10 +196,13 @@ export function DeployModal({ open, onOpenChange, onDeployUrl, onDeployRepo, onD
               <Label htmlFor="rn">App name</Label>
               <Input id="rn" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="rp">Port your app listens on</Label>
-              <Input id="rp" value={port} onChange={(e) => setPort(e.target.value)} />
-            </div>
+            <AgentToggle on={agent} onChange={setAgent} />
+            {!agent && (
+              <div className="grid gap-2">
+                <Label htmlFor="rp">Port your app listens on</Label>
+                <Input id="rp" value={port} onChange={(e) => setPort(e.target.value)} />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="rd">
                 Root directory{' '}
@@ -303,7 +310,7 @@ function ConnectCard({ hint, label, href }: { hint: string; label: string; href?
 function UrlForm({
   onDeploy,
 }: {
-  onDeploy: (git: string, name: string, port: string, token: string) => void
+  onDeploy: (git: string, name: string, port: string, token: string, agent: boolean) => void
 }) {
   const f = useDeployForm(onDeploy)
   return (
@@ -327,10 +334,13 @@ function UrlForm({
           onChange={(e) => f.setName(e.target.value)}
         />
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor="p">Port your app listens on</Label>
-        <Input id="p" value={f.port} onChange={(e) => f.setPort(e.target.value)} />
-      </div>
+      <AgentToggle on={f.agent} onChange={f.setAgent} />
+      {!f.agent && (
+        <div className="grid gap-2">
+          <Label htmlFor="p">Port your app listens on</Label>
+          <Input id="p" value={f.port} onChange={(e) => f.setPort(e.target.value)} />
+        </div>
+      )}
       <div className="grid gap-2">
         <Label htmlFor="t">
           Access token <span className="text-muted-foreground">— private repos only</span>
@@ -352,6 +362,7 @@ function ImageForm({ onDeployed }: { onDeployed: (app: string, id: string) => vo
   const [envVars, setEnvVars] = useState<EnvVar[]>([blankVar()])
   const [showEnv, setShowEnv] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
+  const [agent, setAgent] = useState(false)
   const [serverError, setServerError] = useState('')
   const form = useForm<ImageProjectInput>({
     resolver: zodResolver(imageProjectSchema),
@@ -370,7 +381,7 @@ function ImageForm({ onDeployed }: { onDeployed: (app: string, id: string) => vo
       }
     }
     try {
-      const { app, id } = await projectsService.createFromImage(values)
+      const { app, id } = await projectsService.createFromImage({ ...values, agent })
       onDeployed(app, id)
     } catch (err) {
       setServerError(errText(err, 'Could not deploy the image.'))
@@ -410,7 +421,8 @@ function ImageForm({ onDeployed }: { onDeployed: (app: string, id: string) => vo
           />
           <FieldError errors={[errors.name]} />
         </Field>
-        <Field data-invalid={!!errors.port}>
+        <AgentToggle on={agent} onChange={setAgent} />
+        <Field data-invalid={!!errors.port} className={agent ? 'hidden' : undefined}>
           <FieldLabel htmlFor="img-port">Port your app listens on</FieldLabel>
           <Input
             id="img-port"
@@ -627,5 +639,29 @@ function CatalogPicker({ onDeployed }: { onDeployed: (app: string, id: string) =
         Install {picked.name}
       </Button>
     </div>
+  )
+}
+
+// AgentToggle switches a new project to an agent: no public address, its state kept on a volume, and its work taken from an inbox.
+function AgentToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className="flex cursor-pointer items-start justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-sm"
+    >
+      <span>
+        <span className="block">Run as an agent</span>
+        <span className="text-muted-foreground mt-0.5 block text-xs">
+          No public address. It keeps its files in /data, calls your AI providers through Skiff with a budget,
+          and takes work from an inbox.
+        </span>
+      </span>
+      <span className={'shrink-0 font-mono text-[11px] uppercase ' + (on ? 'text-success' : 'text-muted-foreground')}>
+        {on ? 'on' : 'off'}
+      </span>
+    </button>
   )
 }

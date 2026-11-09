@@ -20,6 +20,30 @@ export type ProjectAI = {
   gateway: boolean
 }
 
+export type AgentEvent = {
+  id: number
+  source: string
+  kind: string
+  body: string
+  created: number
+  deliveries: number
+  done: boolean
+}
+
+export type Agent =
+  | { agent: false }
+  | {
+      agent: true
+      stopped: boolean
+      schedule: string
+      next: number
+      webhook: string
+      webhookSecret: string
+      pending: number
+      events: AgentEvent[]
+      statePath: string
+    }
+
 class AIService extends BaseService {
   providers() {
     return this.get<{ providers: AIProvider[]; gateway: boolean }>('/ai/providers')
@@ -39,6 +63,18 @@ class AIService extends BaseService {
 
   setProject(app: string, enabled: boolean, budget: number) {
     return this.put('/project/ai', { enabled, budget }, { params: { app } })
+  }
+
+  agent(app: string) {
+    return this.get<Agent>('/project/agent', { params: { app } })
+  }
+
+  setAgentSchedule(app: string, schedule: string) {
+    return this.put('/project/agent', { schedule }, { params: { app } })
+  }
+
+  agentAction(app: string, action: 'stop' | 'start') {
+    return this.post('/project/agent', undefined, { params: { app, action } })
   }
 }
 

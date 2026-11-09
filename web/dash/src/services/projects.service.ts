@@ -97,6 +97,7 @@ export type ImageProject = {
   port: string
   username: string
   password: string
+  agent?: boolean
 }
 
 export type Job = {

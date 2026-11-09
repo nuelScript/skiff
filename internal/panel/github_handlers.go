@@ -161,9 +161,17 @@ func (p *Panel) handleGithubDeploy(w http.ResponseWriter, r *http.Request) {
 		App: name, Team: team, Repo: repo, Branch: branch, RootDir: rootDir,
 		Port: port, CloneURL: clone, Auto: q.Get("auto") == "1",
 	}
+	_, wasAgent := getAgent(name)
+	agent := wasAgent || !ok && q.Get("agent") == "1"
+	if agent {
+		applyAgentPreset(&src)
+	}
 	if err := putSource(src); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
+	}
+	if agent {
+		_ = setupAgent(src)
 	}
 	envStage.release(name)
 	id := newDeployID()

@@ -1,0 +1,48 @@
+---
+title: Run an agent
+description: "A long-running agent with no public address: its state survives restarts, it calls models within a budget, and work reaches it through an inbox."
+---
+
+Skiff doesn't give you an agent framework. Bring your own, in any language, and Skiff runs it the way an agent needs: always on, with nothing exposed to the internet, restarted when it crashes, and stoppable in one click.
+
+## Create one
+
+In **New project**, choose your repository, image or Git URL and turn on **Run as an agent**. Skiff then:
+
+- Gives it no public address and doesn't wait for a port, so it can be a plain loop.
+- Mounts a volume at `/data`. Whatever the agent writes there survives deploys, crashes and server restarts.
+- Gives it AI access with a budget of 1,000,000 tokens a month, which you can change on the project's **Settings** tab. See [AI gateway](/ai-gateway).
+- Opens an inbox for its work.
+
+The container restarts when it exits, and Skiff alerts you if it keeps crashing.
+
+## The inbox
+
+Work reaches the agent as events in its inbox, so it never needs an open port. The project's **Overview** shows where events come from and the last few that arrived.
+
+- **Webhook**: a signed `POST` to the address shown becomes one event, with the request body. Sign the body with HMAC-SHA256 of the secret, sent as `X-Skiff-Signature: sha256=…`.
+- **GitHub**: add a webhook in your repository's settings with the same address and secret. Each GitHub event arrives with its type, like `issues` or `pull_request`.
+- **Schedule**: a cron schedule like `*/15 * * * *` adds an event each time it comes round. If Skiff was down through several, the agent gets one event, not a burst.
+
+The agent asks for its next event and says when it has finished:
+
+```python title="agent.py"
+import os, requests
+
+base = os.environ["SKIFF_AI_URL"] + "/_skiff"
+auth = {"Authorization": "Bearer " + os.environ["SKIFF_AI_TOKEN"]}
+
+while True:
+    r = requests.get(base + "/events?wait=60", headers=auth, timeout=90)
+    if r.status_code != 200:
+        continue  # 204: nothing arrived within the wait
+    event = r.json()  # id, source, kind, body, created, deliveries
+    handle(event)
+    requests.post(f"{base}/events/{event['id']}/done", headers=auth)
+```
+
+`wait` holds the request open for up to 60 seconds until an event arrives. An event the agent takes but doesn't finish within five minutes, because it crashed or hung, goes back in the inbox, and `deliveries` says how many times it has been handed out. Finished events are kept for a week. The inbox holds up to 1,000 unfinished events; past that, webhooks are refused with `429`.
+
+## Stop it
+
+**Stop agent** on the project's **Overview** does everything at once: its containers and any commands it's running stop, and Skiff refuses its model calls and holds its inbox. **Start** brings it back with its events still waiting.

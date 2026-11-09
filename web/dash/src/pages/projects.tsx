@@ -136,13 +136,13 @@ export default function ProjectsPage() {
       <DeployModal
         open={open}
         onOpenChange={setOpen}
-        onDeployUrl={(git, name, port, token) => {
+        onDeployUrl={(git, name, port, token, agent) => {
           setOpen(false)
-          term.deploy(git, name, port, token)
+          term.deploy(git, name, port, token, agent)
         }}
-        onDeployRepo={(repo, clone, branch, name, port, auto, rootDir) => {
+        onDeployRepo={(repo, clone, branch, name, port, auto, rootDir, agent) => {
           setOpen(false)
-          term.deployRepo(repo, clone, branch, name, port, auto, rootDir)
+          term.deployRepo(repo, clone, branch, name, port, auto, rootDir, agent)
         }}
         onDeployImage={(app, id) => {
           setOpen(false)

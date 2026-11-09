@@ -104,6 +104,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.logDrainLoop()
 	go p.oomLoop()
 	go p.aiGatewayLoop()
+	go p.agentLoop()
 	go p.crashLoopWatch()
 	return p, nil
 }
@@ -180,6 +181,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/jobs/run", p.protected(p.handleJobRun))
 	mux.HandleFunc("GET /api/jobs/runs", p.protected(p.handleJobRuns))
 	mux.HandleFunc("POST /api/hooks/jobs/{id}", p.handleJobHook)
+	mux.HandleFunc("POST /api/hooks/agents/{app}", p.handleAgentHook)
 	mux.HandleFunc("/api/workers", p.protected(p.handleWorkers))
 	mux.HandleFunc("/api/stacks", p.protected(p.handleStacks))
 	mux.HandleFunc("/api/stacks/previews", p.protected(p.handleStackPreviews))
@@ -203,6 +205,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/alerts", p.protected(p.handleAlerts))
 	mux.HandleFunc("/api/ai/providers", p.protected(p.handleAIProviders))
 	mux.HandleFunc("/api/project/ai", p.protected(p.handleProjectAI))
+	mux.HandleFunc("/api/project/agent", p.protected(p.handleProjectAgent))
 	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
 	mux.HandleFunc("/api/log-drain", p.protected(p.handleLogDrain))
 	mux.HandleFunc("/api/log-drain/test", p.protected(p.handleLogDrainTest))

@@ -51,6 +51,7 @@ func (p *Panel) handleImageProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Name, Image, Port, Username, Password string
+		Agent                                 bool
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body)
 	name := sanitizeName(body.Name)
@@ -84,9 +85,15 @@ func (p *Panel) handleImageProject(w http.ResponseWriter, r *http.Request) {
 		_ = setEnv(name, nil)
 	}
 	src := Source{App: name, Team: team, Port: port, Image: img}
+	if body.Agent {
+		applyAgentPreset(&src)
+	}
 	if err := putSource(src); err != nil {
 		http.Error(w, "couldn't create the project", http.StatusInternalServerError)
 		return
+	}
+	if body.Agent {
+		_ = setupAgent(src)
 	}
 	envStage.release(name)
 	if user != "" {

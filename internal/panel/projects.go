@@ -468,9 +468,17 @@ func (p *Panel) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		port = "3000"
 	}
 	src := Source{App: name, Port: port, CloneURL: git, RootDir: rootDir, Team: team}
+	_, wasAgent := getAgent(name)
+	agent := wasAgent || !ok && r.URL.Query().Get("agent") == "1"
+	if agent {
+		applyAgentPreset(&src)
+	}
 	if err := putSource(src); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
+	}
+	if agent {
+		_ = setupAgent(src)
 	}
 	envStage.release(name)
 
