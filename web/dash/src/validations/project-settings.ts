@@ -36,7 +36,7 @@ export const projectSettingsSchema = z
     healthTimeout: z
       .number({ error: 'Enter a number of seconds' })
       .int()
-      .refine((v) => v === 0 || (v >= 5 && v <= 600), '5–600 seconds, or 0 for the default'),
+      .refine((v) => v === 0 || (v >= 5 && v <= 1800), '5–1800 seconds, or 0 for the default'),
   })
   .refine((v) => !v.autoscale || v.scaleMax >= v.scaleMin, {
     message: 'Max replicas must be at least the minimum',

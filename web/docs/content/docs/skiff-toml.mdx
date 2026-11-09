@@ -74,7 +74,7 @@ command = "node report.js"
 | --- | --- | --- |
 | `release` | none | A command run once before the new version goes live, such as migrations. If it fails, the deploy stops and the old version keeps serving. |
 | `health_path` | none | A path that must answer 2xx or 3xx before the new version takes traffic, like `/healthz`. Without it, any reply at `/` counts. |
-| `health_timeout` | `30` | Seconds the new version has to become healthy, from 5 to 600. |
+| `health_timeout` | `30` | Seconds the new version has to become healthy, from 5 to 1800. A model server loading a large model may need minutes. |
 | `health_mode` | HTTP | `tcp` accepts any open port, for services that don't speak HTTP. `none` skips the check, for a service with no port. |
 | `drain_timeout` | `300` | Seconds the replaced version may keep finishing open requests, up to 3600. `0` stops it straight away. |
 | `network` | `skiff` | The Docker network the app joins to reach databases by name. |

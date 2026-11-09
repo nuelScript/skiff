@@ -476,7 +476,7 @@ export function SettingsForm({
                 id="s-health-timeout"
                 type="number"
                 min={0}
-                max={600}
+                max={1800}
                 placeholder={String(defaultHealthTimeout)}
                 className="font-mono"
                 aria-invalid={!!formState.errors.healthTimeout}

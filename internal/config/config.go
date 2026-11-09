@@ -217,11 +217,14 @@ func ValidateHealth(path string, timeout int) error {
 			}
 		}
 	}
-	if timeout != 0 && (timeout < 5 || timeout > 600) {
-		return fmt.Errorf("health check timeout must be 5-600 seconds")
+	if timeout != 0 && (timeout < 5 || timeout > MaxHealthTimeout) {
+		return fmt.Errorf("health check timeout must be 5-%d seconds", MaxHealthTimeout)
 	}
 	return nil
 }
+
+// MaxHealthTimeout is half an hour: a large model can take that long to load from a cold disk.
+const MaxHealthTimeout = 1800
 
 const (
 	DefaultDrainTimeout = 300

@@ -147,7 +147,7 @@ func TestLoadHealth(t *testing.T) {
 	for _, tc := range []struct {
 		path    string
 		timeout int
-	}{{"healthz", 0}, {"/a b", 0}, {"/a\tb", 0}, {"/ok", 4}, {"/ok", 601}, {"/ok", -1}} {
+	}{{"healthz", 0}, {"/a b", 0}, {"/a\tb", 0}, {"/ok", 4}, {"/ok", 1801}, {"/ok", -1}} {
 		if ValidateHealth(tc.path, tc.timeout) == nil {
 			t.Errorf("accepted %q %d", tc.path, tc.timeout)
 		}
