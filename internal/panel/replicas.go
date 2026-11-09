@@ -23,12 +23,13 @@ const (
 	replicaWALKeep = "2GB"
 )
 
-// replicaClone copies the database into an empty volume and leaves it following the original, then starts Postgres as usual. The copy lands in a side folder and PG_VERSION moves last, so an interrupted copy starts over.
+// replicaClone copies the database into an empty volume and leaves it following the original, then starts Postgres as usual. The copy lands in a side folder and PG_VERSION moves last, so an interrupted copy starts over. A database returned to an earlier time keeps the settings that took it there, which would make the copy stop and break away at that time, so they're dropped.
 const replicaClone = `set -e
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   until pg_isready -q -h %[1]s -p %[2]d; do sleep 2; done
   rm -rf "$PGDATA/.clone"
   pg_basebackup -h %[1]s -p %[2]d -U %[3]s -D "$PGDATA/.clone" -R -X stream -S %[4]s -c fast
+  sed -i -e '/^restore_command/d' -e '/^recovery_target/d' "$PGDATA/.clone/postgresql.auto.conf"
   for f in "$PGDATA"/.clone/*; do [ "${f##*/}" = PG_VERSION ] || mv "$f" "$PGDATA"/; done
   mv "$PGDATA/.clone/PG_VERSION" "$PGDATA"/ && rmdir "$PGDATA/.clone"
 fi

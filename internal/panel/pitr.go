@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 )
 
@@ -381,6 +382,9 @@ func (p *Panel) recoverToTime(d dbRow, at int64) error {
 			_ = p.eng.RemoveVolume(volume)
 		}
 	}()
+	if err := p.volumeBeside(d.volume(), volume); err != nil {
+		return err
+	}
 	if err := p.recoverIntoVolume(ctx, d, volume, f, time.Unix(at, 0).UTC().Format("2006-01-02 15:04:05+00")); err != nil {
 		return err
 	}
@@ -393,16 +397,22 @@ func (p *Panel) recoverToTime(d dbRow, at int64) error {
 	if err := p.useVolume(&d, volume); err != nil {
 		return err
 	}
-	_ = p.eng.Stop(d.Container)
-	if err := p.rerunDatabase(d); err != nil {
+	// Replicas follow the data being replaced, so they stop answering reads until they're copied again.
+	for _, r := range listReplicas(d.ID) {
+		_ = p.eng.Remove(r.Container)
+	}
+	goBack := func(err error) error {
 		_ = p.useVolume(&d, old)
 		_ = p.rerunDatabase(d)
+		p.recoverReplicas(d)
 		return fmt.Errorf("the database didn't start on the recovered data, so it went back: %w", err)
 	}
+	_ = p.eng.Stop(d.Container)
+	if err := p.rerunDatabase(d); err != nil {
+		return goBack(err)
+	}
 	if err := p.waitDatabaseReady(ctx, d); err != nil {
-		_ = p.useVolume(&d, old)
-		_ = p.rerunDatabase(d)
-		return fmt.Errorf("the database didn't start on the recovered data, so it went back: %w", err)
+		return goBack(err)
 	}
 	swapped = true
 	_ = p.eng.RemoveVolume(old)
@@ -414,11 +424,28 @@ func (p *Panel) recoverToTime(d dbRow, at int64) error {
 	}
 	startHistoryGen(d.ID)
 	_, _ = sqlDB.Exec(`UPDATE pitr SET paused='' WHERE db_id=?`, d.ID)
+	p.resyncReplicas(d)
 	if err := p.takePITRBase(d); err != nil {
 		log.Printf("skiff: base backup of %s after recovery failed: %v", d.Name, err)
 	}
-	p.resyncReplicas(d)
 	return nil
+}
+
+// volumeBeside makes a new volume on the same disk as an existing one, so data recovered from it stays where it was put.
+func (p *Panel) volumeBeside(existing, volume string) error {
+	folder := p.eng.VolumeFolder(existing)
+	if folder == "" {
+		return nil
+	}
+	at := diskPathFor(diskOf(folder, listDisks()))
+	if at == "" {
+		return nil
+	}
+	target := config.DiskFolder(at, volume)
+	if err := docker.MakeDiskFolder(target); err != nil {
+		return fmt.Errorf("can't make a folder on the database's disk: %w", err)
+	}
+	return p.eng.CreateVolume(volume, target, p.eng.VolumeLabels(existing))
 }
 
 // recoverIntoVolume unpacks a snapshot into a new volume and replays history over it, up to target or, when that's blank, as far as it goes. It returns once the copy has started and stopped cleanly. An earlier recovery leaves its settings in the snapshot, so they're replaced.
@@ -439,7 +466,7 @@ printf '%%b' %q >> postgresql.auto.conf; chown postgres:postgres postgresql.auto
 		return fmt.Errorf("unpacking the base backup: %w", err)
 	}
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
-	if d.Image != "" {
+	if d.adopted() {
 		cmd = nil
 		_ = json.Unmarshal([]byte(d.Cmd), &cmd)
 	}

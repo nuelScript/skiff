@@ -182,7 +182,7 @@ func (p *Panel) checkBackup(d dbRow, b backupRow) restoreResult {
 	scratch.Volume = scratch.Container + "-data"
 	defer p.removeCheckContainer(scratch.Container)
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
-	if d.Image != "" {
+	if d.adopted() {
 		cmd = nil
 		_ = json.Unmarshal([]byte(d.Cmd), &cmd)
 	}
