@@ -24,6 +24,7 @@
     "ai-gateway",
     "run-agents",
     "agents",
+    "mcp-servers",
     "---Reference---",
     "skiff-toml",
     "cli",

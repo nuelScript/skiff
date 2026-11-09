@@ -16,6 +16,8 @@ type Rule struct {
 	TCPPort int `json:"tcpPort,omitempty"`
 	// UDPPort is a public UDP port the router forwards to the app's UDP port; 0 means none.
 	UDPPort int `json:"udpPort,omitempty"`
+	// Tokens are SHA-256 hashes of the bearer tokens a request must carry one of; none means the app is open.
+	Tokens []string `json:"tokens,omitempty"`
 }
 
 type Rules map[string]Rule

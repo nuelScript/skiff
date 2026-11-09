@@ -154,6 +154,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/project/preview-password", p.protected(p.handlePreviewPassword))
 	mux.HandleFunc("/api/project/preview-data", p.protected(p.handlePreviewData))
 	mux.HandleFunc("/api/project/tcp-port", p.protected(p.handleTCPPort))
+	mux.HandleFunc("/api/project/access-tokens", p.protected(p.handleAccessTokens))
 	mux.HandleFunc("/api/project/udp-port", p.protected(p.handleUDPPort))
 	mux.HandleFunc("/api/project/registry", p.protected(p.handleRegistry))
 	mux.HandleFunc("/api/projects/image", p.protected(p.handleImageProject))

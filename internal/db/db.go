@@ -444,6 +444,14 @@ CREATE TABLE IF NOT EXISTS approvals (
   answered    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_app ON approvals(app, status, id);
+CREATE TABLE IF NOT EXISTS access_tokens (
+  id      TEXT PRIMARY KEY,
+  app     TEXT NOT NULL,
+  name    TEXT NOT NULL,
+  hash    TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_app ON access_tokens(app);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

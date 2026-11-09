@@ -18,6 +18,7 @@ import { JobsPanel } from './project/jobs-panel'
 import { WorkersPanel } from './project/workers-panel'
 import { TCPPortSection } from './project/tcp-port-section'
 import { UDPPortSection } from './project/udp-port-section'
+import { AccessTokensSection } from './project/access-tokens-section'
 import { AISection } from './project/ai-section'
 import { AgentPanel } from './project/agent-panel'
 import { VolumesPanel } from './project/volumes-panel'
@@ -449,6 +450,7 @@ export default function ProjectDetailPage() {
           />
           {fromImage && <RegistryPanel app={project.name} />}
           <VolumesPanel app={project.name} onRedeploy={() => term.redeploy(project.name)} />
+          {!project.private && <AccessTokensSection app={project.name} url={visitUrl} />}
           <TCPPortSection app={project.name} />
           <UDPPortSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <AISection app={project.name} onRedeploy={() => term.redeploy(project.name)} />

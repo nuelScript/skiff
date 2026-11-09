@@ -334,7 +334,15 @@ func (rt *Router) proxyToApp(w http.ResponseWriter, r *http.Request, app string)
 			return true
 		}
 	}
-	if !rt.admit(w, r, app) {
+	if len(rule.Tokens) > 0 && r.Method != http.MethodOptions {
+		if !tokenAllowed(r, rule.Tokens) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="skiff"`)
+			http.Error(w, "this app needs an access token: send Authorization: Bearer <token>", http.StatusUnauthorized)
+			return true
+		}
+		// The token is Skiff's, not the app's, so it goes no further.
+		r.Header.Del("Authorization")
+	} else if !rt.admit(w, r, app) {
 		return true
 	}
 	if _, err := rt.routes(); err != nil {
