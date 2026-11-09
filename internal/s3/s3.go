@@ -84,6 +84,15 @@ type Listing struct {
 
 // List returns one page of what's directly inside prefix, treating "/" as the folder separator.
 func (c *Client) List(ctx context.Context, prefix, token string, limit int) (Listing, error) {
+	return c.list(ctx, prefix, token, limit, true)
+}
+
+// ListAll returns one page of every object under prefix, however deep.
+func (c *Client) ListAll(ctx context.Context, prefix, token string, limit int) (Listing, error) {
+	return c.list(ctx, prefix, token, limit, false)
+}
+
+func (c *Client) list(ctx context.Context, prefix, token string, limit int, folders bool) (Listing, error) {
 	req, err := c.request(ctx, http.MethodGet, "", nil)
 	if err != nil {
 		return Listing{}, err
@@ -93,7 +102,10 @@ func (c *Client) List(ctx context.Context, prefix, token string, limit int) (Lis
 	if token != "" {
 		q = append(q, "continuation-token="+escapeQuery(token))
 	}
-	q = append(q, "delimiter=%2F", "list-type=2", "max-keys="+strconv.Itoa(limit), "prefix="+escapeQuery(prefix))
+	if folders {
+		q = append(q, "delimiter=%2F")
+	}
+	q = append(q, "list-type=2", "max-keys="+strconv.Itoa(limit), "prefix="+escapeQuery(prefix))
 	req.URL.RawQuery = strings.Join(q, "&")
 	c.sign(req, time.Now().UTC())
 	hc := c.HTTP

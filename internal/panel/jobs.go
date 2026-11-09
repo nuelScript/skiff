@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/seal"
 	"github.com/robfig/cron/v3"
 )
 
@@ -27,6 +28,13 @@ type Job struct {
 	Retries int    `json:"retries"`
 	CatchUp string `json:"catchUp"`
 	Running bool   `json:"running"`
+	// Webhook is the address that starts the job when a signed request arrives, with the secret it's signed with.
+	Webhook       string `json:"webhook,omitempty"`
+	WebhookSecret string `json:"webhookSecret,omitempty"`
+	// Bucket and Prefix start the job for each new file under the prefix in one of the team's buckets.
+	Bucket string `json:"bucket,omitempty"`
+	Prefix string `json:"prefix,omitempty"`
+	Queued int    `json:"queued"`
 }
 
 type jobRow struct {
@@ -36,9 +44,15 @@ type jobRow struct {
 	Created                                int64
 	Timeout, Retries                       int
 	CatchUp                                string
+	// HookSecret signs webhook calls; empty means the job has no webhook. Stored sealed.
+	HookSecret string
+	// Bucket and Prefix watch a bucket. Seen is the newest file time already handled, and SeenKeys the files at that time, as JSON.
+	Bucket, Prefix string
+	Seen           int64
+	SeenKeys       string
 }
 
-const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up`
+const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up,hook_secret,bucket,bucket_prefix,bucket_seen,bucket_seen_keys`
 
 var (
 	jobMu      sync.Mutex
@@ -71,7 +85,11 @@ func releaseJob(id string) {
 
 func scanJob(row interface{ Scan(...any) error }) (jobRow, bool) {
 	var j jobRow
-	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created, &j.Timeout, &j.Retries, &j.CatchUp) != nil {
+	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created, &j.Timeout, &j.Retries, &j.CatchUp,
+		&j.HookSecret, &j.Bucket, &j.Prefix, &j.Seen, &j.SeenKeys) != nil {
+		return jobRow{}, false
+	}
+	if seal.OpenAll(&j.HookSecret) != nil {
 		return jobRow{}, false
 	}
 	return j, true
@@ -106,9 +124,21 @@ func listJobRows(app string) []jobRow {
 func allJobRows() []jobRow { return queryJobs(`SELECT ` + jobCols + ` FROM jobs`) }
 
 func putJob(j jobRow) error {
-	_, err := sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created, j.Timeout, j.Retries, j.CatchUp)
+	secret, err := sealHookSecret(j.HookSecret)
+	if err != nil {
+		return err
+	}
+	_, err = sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created, j.Timeout, j.Retries, j.CatchUp,
+		secret, j.Bucket, j.Prefix, j.Seen, j.SeenKeys)
 	return err
+}
+
+func sealHookSecret(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	return seal.Seal(s)
 }
 
 func setJobRun(id string, when int64, ok bool) {
@@ -117,18 +147,23 @@ func setJobRun(id string, when int64, ok bool) {
 
 func toJob(j jobRow) Job {
 	var next int64
-	if s, err := cron.ParseStandard(j.Schedule); err == nil {
+	if s, err := cron.ParseStandard(j.Schedule); err == nil && j.Schedule != "" {
 		base := time.Now()
 		if j.LastRun > 0 {
 			base = time.Unix(j.LastRun, 0)
 		}
 		next = s.Next(base).Unix()
 	}
-	return Job{
+	out := Job{
 		ID: j.ID, App: j.App, Name: j.Name, Schedule: j.Schedule, Command: j.Command,
 		LastRun: j.LastRun, LastOk: j.LastOk != 0, Next: next, Created: j.Created,
 		Timeout: int(jobTimeout(j) / time.Second), Retries: j.Retries, CatchUp: j.CatchUp, Running: jobIsRunning(j.ID),
+		WebhookSecret: j.HookSecret, Bucket: j.Bucket, Prefix: j.Prefix, Queued: queuedRuns(j.ID),
 	}
+	if j.HookSecret != "" {
+		out.Webhook = dashboardURL + "/api/hooks/jobs/" + j.ID
+	}
+	return out
 }
 
 // missedAfter is how late a scheduled time can be before it counts as missed, such as while Skiff was down.
@@ -145,6 +180,9 @@ func (p *Panel) jobLoop() {
 
 func (p *Panel) runDueJobs(now time.Time) {
 	for _, j := range allJobRows() {
+		if j.Schedule == "" {
+			continue
+		}
 		sched, err := cron.ParseStandard(j.Schedule)
 		if err != nil {
 			continue
@@ -178,14 +216,14 @@ func (p *Panel) runDueJobs(now time.Time) {
 		}
 		go func(j jobRow) {
 			defer releaseJob(j.ID)
-			guard("job:"+j.ID, func() { p.execJob(j, trigger) })
+			guard("job:"+j.ID, func() { p.execJob(j, trigger, 0, "") })
 		}(j)
 	}
 }
 
 // runJobNow runs a job once for someone waiting on it, without retries, and returns its output.
 func (p *Panel) runJobNow(j jobRow) (string, string, error) {
-	out, status, err := p.attemptJob(j, triggerManual, 1)
+	out, status, err := p.attemptJob(j, triggerManual, 1, 0, "")
 	p.settleJob(j, status, err == nil)
 	return out, status, err
 }
@@ -255,6 +293,9 @@ type jobInput struct {
 	Timeout  int    `json:"timeout"`
 	Retries  int    `json:"retries"`
 	CatchUp  string `json:"catchUp"`
+	Webhook  bool   `json:"webhook"`
+	Bucket   string `json:"bucket"`
+	Prefix   string `json:"prefix"`
 }
 
 // newJob checks a scheduled job's settings, the same for the dashboard and the API.
@@ -263,18 +304,23 @@ func newJob(app string, in jobInput) (jobRow, string) {
 	if command == "" {
 		return jobRow{}, "a command is required"
 	}
-	if _, err := cron.ParseStandard(schedule); err != nil {
-		return jobRow{}, "invalid schedule — use cron syntax like \"0 3 * * *\""
+	src, _ := getSource(app)
+	bucket, prefix := strings.TrimSpace(in.Bucket), strings.TrimSpace(in.Prefix)
+	if problem := checkJobTriggers(src.Team, schedule, in.Webhook, bucket, prefix); problem != "" {
+		return jobRow{}, problem
 	}
 	if problem := checkJobLimits(in.Timeout, in.Retries, in.CatchUp); problem != "" {
 		return jobRow{}, problem
 	}
-	src, _ := getSource(app)
-	return jobRow{
+	j := jobRow{
 		ID: randToken()[:12], App: app, Team: src.Team, Name: cmp.Or(strings.TrimSpace(in.Name), "job"),
 		Schedule: schedule, Command: command, LastOk: 1, Created: time.Now().Unix(),
-		Timeout: in.Timeout, Retries: in.Retries, CatchUp: in.CatchUp,
-	}, ""
+		Timeout: in.Timeout, Retries: in.Retries, CatchUp: in.CatchUp, Bucket: bucket, Prefix: prefix,
+	}
+	if in.Webhook {
+		j.HookSecret = randToken()
+	}
+	return j, ""
 }
 
 func checkJobLimits(timeout, retries int, catchUp string) string {

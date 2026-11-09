@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { queryKeys } from '@/constants/query-keys'
 import { relTime } from '@/lib/format'
 import { errText } from '@/lib/errors'
-import { jobSettingsSummary } from '@/lib/jobs'
+import { jobSettingsSummary, jobTriggers } from '@/lib/jobs'
+import { JobWebhook } from '@/pages/project/job-webhook'
 import { useConfirm } from '@/providers/confirm-provider'
-import { projectsService, type Job } from '@/services/api.service'
+import { projectsService, storageService, type Job } from '@/services/api.service'
 import { jobSchema, type JobInput } from '@/validations/job'
 import { JobHistory } from '@/pages/project/job-history'
 
@@ -33,7 +34,23 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
 
   const form = useForm<JobInput>({
     resolver: zodResolver(jobSchema),
-    defaultValues: { name: '', schedule: '0 3 * * *', command: '', timeoutMinutes: '', retries: '', catchUp: '' },
+    defaultValues: {
+      name: '',
+      trigger: 'schedule',
+      schedule: '0 3 * * *',
+      bucket: '',
+      prefix: '',
+      command: '',
+      timeoutMinutes: '',
+      retries: '',
+      catchUp: '',
+    },
+  })
+  const trigger = form.watch('trigger')
+  const { data: buckets = [] } = useQuery({
+    queryKey: queryKeys.storage,
+    queryFn: () => storageService.list(),
+    enabled: adding && trigger === 'bucket',
   })
 
   const create = form.handleSubmit(async (values) => {
@@ -41,7 +58,10 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
     try {
       await projectsService.createJob(app, {
         name: values.name || 'job',
-        schedule: values.schedule,
+        schedule: values.trigger === 'schedule' ? values.schedule : '',
+        webhook: values.trigger === 'webhook',
+        bucket: values.trigger === 'bucket' ? values.bucket : '',
+        prefix: values.trigger === 'bucket' ? values.prefix : '',
         command: values.command,
         timeout: values.timeoutMinutes ? +values.timeoutMinutes * 60 : 0,
         retries: values.retries ? +values.retries : 0,
@@ -82,11 +102,11 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Scheduled jobs</h2>
+          <h2 className="text-sm font-semibold">Jobs</h2>
           <p className="text-muted-foreground mt-1 text-xs">
             {cli
-              ? "Commands on a cron schedule, with this app's environment. They come from the [[jobs]] section of its skiff.toml."
-              : "Run a command on a cron schedule in a one-off container, with this app's environment."}
+              ? "Commands in one-off containers with this app's environment. They come from the [[jobs]] section of its skiff.toml."
+              : "Run a command in a one-off container with this app's environment: on a schedule, when a webhook is called, or for each new file in a bucket."}
           </p>
         </div>
         {!cli && !adding && (
@@ -108,6 +128,27 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                 <FieldLabel htmlFor="job-name">Name</FieldLabel>
                 <Input id="job-name" placeholder="nightly cleanup" {...form.register('name')} />
               </Field>
+              <Field>
+                <FieldLabel htmlFor="job-trigger">Runs</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="trigger"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="job-trigger" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="schedule">On a schedule</SelectItem>
+                        <SelectItem value="webhook">When its webhook is called</SelectItem>
+                        <SelectItem value="bucket">For each new file in a bucket</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+            </div>
+            {trigger === 'schedule' && (
               <Field data-invalid={!!form.formState.errors.schedule}>
                 <FieldLabel htmlFor="job-schedule">Schedule (cron)</FieldLabel>
                 <Input
@@ -119,7 +160,56 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                 />
                 <FieldError errors={[form.formState.errors.schedule]} />
               </Field>
-            </div>
+            )}
+            {trigger === 'webhook' && (
+              <FieldDescription>
+                Once it's added, the job shows its webhook address and the secret to sign requests with.
+              </FieldDescription>
+            )}
+            {trigger === 'bucket' && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field data-invalid={!!form.formState.errors.bucket}>
+                  <FieldLabel htmlFor="job-bucket">Bucket</FieldLabel>
+                  <Controller
+                    control={form.control}
+                    name="bucket"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange} disabled={buckets.length === 0}>
+                        <SelectTrigger id="job-bucket" className="w-full" aria-invalid={!!form.formState.errors.bucket}>
+                          <SelectValue placeholder={buckets.length ? 'Choose a bucket' : 'No buckets yet'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {buckets.map((b) => (
+                            <SelectItem key={b.id} value={b.name}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldError errors={[form.formState.errors.bucket]} />
+                  {buckets.length === 0 && (
+                    <FieldDescription>Create a bucket under Storage first.</FieldDescription>
+                  )}
+                </Field>
+                <Field data-invalid={!!form.formState.errors.prefix}>
+                  <FieldLabel htmlFor="job-prefix">Folder (optional)</FieldLabel>
+                  <Input
+                    id="job-prefix"
+                    className="font-mono"
+                    placeholder="incoming/"
+                    aria-invalid={!!form.formState.errors.prefix}
+                    {...form.register('prefix')}
+                  />
+                  <FieldError errors={[form.formState.errors.prefix]} />
+                </Field>
+                <FieldDescription className="sm:col-span-2">
+                  Files already there are left alone. Each new one starts a run, with its key in{' '}
+                  <code className="font-mono">SKIFF_OBJECT_KEY</code>. Skiff looks every 30 seconds.
+                </FieldDescription>
+              </div>
+            )}
             <Field data-invalid={!!form.formState.errors.command}>
               <FieldLabel htmlFor="job-command">Command</FieldLabel>
               <Input
@@ -131,7 +221,7 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
               />
               <FieldError errors={[form.formState.errors.command]} />
             </Field>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className={'grid gap-3 ' + (trigger === 'schedule' ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
               <Field data-invalid={!!form.formState.errors.timeoutMinutes}>
                 <FieldLabel htmlFor="job-timeout">Timeout (minutes)</FieldLabel>
                 <Input
@@ -154,24 +244,26 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                 />
                 <FieldError errors={[form.formState.errors.retries]} />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="job-catchup">After downtime</FieldLabel>
-                <Controller
-                  control={form.control}
-                  name="catchUp"
-                  render={({ field }) => (
-                    <Select value={field.value || 'once'} onValueChange={(v) => field.onChange(v === 'skip' ? 'skip' : '')}>
-                      <SelectTrigger id="job-catchup" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="once">Run once</SelectItem>
-                        <SelectItem value="skip">Skip missed runs</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
+              {trigger === 'schedule' && (
+                <Field>
+                  <FieldLabel htmlFor="job-catchup">After downtime</FieldLabel>
+                  <Controller
+                    control={form.control}
+                    name="catchUp"
+                    render={({ field }) => (
+                      <Select value={field.value || 'once'} onValueChange={(v) => field.onChange(v === 'skip' ? 'skip' : '')}>
+                        <SelectTrigger id="job-catchup" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="once">Run once</SelectItem>
+                          <SelectItem value="skip">Skip missed runs</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+              )}
             </div>
             <FieldDescription>
               A failed run is tried again after 30 seconds, then a minute, then two, up to ten minutes apart. Your
@@ -200,7 +292,7 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
 
       {jobs.length === 0 && !adding ? (
         <div className="text-muted-foreground rounded-xl border border-foreground/8 py-14 text-center text-sm">
-          No scheduled jobs yet.
+          No jobs yet.
         </div>
       ) : (
         jobs.length > 0 && (
@@ -214,9 +306,9 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                       {j.command}
                     </p>
                   </div>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
-                    {j.schedule}
-                  </span>
+                  {j.schedule && (
+                    <span className="text-muted-foreground shrink-0 font-mono text-[11px]">{j.schedule}</span>
+                  )}
                   <button
                     onClick={() => setHistory(history === j.id ? '' : j.id)}
                     title="Run history"
@@ -254,7 +346,7 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                   )}
                 </div>
                 <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                  <span>next {fmtWhen(j.next)}</span>
+                  {j.schedule && <span>next {fmtWhen(j.next)}</span>}
                   <span>
                     last run{' '}
                     {j.running ? (
@@ -270,8 +362,11 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                       'never'
                     )}
                   </span>
+                  {jobTriggers(j) && <span>runs {jobTriggers(j)}</span>}
+                  {j.queued > 0 && <span>{j.queued} waiting</span>}
                   <span>{jobSettingsSummary(j)}</span>
                 </div>
+                {j.webhook && j.webhookSecret && <JobWebhook url={j.webhook} secret={j.webhookSecret} />}
                 {history === j.id && (
                   <div className="mt-3">
                     <JobHistory id={j.id} live={j.running} />

@@ -52,7 +52,7 @@ curl https://dash.example.com/api/v1/apps \
 | Method | Path | What it does |
 | --- | --- | --- |
 | GET | `/apps/{name}/jobs` | List the app's jobs, with when each last ran, whether it worked and when it runs next. |
-| POST | `/apps/{name}/jobs` | Add a job. Send \{"name": "report", "schedule": "0 3 \* \* \*", "command": "node report.js"\}. The schedule uses cron syntax, in the server's time zone. Optional: `timeout` in seconds (60 to 86400, default 1800), `retries` (0 to 10) and `catchUp` (`"skip"` drops runs missed while Skiff was down). |
+| POST | `/apps/{name}/jobs` | Add a job. Send \{"name": "report", "schedule": "0 3 \* \* \*", "command": "node report.js"\}. The schedule uses cron syntax, in the server's time zone. Optional: `timeout` in seconds (60 to 86400, default 1800), `retries` (0 to 10), `catchUp` (`"skip"` drops runs missed while Skiff was down), `webhook` (true gives it an address and a signing secret, in the answer) and `bucket` with `prefix` (start it for each new file there). The schedule can be left out when there's a webhook or a bucket. |
 | POST | `/apps/{name}/jobs/{id}/run` | Run the job now, once, and wait for it. Answers with ok, its status and its output. |
 | GET | `/apps/{name}/jobs/{id}/runs` | The job's last 50 runs, newest first: trigger, attempt, status (`ok`, `failed`, `timeout`, `skipped`), exit code, start, finish and the end of its output. |
 | DELETE | `/apps/{name}/jobs/{id}` | Remove the job and its history. |

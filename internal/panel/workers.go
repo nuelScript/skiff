@@ -251,12 +251,32 @@ func setTomlJobs(src Source, want []config.Job) {
 				_, _ = sqlDB.Exec(`UPDATE jobs SET schedule=?, command=?, timeout=?, retries=?, catch_up=? WHERE id=?`,
 					j.Schedule, j.Command, j.TimeoutSeconds(), j.Retries, j.CatchUp, old.ID)
 			}
+			setTomlTriggers(old, j)
 			continue
 		}
-		_ = putJob(jobRow{ID: randToken()[:12], App: src.App, Team: src.Team, Name: j.Name, Schedule: j.Schedule, Command: j.Command, LastOk: 1, Created: time.Now().Unix(),
-			Timeout: j.TimeoutSeconds(), Retries: j.Retries, CatchUp: j.CatchUp})
+		row := jobRow{ID: randToken()[:12], App: src.App, Team: src.Team, Name: j.Name, Schedule: j.Schedule, Command: j.Command, LastOk: 1, Created: time.Now().Unix(),
+			Timeout: j.TimeoutSeconds(), Retries: j.Retries, CatchUp: j.CatchUp, Bucket: j.Bucket, Prefix: j.Prefix}
+		if j.Webhook {
+			row.HookSecret = randToken()
+		}
+		_ = putJob(row)
 	}
 	for _, j := range have {
 		deleteJob(j.ID)
+	}
+}
+
+// setTomlTriggers keeps a webhook's secret while skiff.toml keeps the webhook, and starts a bucket watch afresh when its bucket or prefix changes.
+func setTomlTriggers(old jobRow, j config.Job) {
+	switch {
+	case j.Webhook && old.HookSecret == "":
+		if secret, err := sealHookSecret(randToken()); err == nil {
+			_, _ = sqlDB.Exec(`UPDATE jobs SET hook_secret=? WHERE id=?`, secret, old.ID)
+		}
+	case !j.Webhook && old.HookSecret != "":
+		_, _ = sqlDB.Exec(`UPDATE jobs SET hook_secret='' WHERE id=?`, old.ID)
+	}
+	if old.Bucket != j.Bucket || old.Prefix != j.Prefix {
+		_, _ = sqlDB.Exec(`UPDATE jobs SET bucket=?, bucket_prefix=?, bucket_seen=0, bucket_seen_keys='' WHERE id=?`, j.Bucket, j.Prefix, old.ID)
 	}
 }

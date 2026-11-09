@@ -3,6 +3,9 @@
 package e2e
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -207,6 +210,38 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 	if out, _ := exec.Command("docker", "ps", "-q", "--filter", "name=skiff-run-").Output(); strings.TrimSpace(string(out)) != "" {
 		t.Errorf("a stopped run's container is still there: %s", out)
 	}
+
+	// A job with a webhook runs when a signed request arrives, and gets its body.
+	deploy("[[jobs]]\nname = \"hooked\"\nwebhook = true\ncommand = \"echo got:$SKIFF_WEBHOOK_BODY\"\n")
+	var hooked struct{ ID, Webhook, WebhookSecret string }
+	eventually(t, 90*time.Second, func() bool {
+		var list []struct{ ID, Name, Webhook, WebhookSecret string }
+		fetch("/api/jobs?app="+app, &list)
+		for _, j := range list {
+			if j.Name == "hooked" && j.WebhookSecret != "" {
+				hooked.ID, hooked.Webhook, hooked.WebhookSecret = j.ID, j.Webhook, j.WebhookSecret
+				return true
+			}
+		}
+		return false
+	})
+	body := `{"ref":"main"}`
+	mac := hmac.New(sha256.New, []byte(hooked.WebhookSecret))
+	mac.Write([]byte(body))
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/hooks/jobs/"+hooked.ID, strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("calling the webhook: %d", resp.StatusCode)
+	}
+	eventually(t, 2*time.Minute, func() bool {
+		r := runs(hooked.ID)
+		return len(r) == 1 && r[0].Status == "ok" && r[0].Trigger == "webhook" && strings.Contains(r[0].Output, `got:{"ref":"main"}`)
+	})
 
 	deploy("")
 	if got := workers(); len(got) != 0 {

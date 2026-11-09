@@ -123,6 +123,12 @@ var migrations = []string{
 	`ALTER TABLE jobs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN catch_up TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE job_runs ADD COLUMN command TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE job_runs ADD COLUMN input TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN hook_secret TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN bucket TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN bucket_prefix TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN bucket_seen INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE jobs ADD COLUMN bucket_seen_keys TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -318,7 +324,12 @@ CREATE TABLE IF NOT EXISTS jobs (
   created  INTEGER NOT NULL,
   timeout  INTEGER NOT NULL DEFAULT 0,
   retries  INTEGER NOT NULL DEFAULT 0,
-  catch_up TEXT NOT NULL DEFAULT ''
+  catch_up TEXT NOT NULL DEFAULT '',
+  hook_secret      TEXT NOT NULL DEFAULT '',
+  bucket           TEXT NOT NULL DEFAULT '',
+  bucket_prefix    TEXT NOT NULL DEFAULT '',
+  bucket_seen      INTEGER NOT NULL DEFAULT 0,
+  bucket_seen_keys TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_app ON jobs(app);
 CREATE TABLE IF NOT EXISTS job_runs (
@@ -332,7 +343,8 @@ CREATE TABLE IF NOT EXISTS job_runs (
   status    TEXT NOT NULL,
   exit_code INTEGER NOT NULL DEFAULT 0,
   output    TEXT NOT NULL DEFAULT '',
-  command   TEXT NOT NULL DEFAULT ''
+  command   TEXT NOT NULL DEFAULT '',
+  input     TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_app ON job_runs(app);
