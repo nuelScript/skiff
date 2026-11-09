@@ -84,7 +84,7 @@ func TestTCPService(t *testing.T) {
 	eventually(t, 15*time.Second, func() bool { return ping() == nil })
 
 	// Taken and reserved ports are refused with a reason.
-	for body, want := range map[string]string{`{"port":80}`: "1024", `{"port":7070}`: "dashboard"} {
+	for body, want := range map[string]string{`{"port":80}`: "used by the web", `{"port":7070}`: "dashboard"} {
 		req, _ := http.NewRequest(http.MethodPut, "http://"+panel+"/api/project/tcp-port?app="+app, strings.NewReader(body))
 		resp, err := c.Do(req)
 		if err != nil {
