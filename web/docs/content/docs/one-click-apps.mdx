@@ -49,6 +49,9 @@ Don't skip the first-run step. These apps are on the public internet from the mo
 | WordPress | Sites and blogs, with MySQL | 1 GB | Finish the install screen and choose the admin |
 | Mattermost | Team chat, with Postgres | 2 GB | Create the first account, which becomes the admin |
 | Metabase | Dashboards over your databases, with Postgres | 1.5 GB | Go through the setup to create the admin |
+| JupyterLab | Notebooks for Python, pandas and DuckDB | 1 GB | Open it with the token in `JUPYTER_TOKEN` |
+| Prefect | Python workflow server and UI, with Postgres | 1 GB | Sign in as admin with the password in `PREFECT_SERVER_API_AUTH_STRING` |
+| Airflow | Data pipelines in Python, with Postgres | 2 GB | Sign in as admin with the password Airflow makes in `/opt/airflow/state/passwords.json` |
 | Grafana | Dashboards and alerts | 256 MB | Sign in as admin with the generated password |
 | Directus | Headless CMS and data API, with Postgres | 512 MB | Sign in with the generated admin login, then change it |
 | Memos | Notes and short posts | 128 MB | Sign up; the first account becomes the admin |
@@ -69,5 +72,5 @@ Don't skip the first-run step. These apps are on the public internet from the mo
 - **It's a normal project.** Logs, metrics, domains, limits and rollback all work, and its settings are yours to change.
 - **Files and databases stay across deploys.** App data sits on a [persistent volume](/volumes) or in a managed database. Managed databases and volumes both get [daily backups](/backups).
 - **Upgrades are up to you.** The version is pinned, so an app only changes when you change its image under **Settings** and redeploy. Check the app's release notes first.
-- **Adding a custom domain?** Several apps store their address in an environment variable: Ghost (`url`), n8n (`WEBHOOK_URL`), Vaultwarden (`DOMAIN`), Gitea (`GITEA__server__ROOT_URL`), NocoDB (`NC_SITE_URL`), Open WebUI (`WEBUI_URL`), Linkwarden (`NEXTAUTH_URL`), WordPress (`WORDPRESS_CONFIG_EXTRA`), Mattermost (`MM_SERVICESETTINGS_SITEURL`), Metabase (`MB_SITE_URL`), Grafana (`GF_SERVER_ROOT_URL`), Directus (`PUBLIC_URL`), Miniflux (`BASE_URL`), Vikunja (`VIKUNJA_SERVICE_PUBLICURL`), linkding (`LD_CSRF_TRUSTED_ORIGINS`) and Planka (`BASE_URL`). Update it under **Environment** and redeploy.
+- **Adding a custom domain?** Several apps store their address in an environment variable: Ghost (`url`), n8n (`WEBHOOK_URL`), Vaultwarden (`DOMAIN`), Gitea (`GITEA__server__ROOT_URL`), NocoDB (`NC_SITE_URL`), Open WebUI (`WEBUI_URL`), Linkwarden (`NEXTAUTH_URL`), WordPress (`WORDPRESS_CONFIG_EXTRA`), Mattermost (`MM_SERVICESETTINGS_SITEURL`), Metabase (`MB_SITE_URL`), Prefect (`PREFECT_UI_API_URL`), Grafana (`GF_SERVER_ROOT_URL`), Directus (`PUBLIC_URL`), Miniflux (`BASE_URL`), Vikunja (`VIKUNJA_SERVICE_PUBLICURL`), linkding (`LD_CSRF_TRUSTED_ORIGINS`) and Planka (`BASE_URL`). Update it under **Environment** and redeploy.
 - **Deleting the project keeps its database.** Delete that separately under **Databases** when you're sure you don't need the data.
