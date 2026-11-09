@@ -128,6 +128,12 @@ skiff job runs shop-api report       # its recent runs
 
 Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes`. The same actions are in the [API](/api).
 
+## On a small server
+
+- **Before each deploy,** Skiff compares the app's memory limit, times its copies, with what the server has free, and the deploy log warns when it may not fit. With less than 1 GB of disk free, the deploy stops before building, since the build would fail partway.
+- **When memory runs out,** the kernel stops something. Skiff decides the order: previews first, then jobs and one-off runs, then your production apps. Managed databases, the router and the dashboard go last.
+- **No app can take all the memory.** One with no limit of its own is capped at 75% of the server.
+
 ## What Skiff doesn't do yet
 
 - **UDP port ranges.** A public UDP port is one port. Software that needs a range, like some WebRTC servers, doesn't fit yet.

@@ -152,6 +152,13 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		})
 	}
 
+	if warning, refusal := fitCheck(src, diskUsage(), procMem(), resStats.memNow(src.App)); refusal != "" {
+		finish("✗ " + refusal)
+		return
+	} else if warning != "" {
+		logln("! " + warning)
+	}
+
 	if err := p.preparePreviewData(ctx, src, logln); err != nil {
 		finish("✗ this preview's own database couldn't be set up, so it wasn't deployed and can't reach your project's data: " + err.Error())
 		return
@@ -652,6 +659,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	}
 	if src.UDPPort > 0 {
 		fmt.Fprintf(&b, "udp_port = %d\n", src.UDPPort)
+	}
+	if score := oomScoreFor(src); score != oomProduction {
+		fmt.Fprintf(&b, "oom_score_adj = %d\n", score)
 	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))

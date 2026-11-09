@@ -18,6 +18,8 @@ type Settings struct {
 	Network string // optional docker network to join (for reaching managed resources by name)
 	Volumes []Mount
 	Options config.RunOptions
+	// OOMScore decides who the kernel stops first when memory runs out: higher goes first.
+	OOMScore int
 }
 
 // settingsArgs is the one place Settings become docker flags, so a limit or start setting means the same for an app, its workers, its jobs and its release command.
@@ -31,6 +33,9 @@ func (e *Engine) settingsArgs(s Settings) []string {
 		args = append(args, "--network", s.Network)
 	}
 	args = append(args, mountArgs(s.Volumes)...)
+	if s.OOMScore != 0 {
+		args = append(args, "--oom-score-adj", strconv.Itoa(s.OOMScore))
+	}
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
 	}

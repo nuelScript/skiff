@@ -104,7 +104,9 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration) (
 
 	go guard("run:"+strconv.FormatInt(id, 10), func() {
 		defer cancel()
-		err := p.eng.RunStream(ctx, image, command, p.appSettings(src), live)
+		settings := p.appSettings(src)
+		settings.OOMScore = max(settings.OOMScore, oomOneOff)
+		err := p.eng.RunStream(ctx, image, command, settings, live)
 		status, code := runOK, 0
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):

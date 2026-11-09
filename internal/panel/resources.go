@@ -345,3 +345,22 @@ func (p *Panel) handleResources(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+// memNow is about how much memory the app's containers use, from the newest sample.
+func (s *resStore) memNow(app string) int64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var newest *resBucket
+	for _, b := range s.apps[app] {
+		if newest == nil || b.T > newest.T {
+			newest = b
+		}
+	}
+	if newest == nil || newest.N == 0 {
+		return 0
+	}
+	return newest.MemSum / int64(newest.N)
+}

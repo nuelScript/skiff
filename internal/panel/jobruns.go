@@ -136,6 +136,7 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 	defer cancel()
 	settings := p.appSettings(src)
 	settings.Env = withTriggerEnv(settings.Env, j, trigger, input)
+	settings.OOMScore = max(settings.OOMScore, oomOneOff)
 	out, err := p.eng.RunOnce(ctx, image, j.Command, settings)
 	status, code := runOK, 0
 	switch {
