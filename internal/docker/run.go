@@ -26,6 +26,8 @@ type Settings struct {
 	Runtime string
 	// Labels go on every container these settings start, such as the app's outbound policy.
 	Labels map[string]string
+	// Permissions are machine permissions the server's admin granted.
+	Permissions config.Permissions
 }
 
 // settingsArgs is the one place Settings become docker flags, so a limit or start setting means the same for an app, its workers, its jobs and its release command.
@@ -53,6 +55,7 @@ func (e *Engine) settingsArgs(s Settings) []string {
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
 	}
+	args = append(args, s.Permissions.DockerArgs()...)
 	return append(args, s.Options.DockerArgs()...)
 }
 

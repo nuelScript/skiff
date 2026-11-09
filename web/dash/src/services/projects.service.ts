@@ -33,6 +33,14 @@ export type EgressPolicy = {
   allow?: string[]
 }
 
+export type Permissions = {
+  capabilities?: string[]
+  devices?: string[]
+  sysctls?: string[]
+  privileged?: boolean
+  hostNetwork?: boolean
+}
+
 export type ProjectDetail = {
   crashLoop?: CrashLoop
   parent?: string
@@ -358,6 +366,17 @@ class ProjectsService extends BaseService {
 
   setUDPPort(app: string, port: number) {
     return this.put('/project/udp-port', { port }, { params: { app } })
+  }
+
+  permissions(app: string) {
+    return this.get<{ granted: Permissions; wants: Permissions; canGrant: boolean; strong: string[] }>(
+      '/project/permissions',
+      { params: { app } },
+    )
+  }
+
+  setPermissions(app: string, p: Permissions) {
+    return this.put('/project/permissions', p, { params: { app } })
   }
 
   previewData(app: string) {

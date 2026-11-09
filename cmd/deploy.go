@@ -338,7 +338,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 
 	settings := docker.Settings{
 		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, Env: runtimeEnv, Network: network, Volumes: mounts,
-		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime, Labels: map[string]string{egress.Label: cfg.Deploy.EgressPolicy().Encode()},
+		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime, Labels: map[string]string{egress.Label: cfg.Deploy.EgressPolicy().Encode()}, Permissions: cfg.Deploy.Permissions,
 	}
 
 	// Release command (e.g. migrations) runs once before the new version goes live; on failure abort — the old version keeps serving.

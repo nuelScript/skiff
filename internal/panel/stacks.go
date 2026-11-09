@@ -358,6 +358,7 @@ func stackSourceFor(s *stackSource, team string, it compose.Item) Source {
 			src.MountedFiles = string(b)
 		}
 	}
+	src.WantsPermissions = config.EncodePermissions(it.Wants)
 	if it.Build != nil {
 		src.RootDir = strings.TrimPrefix(filepath.Clean(filepath.Join(s.dir, it.Build.Context)), "/")
 		src.Dockerfile = it.Build.Dockerfile

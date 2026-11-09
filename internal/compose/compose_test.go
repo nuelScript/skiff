@@ -199,7 +199,7 @@ func TestProblemsAreReported(t *testing.T) {
 	for name, tc := range map[string]struct{ src, want string }{
 		"system folder":   {"services:\n  a:\n    image: x\n    volumes: [/etc/app:/app]\n", "system folder"},
 		"no image":        {"services:\n  a:\n    command: hi\n", "needs an image or a build"},
-		"privileged":      {"services:\n  a:\n    image: x\n    privileged: true\n", "privileged"},
+		"bad sysctl":      {"services:\n  a:\n    image: x\n    sysctls: [vm.swappiness=10]\n", "whole server"},
 		"host network":    {"services:\n  a:\n    image: x\n    network_mode: host\n", "network_mode"},
 		"unknown depends": {"services:\n  a:\n    image: x\n    depends_on: [ghost]\n", "ghost"},
 		"cycle":           {"services:\n  a:\n    image: x\n    depends_on: [b]\n  b:\n    image: x\n    depends_on: [a]\n", "circle"},
@@ -666,8 +666,8 @@ services:
 	if worker.Image != "worker:1" || worker.Environment["MODE"] != "own" || worker.Environment["DATABASE_URL"] != "postgres://db/app" {
 		t.Errorf("worker = %+v", worker)
 	}
-	if !slices.Contains(f.Extra["worker"], "privileged") {
-		t.Errorf("a key merged into a service isn't checked: %v", f.Extra["worker"])
+	if !slices.Contains(f.Extra["worker"], "restart") || !f.Services["worker"].Wants.Privileged {
+		t.Errorf("a key merged into a service isn't read: %v %+v", f.Extra["worker"], f.Services["worker"].Wants)
 	}
 	if f.Services["literal"].Environment["<<"] != "not-a-merge" {
 		t.Errorf("a quoted << key = %v", f.Services["literal"].Environment)
@@ -956,5 +956,32 @@ volumes: {data: {}, other: {}}
 	}
 	if len(p.Problems) != 0 {
 		t.Errorf("problems: %v", p.Problems)
+	}
+}
+
+func TestMachinePermissionsAreAskedFor(t *testing.T) {
+	p := plan(t, `services:
+  vpn:
+    image: wireguard
+    cap_add: [net_admin, CAP_SYS_MODULE]
+    cap_drop: [NET_RAW]
+    devices: ["/dev/net/tun", {source: /dev/fuse, target: /dev/fuse, permissions: rwm}]
+    sysctls: {net.ipv4.ip_forward: 1}
+`)
+	vpn := item(t, p, "vpn")
+	want := config.Permissions{Capabilities: []string{"NET_ADMIN", "SYS_MODULE"}, Devices: []string{"/dev/fuse:/dev/fuse:rwm", "/dev/net/tun"}, Sysctls: []string{"net.ipv4.ip_forward=1"}}
+	if !vpn.Wants.Equal(want) {
+		t.Errorf("wants = %+v", vpn.Wants)
+	}
+	if !slices.Equal(vpn.Options.CapDrop, []string{"NET_RAW"}) {
+		t.Errorf("cap_drop only takes away, so it applies straight away: %v", vpn.Options.CapDrop)
+	}
+	if !slices.ContainsFunc(p.Notes, func(n string) bool {
+		return strings.HasPrefix(n, "vpn: asks for the capabilities NET_ADMIN, SYS_MODULE and the devices")
+	}) {
+		t.Errorf("notes = %v", p.Notes)
+	}
+	if len(p.Problems) != 0 {
+		t.Errorf("problems = %v", p.Problems)
 	}
 }

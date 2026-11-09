@@ -23,6 +23,7 @@ import { AISection } from './project/ai-section'
 import { AgentPanel } from './project/agent-panel'
 import { IsolationSection } from './project/isolation-section'
 import { EgressSection } from './project/egress-section'
+import { PermissionsSection } from './project/permissions-section'
 import { VolumesPanel } from './project/volumes-panel'
 import { RegistryPanel } from './project/registry-panel'
 import { DangerZone, SettingsForm } from './project/settings-form'
@@ -458,6 +459,7 @@ export default function ProjectDetailPage() {
           <AISection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <IsolationSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <EgressSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
+          <PermissionsSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <DangerZone name={project.name} onDeleted={() => navigate('/')} />
         </TabsContent>
       </Tabs>

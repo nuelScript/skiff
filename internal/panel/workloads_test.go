@@ -37,10 +37,12 @@ func filled(t *testing.T, v any, special map[string]any) {
 func TestSpecKeepsEveryAppSetting(t *testing.T) {
 	var s Source
 	filled(t, &s, map[string]any{
-		"Port":       "8080",
-		"Origin":     originCLI,
-		"RunOptions": config.EncodeRunOptions(config.RunOptions{User: "app", WorkingDir: "/srv", Init: true}),
-		"Egress":     egress.Policy{Mode: egress.List, Allow: []string{"api.example.com"}}.Encode(),
+		"Port":             "8080",
+		"Origin":           originCLI,
+		"RunOptions":       config.EncodeRunOptions(config.RunOptions{User: "app", WorkingDir: "/srv", Init: true}),
+		"Egress":           egress.Policy{Mode: egress.List, Allow: []string{"api.example.com"}}.Encode(),
+		"Permissions":      config.EncodePermissions(config.Permissions{Capabilities: []string{"NET_ADMIN"}}),
+		"WantsPermissions": config.EncodePermissions(config.Permissions{Devices: []string{"/dev/net/tun"}}),
 	})
 	if got := specSource(sourceSpec(s)); !reflect.DeepEqual(got, s) {
 		t.Errorf("an app lost settings on its way through the spec:\n got %+v\nwant %+v", got, s)
