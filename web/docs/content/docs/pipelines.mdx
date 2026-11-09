@@ -1,0 +1,70 @@
+---
+title: Data pipelines
+description: "Run Airflow, Prefect or Dagster on your server, with a managed Postgres for their state and Skiff's backups behind it. For a few steps on a schedule, a job with steps may be all you need."
+---
+
+## Pick the smallest thing that works
+
+- **A few commands on a schedule:** a [scheduled job](/backends#scheduled-jobs), with retries, a timeout and a history of every run. Give it [steps](/backends#steps) when one part waits for another.
+- **Pipelines in Python with a UI, run history and backfills:** Airflow, Prefect or Dagster, below.
+
+## Airflow and Prefect
+
+Both are [one-click apps](/one-click-apps). Each comes with its own managed Postgres, so its run history is backed up daily like any database.
+
+- **Airflow** keeps its DAGs in `/opt/airflow/dags`, on a volume. Sign in as admin with the password Airflow writes to `/opt/airflow/state/passwords.json`: open the project's Console and `cat` it.
+- **Prefect** is the server and UI. Sign in as admin with the password after `admin:` in `PREFECT_SERVER_API_AUTH_STRING` under **Environment**. Where your flows run, such as a [worker](/backends#the-rest-of-a-backend) on another project, set `PREFECT_API_URL` to the app's address followed by `/api`, and `PREFECT_API_AUTH_STRING` to the same `admin:password`.
+
+## Dagster
+
+Dagster runs your own code, so deploy your Dagster project from its repository. The webserver is the app, the daemon that starts scheduled runs is a worker, and both keep their state in a managed Postgres.
+
+<Steps>
+<Step>
+### Add a Dockerfile, a start script and dagster.yaml
+
+```dockerfile title="Dockerfile"
+FROM python:3.12-slim
+RUN pip install --no-cache-dir dagster==1.13.26 dagster-webserver==1.13.26 dagster-postgres==0.29.26
+ENV DAGSTER_HOME=/opt/dagster
+WORKDIR /app
+COPY dagster.yaml /opt/dagster/
+COPY start.sh defs.py ./
+ENTRYPOINT ["/app/start.sh"]
+CMD ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-m", "defs"]
+```
+
+Dagster's Postgres driver wants an address starting `postgresql://`, so the start script makes one from `DATABASE_URL`. Make it executable (`chmod +x start.sh`) before you commit it.
+
+```sh title="start.sh"
+#!/bin/sh
+export DAGSTER_PG_URL="postgresql://${DATABASE_URL#*://}"
+exec "$@"
+```
+
+```yaml title="dagster.yaml"
+storage:
+  postgres:
+    postgres_url:
+      env: DAGSTER_PG_URL
+```
+
+Here `defs.py` holds your `Definitions`. Use `-f` with a file or `-m` with your own module instead.
+</Step>
+<Step>
+### Create the database and the project
+
+On **Databases**, create a Postgres database. Create the project from your repository with port `3000`, then use **Attach app** on the database to give it `DATABASE_URL`.
+</Step>
+<Step>
+### Add the daemon as a worker
+
+Under **Jobs & workers**, click **Add worker** with the command `dagster-daemon run -m defs`, then redeploy so the app and the worker pick up `DATABASE_URL`. Schedules and sensors start running, and runs execute in the worker's container.
+</Step>
+</Steps>
+
+- **One daemon only.** Keep the worker at one replica: Dagster expects a single daemon.
+- **Run history lives in Postgres,** so it survives deploys and is in the database's backups. Files your assets write to disk are lost when the worker's container is replaced, so give the project a [volume](/volumes), which its worker shares, or write them to a bucket or database.
+- **It has no login.** Dagster's open-source webserver lets anyone with its address view and start runs. If that's not what you want, turn on **Private service** under **Settings → Access**; the daemon keeps running schedules either way.
+
+Skiff's tests deploy this exact setup and wait for a scheduled run to succeed and be recorded in Postgres.

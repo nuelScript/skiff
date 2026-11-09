@@ -16,6 +16,7 @@
     "debugging",
     "---Data---",
     "backups",
+    "pipelines",
     "---Watch---",
     "log-drains",
     "status-pages",
