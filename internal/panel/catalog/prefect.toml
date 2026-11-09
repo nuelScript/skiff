@@ -1,0 +1,17 @@
+name = "Prefect"
+category = "Data"
+blurb = "Schedule and watch Python workflows. The Prefect server and its UI, behind a password, with runs kept in a Postgres database included here."
+image = "prefecthq/prefect:3.9.2-python3.12"
+database = "postgres"
+database_var = "PREFECT_API_DATABASE_CONNECTION_URL"
+port = 4200
+memory = "1 GB"
+timeout = 300
+command = ["prefect", "server", "start"]
+setup = "Sign in as admin with the password after admin: in PREFECT_SERVER_API_AUTH_STRING under Environment. Where your flows run, set PREFECT_API_URL to this app's address followed by /api, and PREFECT_API_AUTH_STRING to the same admin:password."
+
+[env]
+PREFECT_SERVER_API_HOST = "0.0.0.0"
+PREFECT_SERVER_API_AUTH_STRING = "admin:{{secret}}"
+PREFECT_API_DATABASE_CONNECTION_URL = "postgresql+asyncpg://{{db.user}}:{{db.password}}@{{db.host}}:{{db.port}}/{{db.name}}"
+PREFECT_UI_API_URL = "{{url}}/api"

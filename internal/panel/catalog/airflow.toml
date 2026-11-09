@@ -1,0 +1,25 @@
+name = "Airflow"
+category = "Data"
+blurb = "Schedule data pipelines written in Python. All of Airflow in one container, behind a login, with its records in a Postgres database included here."
+image = "apache/airflow:3.4.0-python3.12"
+database = "postgres"
+database_var = "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
+port = 8080
+memory = "2 GB"
+timeout = 600
+command = ["airflow", "standalone"]
+setup = "Sign in as admin. Airflow makes the password when it first starts: open the Console and run cat /opt/airflow/state/passwords.json. Put your DAG files in /opt/airflow/dags, which is kept on a volume."
+
+[[volumes]]
+name = "dags"
+path = "/opt/airflow/dags"
+
+[[volumes]]
+name = "state"
+path = "/opt/airflow/state"
+
+[env]
+AIRFLOW__DATABASE__SQL_ALCHEMY_CONN = "postgresql+psycopg2://{{db.user}}:{{db.password}}@{{db.host}}:{{db.port}}/{{db.name}}"
+AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS = "admin:admin"
+AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE = "/opt/airflow/state/passwords.json"
+AIRFLOW__CORE__LOAD_EXAMPLES = "False"

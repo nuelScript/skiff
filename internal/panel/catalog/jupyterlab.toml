@@ -1,0 +1,15 @@
+name = "JupyterLab"
+category = "Data"
+blurb = "Notebooks in the browser for Python, pandas and DuckDB, kept on a volume. It opens only with its token."
+image = "quay.io/jupyter/minimal-notebook:lab-4.6.5"
+port = 8888
+memory = "1 GB"
+timeout = 180
+setup = "Open it with the token in JUPYTER_TOKEN under Environment. Keep notebooks and data in the work folder, which lasts across deploys; packages added with pip in a notebook last until the next deploy."
+
+[[volumes]]
+name = "work"
+path = "/home/jovyan/work"
+
+[env]
+JUPYTER_TOKEN = "{{secret}}"

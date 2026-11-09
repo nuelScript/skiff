@@ -34,7 +34,9 @@ type recipe struct {
 	Timeout int               `json:"-" toml:"timeout"` // seconds to wait for a first start, which can include migrations
 	Volumes []config.Volume   `json:"-" toml:"volumes"`
 	Env     map[string]string `json:"-" toml:"env"`
-	DBVar   string            `json:"-" toml:"database_var"` // the env var that holds the database connection, to record the attachment
+	// Command replaces the image's own command, for images that serve several roles.
+	Command []string `json:"-" toml:"command"`
+	DBVar   string   `json:"-" toml:"database_var"` // the env var that holds the database connection, to record the attachment
 }
 
 //go:embed catalog/*.toml
@@ -183,6 +185,10 @@ func (p *Panel) installRecipe(rec recipe, name, team string) (string, error) {
 	src := Source{
 		App: name, Team: team, Image: rec.Image, Port: strconv.Itoa(rec.Port),
 		HealthTimeout: rec.Timeout, Catalog: rec.ID,
+	}
+	if len(rec.Command) > 0 {
+		b, _ := json.Marshal(rec.Command)
+		src.Command = string(b)
 	}
 	if err := putSource(src); err != nil {
 		undo()
