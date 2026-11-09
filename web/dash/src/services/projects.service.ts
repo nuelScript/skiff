@@ -79,6 +79,7 @@ export type ProjectDetail = {
   internalUrl: string
   memory: string
   cpu: string
+  gpus: number
   domains: string[]
 }
 
@@ -228,6 +229,17 @@ export type Preview = {
   updated: number
 }
 
+export type ServerGPU = {
+  index: number
+  uuid: string
+  name: string
+  memoryTotal: number
+  memoryUsed: number
+  utilization: number
+  temperature: number
+  app?: string
+}
+
 export type ProjectSettings = {
   branch: string
   rootDir: string
@@ -246,6 +258,7 @@ export type ProjectSettings = {
   image?: string
   memory: string
   cpu: string
+  gpus: number
   private: boolean
   rateLimit: number
 }
@@ -257,6 +270,10 @@ class ProjectsService extends BaseService {
 
   detail(name: string) {
     return this.get<ProjectDetail>('/project', { params: { app: name } })
+  }
+
+  gpus() {
+    return this.get<{ gpus: ServerGPU[]; problem?: string }>('/server/gpus')
   }
 
   update(name: string, settings: ProjectSettings) {

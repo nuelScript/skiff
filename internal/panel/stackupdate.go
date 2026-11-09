@@ -513,7 +513,7 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 			want.RateLimit, want.SleepAfter, want.PreviewAuto, want.Release = old.RateLimit, old.SleepAfter, old.PreviewAuto, old.Release
 			want.Autoscale, want.ScaleMin, want.ScaleMax, want.ScaleCPU = old.Autoscale, old.ScaleMin, old.ScaleMax, old.ScaleCPU
 			// Set in the dashboard, not the file: public ports, isolation, egress, and what the server's admin granted.
-			want.TCPPort, want.UDPPort, want.Isolation, want.Egress, want.Permissions = old.TCPPort, old.UDPPort, old.Isolation, old.Egress, old.Permissions
+			want.TCPPort, want.UDPPort, want.Isolation, want.Egress, want.Permissions, want.GPUs = old.TCPPort, old.UDPPort, old.Isolation, old.Egress, old.Permissions, old.GPUs
 		}
 		if err := putSource(want); err != nil {
 			return err

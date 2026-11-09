@@ -120,8 +120,14 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 		container = apps[src.App].Container
 	}
 	memory, cpu := p.replicaLimits(src, container)
+	// Jobs and one-off runs share the app's GPUs.
+	var gpus []string
+	if src.GPUs > 0 && src.Parent == "" {
+		gpus, _ = docker.PickGPUs(src.App, src.GPUs, p.eng.GPUs(), p.eng.GPUsInUse())
+	}
 	return docker.Settings{
-		Env: env, Network: net, Volumes: p.appMounts(src),
+		GPUs: gpus,
+		Env:  env, Network: net, Volumes: p.appMounts(src),
 		Memory: memory, CPU: cpu, Options: config.DecodeRunOptions(src.RunOptions),
 		OOMScore:    oomScoreFor(src),
 		Runtime:     runtimeFor(src.Isolation),

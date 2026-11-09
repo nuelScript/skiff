@@ -29,7 +29,7 @@ func sourceSpec(s Source) workload.Spec {
 			Port: port, Private: s.Private, RateLimit: s.RateLimit, TCPPort: s.TCPPort, UDPPort: s.UDPPort,
 			HealthPath: s.HealthPath, HealthTimeout: s.HealthTimeout, HealthMode: s.HealthMode,
 		},
-		Use:   workload.Use{Memory: s.Memory, CPU: s.CPU},
+		Use:   workload.Use{Memory: s.Memory, CPU: s.CPU, GPUs: s.GPUs},
 		Touch: workload.Touch{Options: config.DecodeRunOptions(s.RunOptions), Isolation: s.Isolation, Egress: egress.Decode(s.Egress), Permissions: config.DecodePermissions(s.Permissions), Wants: config.DecodePermissions(s.WantsPermissions)},
 		Origin: workload.Origin{
 			CLI: s.Origin == originCLI, Catalog: s.Catalog, Stack: s.Stack, Service: s.Service,
@@ -49,7 +49,7 @@ func specSource(w workload.Spec) Source {
 		ScaleCPU: w.When.ScaleCPU, SleepAfter: w.When.SleepAfter, Auto: w.When.AutoDeploy,
 		Private: w.Reach.Private, RateLimit: w.Reach.RateLimit, TCPPort: w.Reach.TCPPort, UDPPort: w.Reach.UDPPort,
 		HealthPath: w.Reach.HealthPath, HealthTimeout: w.Reach.HealthTimeout, HealthMode: w.Reach.HealthMode,
-		Memory: w.Use.Memory, CPU: w.Use.CPU,
+		Memory: w.Use.Memory, CPU: w.Use.CPU, GPUs: w.Use.GPUs,
 		Catalog: w.Origin.Catalog, Stack: w.Origin.Stack, Service: w.Origin.Service,
 		Parent: w.Origin.Parent, PreviewAuto: w.Origin.PreviewAuto, PreviewData: w.Origin.PreviewData,
 	}

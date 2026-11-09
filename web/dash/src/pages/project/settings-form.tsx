@@ -1,3 +1,5 @@
+import { queryKeys } from '@/constants/query-keys'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -55,6 +57,7 @@ export function SettingsForm({
   maxReplicas = 10,
   memory = '',
   cpu = '',
+  gpus = 0,
   isPrivate = false,
   rateLimit = 0,
   onSaved,
@@ -81,6 +84,7 @@ export function SettingsForm({
   maxReplicas?: number
   memory?: string
   cpu?: string
+  gpus?: number
   isPrivate?: boolean
   rateLimit?: number
   onSaved: () => void
@@ -108,6 +112,7 @@ export function SettingsForm({
       image,
       memory: memory || '',
       cpu: cpu || '',
+      gpus,
       private: isPrivate,
       rateLimit: rateLimit || 0,
     },
@@ -395,6 +400,7 @@ export function SettingsForm({
                 </div>
               </div>
             ))}
+            <GPUChoice value={values.gpus} onChange={(n) => setValue('gpus', n, { shouldDirty: true })} />
           </div>
         )}
         <div className="mt-4 flex items-start justify-between gap-4 rounded-lg border border-foreground/8 p-4">
@@ -538,5 +544,41 @@ export function DangerZone({ name, onDeleted }: { name: string; onDeleted: () =>
         Delete project
       </Button>
     </section>
+  )
+}
+
+// GPUChoice sets how many of the server's GPUs the app gets. It shows only on a server with GPUs, or for an app that already has some.
+function GPUChoice({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const { data } = useQuery({ queryKey: queryKeys.serverGPUs, queryFn: () => projectsService.gpus(), staleTime: 60000 })
+  const count = data?.gpus.length ?? 0
+  if (count === 0 && value === 0) return null
+  const options = [...new Set([0, ...Array.from({ length: Math.min(count, 4) }, (_, i) => i + 1), value])].sort((a, b) => a - b)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm">GPUs</span>
+        <div className="flex rounded-md border border-foreground/12 p-0.5">
+          {options.map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={value === n}
+              onClick={() => onChange(n)}
+              className={
+                'cursor-pointer rounded px-2.5 py-1 font-mono text-[11px] transition-colors ' +
+                (value === n ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground')
+              }
+            >
+              {n === 0 ? 'None' : n}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {data?.problem
+          ? data.problem
+          : `The app's replicas, workers and jobs share them; a deploy says so if not enough are free. Previews don't get any.`}
+      </p>
+    </div>
   )
 }

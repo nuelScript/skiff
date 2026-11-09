@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
@@ -124,7 +125,26 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 		for _, m := range server {
 			m.write(&b)
 		}
+		for _, m := range gpuMetrics(p.eng.GPUs(), p.eng.GPUsInUse()) {
+			m.write(&b)
+		}
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write([]byte(b.String()))
+}
+
+// gpuMetrics reports each GPU's use, memory and temperature, with the app using it.
+func gpuMetrics(gpus []docker.GPU, used map[string]string) []*promMetric {
+	util := &promMetric{name: "skiff_gpu_utilization_percent", help: "How busy the GPU is."}
+	mem := &promMetric{name: "skiff_gpu_memory_used_bytes", help: "GPU memory in use."}
+	total := &promMetric{name: "skiff_gpu_memory_total_bytes", help: "The GPU's memory."}
+	temp := &promMetric{name: "skiff_gpu_temperature_celsius", help: "The GPU's temperature."}
+	for _, g := range gpus {
+		l := fmt.Sprintf(`gpu="%d",name="%s",app="%s"`, g.Index, promLabel(g.Name), promLabel(used[g.UUID]))
+		util.add(l, float64(g.Utilization))
+		mem.add(l, float64(g.MemoryUsed<<20))
+		total.add(l, float64(g.MemoryTotal<<20))
+		temp.add(l, float64(g.Temperature))
+	}
+	return []*promMetric{util, mem, total, temp}
 }

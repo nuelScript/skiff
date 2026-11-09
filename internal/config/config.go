@@ -285,7 +285,12 @@ func ValidateResources(memory, cpu string) error {
 type Resources struct {
 	Memory string `toml:"memory"`
 	CPU    string `toml:"cpu"`
+	// GPUs is how many of the server's NVIDIA GPUs the app gets; its replicas, workers and jobs share them.
+	GPUs int `toml:"gpus"`
 }
+
+// MaxGPUs bounds a gpus setting.
+const MaxGPUs = 16
 
 type Server struct {
 	Host string `toml:"host"`
@@ -352,6 +357,9 @@ func (c *Config) validate() error {
 	}
 	if c.Deploy.OOMScoreAdj < -1000 || c.Deploy.OOMScoreAdj > 1000 {
 		return fmt.Errorf("[deploy] oom_score_adj must be from -1000 to 1000")
+	}
+	if c.Resources.GPUs < 0 || c.Resources.GPUs > MaxGPUs {
+		return fmt.Errorf("[resources] gpus must be from 0 to %d", MaxGPUs)
 	}
 	c.Deploy.Permissions = c.Deploy.Permissions.Normalize()
 	if err := c.Deploy.Permissions.Validate(); err != nil {

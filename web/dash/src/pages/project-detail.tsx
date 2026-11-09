@@ -448,6 +448,7 @@ export default function ProjectDetailPage() {
             rateLimit={project.rateLimit}
             memory={project.memory}
             cpu={project.cpu}
+            gpus={project.gpus}
             onSaved={reload}
             cli={cli}
           />

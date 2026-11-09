@@ -196,6 +196,14 @@ skiff job runs shop-api report       # its recent runs
 
 Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes`. The same actions are in the [API](/api).
 
+## GPUs
+
+On a server with NVIDIA GPUs, an app can have some: choose how many under **Limits per replica** in the project's settings, or set `gpus = 1` under `[resources]` in `skiff.toml`. The **Server** page lists each GPU with how busy it is, its memory and temperature, and which app has it, and `/api/v1/metrics` reports the same.
+
+- **The server needs** NVIDIA's driver and its container toolkit, set up for Docker (`nvidia-ctk runtime configure --runtime=docker`, then restart Docker). Until then, the Server page and the setting say what's missing, and a deploy that asks for GPUs stops with the reason.
+- **An app keeps its GPUs** from one deploy to the next, so the new version starts on the same cards while the old one finishes. Its replicas, workers, jobs and one-off runs share them.
+- **A deploy that needs more than are free** stops before replacing anything, and says which apps have the rest. Previews don't get GPUs.
+
 ## On a small server
 
 - **Before each deploy,** Skiff compares the app's memory limit, times its copies, with what the server has free, and the deploy log warns when it may not fit. With less than 1 GB of disk free, the deploy stops before building, since the build would fail partway.

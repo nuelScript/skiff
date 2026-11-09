@@ -42,6 +42,7 @@ export const queryKeys = {
   aiProviders: ['ai-providers'] as const,
   aiPrices: ['ai-prices'] as const,
   disks: ['disks'] as const,
+  serverGPUs: ['server-gpus'] as const,
   projectAI: (app: string) => ['project-ai', app] as const,
   agent: (app: string) => ['agent', app] as const,
   traces: (app: string) => ['traces', app] as const,

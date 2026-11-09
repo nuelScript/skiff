@@ -281,3 +281,15 @@ func TestVolumeAtSeveralPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestGPUsSetting(t *testing.T) {
+	dir := t.TempDir()
+	for gpus, ok := range map[string]bool{"1": true, "0": true, "-1": false, "17": false} {
+		path := filepath.Join(dir, "skiff.toml")
+		_ = os.WriteFile(path, []byte("name = \"llm\"\n\n[resources]\ngpus = "+gpus+"\n"), 0o644)
+		_, err := Load(path)
+		if (err == nil) != ok {
+			t.Errorf("gpus = %s: %v", gpus, err)
+		}
+	}
+}

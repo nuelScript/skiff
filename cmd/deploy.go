@@ -340,8 +340,22 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		}
 	}
 
+	var gpus []string
+	if cfg.Resources.GPUs > 0 {
+		if err := eng.CanUseGPUs(); err != nil {
+			ui.Fail("This app asks for GPUs")
+			return err
+		}
+		picked, err := docker.PickGPUs(cfg.Name, cfg.Resources.GPUs, eng.GPUs(), eng.GPUsInUse())
+		if err != nil {
+			ui.Fail("Not enough free GPUs")
+			return err
+		}
+		gpus = picked
+	}
+
 	settings := docker.Settings{
-		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, Env: runtimeEnv, Network: network, Volumes: mounts,
+		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, GPUs: gpus, Env: runtimeEnv, Network: network, Volumes: mounts,
 		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime, Labels: map[string]string{egress.Label: cfg.Deploy.EgressPolicy().Encode()}, Permissions: cfg.Deploy.Permissions,
 	}
 
