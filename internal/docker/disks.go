@@ -61,13 +61,16 @@ func (e *Engine) VolumeUsers(name string) []string {
 // CopyTally is what a copy counted on each side: entries and bytes in files.
 type CopyTally struct{ Entries, Bytes int64 }
 
-// tallyScript counts a folder's entries and the bytes in its files, so a copy can be checked before its source goes.
-const tallyScript = `cd "$1" && printf '%s %s\n' "$(find . | wc -l)" "$(find . -type f -exec stat -c %s {} + | awk '{s+=$1} END {print s+0}')"`
+// copyScript copies /from into /to, then counts each side's entries and the bytes in its files, so the copy can be checked before its source goes.
+const copyScript = `set -e
+tally() { cd "$1" && printf '%s %s\n' "$(find . | wc -l)" "$(find . -type f -exec stat -c %s {} + | awk '{s+=$1} END {print s+0}')"; }
+cp -a /from/. /to/
+tally /from
+tally /to`
 
 // CopyVolume copies everything from one place to another, each a volume name or an absolute folder, keeping owners and permissions, and checks the copy has the same entries and bytes.
 func (e *Engine) CopyVolume(ctx context.Context, from, to string) (CopyTally, error) {
-	script := `set -e; cp -a /from/. /to/; sh -c '` + tallyScript + `' - /from; sh -c '` + tallyScript + `' - /to`
-	out, err := e.contextCommand(ctx, "run", "--rm", "-v", from+":/from:ro", "-v", to+":/to", VolumeTool, "sh", "-c", script).CombinedOutput()
+	out, err := e.contextCommand(ctx, "run", "--rm", "-v", from+":/from:ro", "-v", to+":/to", VolumeTool, "sh", "-c", copyScript).CombinedOutput()
 	if err != nil {
 		return CopyTally{}, fmt.Errorf("copying: %s", lastLine(out))
 	}
