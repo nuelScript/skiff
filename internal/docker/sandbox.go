@@ -39,6 +39,7 @@ type SandboxSpec struct {
 	Memory   string
 	CPU      string
 	ShmSize  string // shared memory, which browsers need more of than Docker's 64 MB
+	Runtime  string // another OCI runtime, such as gVisor's
 }
 
 type SandboxResult struct {
@@ -73,6 +74,9 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none"}
 	if spec.ShmSize != "" {
 		args = append(args, "--shm-size", spec.ShmSize)
+	}
+	if spec.Runtime != "" {
+		args = append(args, "--runtime", spec.Runtime)
 	}
 	args = append(args, spec.Image, "sh", "-c", spec.Command)
 	defer func() { _ = e.command("rm", "-f", name).Run() }()

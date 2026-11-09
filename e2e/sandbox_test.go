@@ -110,3 +110,25 @@ with sync_playwright() as p:
 		t.Errorf("exit %d, %d bytes of screenshot, output:\n%s", res.ExitCode, len(png), res.Output)
 	}
 }
+
+// TestSandboxUnderGVisor runs a sandbox with gVisor's runtime, as Skiff does when the server has it: files still go in and out, and the code sees gVisor's kernel.
+func TestSandboxUnderGVisor(t *testing.T) {
+	if out, err := exec.Command("docker", "info", "--format", "{{json .Runtimes}}").Output(); err != nil || !strings.Contains(string(out), `"runsc"`) {
+		t.Skip("gVisor's runsc isn't registered with Docker")
+	}
+	eng := docker.Local()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	t.Cleanup(func() { eng.RemoveSandboxes("e2e-gvisor") })
+	res, err := eng.Sandbox(ctx, docker.SandboxSpec{
+		App: "e2e-gvisor", Image: "python:3.12-alpine", Memory: "256m", CPU: "1", Runtime: docker.SandboxRuntime,
+		Command: "dmesg | head -3; cat in.txt > out.txt",
+		Files:   map[string][]byte{"in.txt": []byte("through gVisor\n")},
+	})
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("%v exit %d\n%s", err, res.ExitCode, res.Output)
+	}
+	if !strings.Contains(res.Output, "gVisor") || string(res.Files["out.txt"]) != "through gVisor\n" {
+		t.Errorf("output:\n%s\nfiles: %v", res.Output, keys(res.Files))
+	}
+}

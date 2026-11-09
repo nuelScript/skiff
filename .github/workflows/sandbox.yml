@@ -11,6 +11,9 @@ on:
       - "internal/panel/isolation.go"
       - "internal/docker/run.go"
       - "e2e/isolation_test.go"
+      - "e2e/sandbox_test.go"
+      - "internal/docker/sandbox.go"
+      - "internal/panel/sandboxes.go"
       - ".github/workflows/sandbox.yml"
 
 permissions:
@@ -35,4 +38,4 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{json .Runtimes}}' | grep -q runsc
       - name: strong isolation
-        run: go test -tags e2e -count=1 -timeout 15m -v -run '^TestStrongIsolation$' ./e2e/...
+        run: go test -tags e2e -count=1 -timeout 15m -v -run '^(TestStrongIsolation|TestSandboxUnderGVisor)$' ./e2e/...

@@ -62,7 +62,7 @@ A sandbox:
 
 - Starts from `python:3.12-alpine` unless you name another image.
 - Has no network at all unless the request sets `"internet": true`, and even then it never joins your apps' network, so it can't reach your databases.
-- Runs with no Linux capabilities, 512 MB of memory, one CPU and at most 256 processes.
+- Runs with no Linux capabilities, 512 MB of memory, one CPU and at most 256 processes, and under gVisor when the server has it installed, so the code talks to gVisor's kernel rather than the server's.
 - Stops after two minutes, or the `timeout` you give in seconds, up to fifteen.
 - Hands back up to 16 MB of files, 8 MB each; `skipped` lists any left out. Output is cut at 256 KB.
 
