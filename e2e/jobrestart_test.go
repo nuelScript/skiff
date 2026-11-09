@@ -3,9 +3,6 @@
 package e2e
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/hooksig"
 )
 
 // TestJobRunsSurviveRestart kills the panel mid-run: a run still going is followed to its end, and one whose container died too is tried again and resumes from its checkpoint on a volume.
@@ -109,10 +108,8 @@ timeout = "20m"
 	}
 	for _, name := range []string{"long", "resume"} {
 		j := byName[name]
-		mac := hmac.New(sha256.New, []byte(j.WebhookSecret))
-		mac.Write([]byte("{}"))
 		req, _ := http.NewRequest(http.MethodPost, base+"/api/hooks/jobs/"+j.ID, strings.NewReader("{}"))
-		req.Header.Set("X-Skiff-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		hooksig.Set(req.Header, j.WebhookSecret, []byte("{}"))
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)

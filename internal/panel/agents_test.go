@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/hooksig"
 )
 
 func newTestAgent(t *testing.T, app string) aiApp {
@@ -184,11 +186,9 @@ func TestAgentMailDestinations(t *testing.T) {
 
 	// The router's delivery arrives as an email event.
 	body := `{"from":"ada@example.com","subject":"hi","text":"hello"}`
-	mac := hmac.New(sha256.New, []byte(ag.hookSecret))
-	mac.Write([]byte(body))
 	r := httptest.NewRequest(http.MethodPost, "/api/hooks/agents/bot", strings.NewReader(body))
 	r.SetPathValue("app", "bot")
-	r.Header.Set("X-Skiff-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	hooksig.Set(r.Header, ag.hookSecret, []byte(body))
 	r.Header.Set("X-Skiff-Source", "email")
 	r.Header.Set("X-Skiff-Event", "email")
 	w := httptest.NewRecorder()

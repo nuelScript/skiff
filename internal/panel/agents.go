@@ -209,8 +209,7 @@ func (p *Panel) handleAgentHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the body is over 64 KB", http.StatusRequestEntityTooLarge)
 		return
 	}
-	if !signedBy(r, body, a.hookSecret) {
-		http.Error(w, "the signature doesn't match", http.StatusUnauthorized)
+	if hookAnswer(w, checkHook(r, body, a.hookSecret)) {
 		return
 	}
 	source, kind := "webhook", r.Header.Get("X-Skiff-Event")
