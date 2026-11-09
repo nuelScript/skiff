@@ -40,7 +40,9 @@ type dbEngine struct {
 	countNoun string
 	// offlineRestore engines can't load a dump while running, see restoreRedis.
 	offlineRestore bool
-	tls            *dbTLS
+	// lazy engines' images are large and less used, so they're pulled when someone creates one, not ahead of time.
+	lazy bool
+	tls  *dbTLS
 }
 
 type dbTLS struct {
@@ -222,7 +224,66 @@ var dbEngines = map[string]dbEngine{
 			return []string{"sh", "-c", redisAuth(pass) + "exec redis-cli --no-auth-warning info keyspace"}
 		},
 	},
+	"clickhouse": {
+		image: "clickhouse/clickhouse-server:26.8", port: 8123, mountAt: "/var/lib/clickhouse", lazy: true,
+		envVar: "CLICKHOUSE_URL", label: "ClickHouse", user: "skiff", hasDB: true,
+		container: func(user, pass, dbname string) (map[string]string, []string) {
+			return map[string]string{"CLICKHOUSE_USER": user, "CLICKHOUSE_PASSWORD": pass, "CLICKHOUSE_DB": dbname, "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT": "1"}, nil
+		},
+		url: func(host string, port int, user, pass, dbname string, _ bool) string {
+			// The HTTP interface, which ClickHouse's own clients for Python, JavaScript and Go all speak.
+			return fmt.Sprintf("http://%s:%s@%s:%d/%s", user, pass, host, port, dbname)
+		},
+		shell: func(user, pass, dbname string) []string {
+			return []string{"clickhouse-client", "--user", user, "--password", pass, "--database", dbname}
+		},
+		backupExt: ".tar",
+		dumpCmd: func(user, pass, dbname string) []string {
+			return []string{"bash", "-c", clickhouseDump, "dump", user, pass, dbname}
+		},
+		restoreCmd: func(user, pass, dbname string) []string {
+			return []string{"bash", "-c", clickhouseRestore, "restore", user, pass, dbname}
+		},
+		countNoun: "table",
+		countCmd: func(user, pass, dbname string) []string {
+			return []string{"clickhouse-client", "--user", user, "--password", pass, "-q",
+				"SELECT count() FROM system.tables WHERE database = currentDatabase()", "--database", dbname}
+		},
+	},
 }
+
+// clickhouseDump writes a database as a tar: each table's definition and its rows in ClickHouse's Native format, and each view's definition, which is restored after the tables it reads.
+const clickhouseDump = `set -euo pipefail
+ch() { clickhouse-client --user "$1" --password "$2" --database "$3" "${@:4}"; }
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT; cd "$work"
+ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND NOT engine LIKE '%View' ORDER BY name" > tables
+ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND engine LIKE '%View' ORDER BY name" > views
+while IFS= read -r t; do
+  ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$t\` + "`" + `" --format TSVRaw > "$t.table.sql"
+  ch "$@" -q "SELECT * FROM \` + "`" + `$t\` + "`" + ` FORMAT Native" > "$t.native"
+done < tables
+while IFS= read -r v; do
+  ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$v\` + "`" + `" --format TSVRaw > "$v.view.sql"
+done < views
+tar cf - .`
+
+// clickhouseRestore empties the database and loads a dump from clickhouseDump, so a restore returns it to the backup rather than merging.
+const clickhouseRestore = `set -euo pipefail
+ch() { clickhouse-client --user "$1" --password "$2" --database "$3" "${@:4}"; }
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT; cd "$work"
+tar xf -
+clickhouse-client --user "$1" --password "$2" -q "CREATE DATABASE IF NOT EXISTS \` + "`" + `$3\` + "`" + `"
+for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY engine LIKE '%View' DESC"); do
+  ch "$@" -q "DROP TABLE \` + "`" + `$t\` + "`" + ` SYNC"
+done
+while IFS= read -r t; do
+  ch "$@" --multiquery < "$t.table.sql"
+  # An empty table dumps to an empty file, which ClickHouse won't take as an insert.
+  if [ -s "$t.native" ]; then ch "$@" -q "INSERT INTO \` + "`" + `$t\` + "`" + ` FORMAT Native" < "$t.native"; fi
+done < tables
+while IFS= read -r v; do
+  ch "$@" --multiquery < "$v.view.sql"
+done < views`
 
 type Database struct {
 	ID        string   `json:"id"`
@@ -427,7 +488,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 func (p *Panel) prewarmDatabaseImages() {
 	imgs := make([]string, 0, len(dbEngines))
 	for _, e := range dbEngines {
-		imgs = append(imgs, e.image)
+		if !e.lazy {
+			imgs = append(imgs, e.image)
+		}
 	}
 	p.prewarmImages(imgs...)
 }

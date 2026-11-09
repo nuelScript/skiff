@@ -221,7 +221,7 @@ func resourceTools(c *apiClient) []mcp.Tool {
 			Name: "create_database", Description: "Create a managed database with daily backups. Attach it to a project to give the project its address.",
 			InputSchema: schema(map[string]any{
 				"database": databaseProp,
-				"engine":   map[string]any{"type": "string", "enum": []string{"postgres", "pgvector", "mysql", "mongodb", "redis"}},
+				"engine":   map[string]any{"type": "string", "enum": []string{"postgres", "pgvector", "mysql", "mongodb", "redis", "clickhouse"}},
 			}, "database", "engine"),
 			Run: func(args map[string]any) (string, error) {
 				return call(http.MethodPost, "/databases", map[string]string{"name": str(args, "database"), "engine": str(args, "engine")}, "")

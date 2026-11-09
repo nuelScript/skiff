@@ -425,6 +425,9 @@ func (p *Panel) waitDatabaseReady(ctx context.Context, d dbRow) error {
 		cmd = []string{"sh", "-c", "grep -qa '^mongod' /proc/1/cmdline && mongosh --quiet --host 127.0.0.1 --eval 'db.runCommand({ping:1})'"}
 	case "redis":
 		return p.waitRedis(ctx, d)
+	case "clickhouse":
+		// Its start script creates the database on a temporary server first; ready means the real server is the container's main process and the database answers.
+		cmd = []string{"sh", "-c", fmt.Sprintf("grep -qa clickhouse-server /proc/1/cmdline && clickhouse-client --user '%s' --password '%s' --database '%s' -q 'SELECT 1'", d.Username, d.Password, d.DBName)}
 	default:
 		return nil
 	}

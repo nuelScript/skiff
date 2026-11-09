@@ -48,6 +48,7 @@ const ENGINES: { value: NewDbEngine; label: string; dot: string; accent: string 
   { value: 'mysql', label: 'MySQL', dot: 'bg-warning', accent: 'text-warning' },
   { value: 'mongodb', label: 'MongoDB', dot: 'bg-success', accent: 'text-success' },
   { value: 'redis', label: 'Redis', dot: 'bg-danger', accent: 'text-danger' },
+  { value: 'clickhouse', label: 'ClickHouse', dot: 'bg-warning', accent: 'text-warning' },
 ]
 
 const engineMeta = (e: string) => ENGINES.find((x) => x.value === e) ?? ENGINES[0]
