@@ -444,7 +444,7 @@ printf '%%b' %q >> postgresql.auto.conf; chown postgres:postgres postgresql.auto
 	}
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: scratch.Container, Image: d.image(), Network: "none",
-		Volume: volume, MountAt: e.mountAt, Env: env, Cmd: cmd,
+		Volume: volume, MountAt: e.mountAt, Env: env, Cmd: cmd, TunePostgres: tunesPostgres(d),
 		Binds:  []string{pitrVolume(d) + ":" + pitrMount + ":ro"},
 		Labels: map[string]string{"skiff.kind": recoveryCopyKind, "skiff.db": d.ID, "skiff.team": d.Team},
 	}); err != nil {

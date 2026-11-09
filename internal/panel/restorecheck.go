@@ -188,7 +188,7 @@ func (p *Panel) checkBackup(d dbRow, b backupRow) restoreResult {
 	}
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: scratch.Container, Image: d.image(), Network: "none",
-		Volume: scratch.Volume, MountAt: e.mountAt, Env: env, Cmd: cmd,
+		Volume: scratch.Volume, MountAt: e.mountAt, Env: env, Cmd: cmd, TunePostgres: tunesPostgres(d),
 		Memory: strconv.FormatInt(memory, 10),
 		Labels: map[string]string{"skiff.kind": "restore-check", "skiff.db": d.ID, "skiff.team": d.Team},
 	}); err != nil {

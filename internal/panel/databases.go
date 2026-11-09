@@ -481,7 +481,8 @@ func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: container, Image: cmp.Or(image, e.image), Network: net,
 		Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
-		Labels: map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": team},
+		TunePostgres: engine == "postgres",
+		Labels:       map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": team},
 	}); err != nil {
 		return dbRow{}, err
 	}
@@ -699,6 +700,7 @@ func (p *Panel) runDatabaseContainer(d dbRow, on bool) (int, error) {
 		return 0, err
 	}
 	spec.Cmd, spec.Binds = pitrCmd, append(spec.Binds, pitrBinds...)
+	spec.TunePostgres = tunesPostgres(d)
 	port, err := p.eng.RunDatabase(spec)
 	if err != nil {
 		return 0, err
@@ -753,4 +755,9 @@ func (p *Panel) handleDBShell(w http.ResponseWriter, r *http.Request) {
 	e := dbEngines[d.Engine]
 	p.audit(r, "database.shell", d.Name, d.Engine)
 	p.serveContainerShell(w, r, d.Container, e.shell(d.Username, d.Password, d.DBName))
+}
+
+// tunesPostgres is whether Skiff sizes a database's Postgres settings: its own Postgres, plain or with pgvector, not one adopted from outside with a setup of its own.
+func tunesPostgres(d dbRow) bool {
+	return d.Engine == "postgres" && (d.Image == "" || d.Image == pgvectorImage)
 }

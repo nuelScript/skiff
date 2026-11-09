@@ -70,7 +70,7 @@ func (p *Panel) recreateDatabase(d dbRow) error {
 	}
 	_, err = p.eng.RunDatabase(docker.DBRunSpec{
 		Name: d.Container, Image: d.image(), Network: net,
-		Volume: d.volume(), MountAt: e.mountAt, Env: env, Cmd: pitrCmd, Binds: pitrBinds, Aliases: d.aliases(),
+		Volume: d.volume(), MountAt: e.mountAt, Env: env, Cmd: pitrCmd, Binds: pitrBinds, Aliases: d.aliases(), TunePostgres: tunesPostgres(d),
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": d.ID, "skiff.team": d.Team},
 	})
 	if err != nil {
