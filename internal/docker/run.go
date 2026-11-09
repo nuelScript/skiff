@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
@@ -21,6 +22,8 @@ type Settings struct {
 	Options config.RunOptions
 	// OOMScore decides who the kernel stops first when memory runs out: higher goes first.
 	OOMScore int
+	// Runtime runs the container under another OCI runtime, such as runsc for gVisor's stronger sandbox.
+	Runtime string
 }
 
 // settingsArgs is the one place Settings become docker flags, so a limit or start setting means the same for an app, its workers, its jobs and its release command.
@@ -36,6 +39,9 @@ func (e *Engine) settingsArgs(s Settings) []string {
 	args = append(args, mountArgs(s.Volumes)...)
 	if s.OOMScore != 0 {
 		args = append(args, "--oom-score-adj", strconv.Itoa(s.OOMScore))
+	}
+	if s.Runtime != "" {
+		args = append(args, "--runtime", s.Runtime)
 	}
 	for _, k := range sortedKeys(s.Env) {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, s.Env[k]))
@@ -255,4 +261,17 @@ func (e *Engine) BridgeGateway() string {
 		}
 	}
 	return ""
+}
+
+// SandboxRuntime is gVisor's runtime, which runs a container against its own kernel in user space, so code in it doesn't talk to the server's kernel directly.
+const SandboxRuntime = "runsc"
+
+// HasRuntime reports whether Docker on this server knows a runtime, such as gVisor's.
+func (e *Engine) HasRuntime(name string) bool {
+	out, err := e.command("info", "--format", "{{json .Runtimes}}").Output()
+	if err != nil {
+		return false
+	}
+	var runtimes map[string]json.RawMessage
+	return json.Unmarshal(out, &runtimes) == nil && runtimes[name] != nil
 }

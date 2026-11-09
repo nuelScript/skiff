@@ -329,6 +329,14 @@ class ProjectsService extends BaseService {
     return this.delete('/project/access-tokens', { params: { app, id } })
   }
 
+  isolation(app: string) {
+    return this.get<{ isolation: '' | 'strong'; available: boolean }>('/project/isolation', { params: { app } })
+  }
+
+  setIsolation(app: string, isolation: '' | 'strong') {
+    return this.put('/project/isolation', { isolation }, { params: { app } })
+  }
+
   udpPort(app: string) {
     return this.get<{ port: number; lowPorts: boolean }>('/project/udp-port', { params: { app } })
   }

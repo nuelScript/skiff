@@ -64,8 +64,10 @@ except OSError:
 	if _, err := eng.Sandbox(short, spec); err == nil {
 		t.Error("a sandbox past its time should fail")
 	}
-	if out, _ := exec.Command("docker", "ps", "-aq", "--filter", "label="+docker.SandboxLabel+"=e2e-sbx").Output(); strings.TrimSpace(string(out)) != "" {
-		t.Errorf("sandboxes left behind: %s", out)
+	for _, kind := range [][]string{{"ps", "-aq"}, {"volume", "ls", "-q"}} {
+		if out, _ := exec.Command("docker", append(kind, "--filter", "label="+docker.SandboxLabel+"=e2e-sbx")...).Output(); strings.TrimSpace(string(out)) != "" {
+			t.Errorf("sandboxes left behind (%s): %s", kind[0], out)
+		}
 	}
 }
 
@@ -108,5 +110,27 @@ with sync_playwright() as p:
 	png := res.Files["shot.png"]
 	if res.ExitCode != 0 || !strings.Contains(res.Output, "title text: hello from a sandbox") || len(png) < 100 || string(png[1:4]) != "PNG" {
 		t.Errorf("exit %d, %d bytes of screenshot, output:\n%s", res.ExitCode, len(png), res.Output)
+	}
+}
+
+// TestSandboxUnderGVisor runs a sandbox with gVisor's runtime, as Skiff does when the server has it: files still go in and out, and the code sees gVisor's kernel.
+func TestSandboxUnderGVisor(t *testing.T) {
+	if out, err := exec.Command("docker", "info", "--format", "{{json .Runtimes}}").Output(); err != nil || !strings.Contains(string(out), `"runsc"`) {
+		t.Skip("gVisor's runsc isn't registered with Docker")
+	}
+	eng := docker.Local()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	t.Cleanup(func() { eng.RemoveSandboxes("e2e-gvisor") })
+	res, err := eng.Sandbox(ctx, docker.SandboxSpec{
+		App: "e2e-gvisor", Image: "python:3.12-alpine", Memory: "256m", CPU: "1", Runtime: docker.SandboxRuntime,
+		Command: "dmesg | head -3; cat in.txt > out.txt",
+		Files:   map[string][]byte{"in.txt": []byte("through gVisor\n")},
+	})
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("%v exit %d\n%s", err, res.ExitCode, res.Output)
+	}
+	if !strings.Contains(res.Output, "gVisor") || string(res.Files["out.txt"]) != "through gVisor\n" {
+		t.Errorf("output:\n%s\nfiles: %v", res.Output, keys(res.Files))
 	}
 }

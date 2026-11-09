@@ -76,7 +76,7 @@ Run a command once in a fresh container from the app's latest build, with its en
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| POST | `/apps/{name}/runs` | Start a run and answer straight away with its id. Send \{"command": "npm run migrate"\}, and optionally `timeout` in seconds (60 to 86400, default 1800). |
+| POST | `/apps/{name}/runs` | Start a run and answer straight away with its id. Send \{"command": "npm run migrate"\}, and optionally `timeout` in seconds (60 to 86400, default 1800), and `isolation`: `"strong"` to run it under gVisor's sandbox. |
 | GET | `/apps/{name}/runs/{id}/logs` | Its output as plain text, streamed as it comes until the run ends. |
 | GET | `/apps/{name}/runs/{id}` | The run: its command, status (`running`, `ok`, `failed`, `timeout`), exit code and the end of its output. |
 | GET | `/apps/{name}/runs` | The app's last 100 runs, newest first. |

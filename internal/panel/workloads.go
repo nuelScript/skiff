@@ -29,7 +29,7 @@ func sourceSpec(s Source) workload.Spec {
 			HealthPath: s.HealthPath, HealthTimeout: s.HealthTimeout, HealthMode: s.HealthMode,
 		},
 		Use:   workload.Use{Memory: s.Memory, CPU: s.CPU},
-		Touch: workload.Touch{Options: config.DecodeRunOptions(s.RunOptions)},
+		Touch: workload.Touch{Options: config.DecodeRunOptions(s.RunOptions), Isolation: s.Isolation},
 		Origin: workload.Origin{
 			CLI: s.Origin == originCLI, Catalog: s.Catalog, Stack: s.Stack, Service: s.Service,
 			Parent: s.Parent, PreviewAuto: s.PreviewAuto, PreviewData: s.PreviewData,
@@ -58,6 +58,7 @@ func specSource(w workload.Spec) Source {
 	if w.Origin.CLI {
 		s.Origin = originCLI
 	}
+	s.Isolation = w.Touch.Isolation
 	if !w.Touch.Options.IsZero() {
 		s.RunOptions = config.EncodeRunOptions(w.Touch.Options)
 	}

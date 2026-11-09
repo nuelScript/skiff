@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 const (
@@ -79,7 +81,7 @@ type OneOffRun struct {
 }
 
 // startOneOff runs command once in a container from the app's latest build.
-func (p *Panel) startOneOff(src Source, command string, timeout time.Duration) (int64, error) {
+func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, strong bool) (int64, error) {
 	image := "skiff-" + src.App + ":latest"
 	if !p.eng.ImageExists(image) {
 		return 0, errors.New("deploy the app before running commands on it")
@@ -107,6 +109,9 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration) (
 		defer cancel()
 		settings := p.appSettings(src)
 		settings.OOMScore = max(settings.OOMScore, oomOneOff)
+		if strong {
+			settings.Runtime = docker.SandboxRuntime
+		}
 		err := p.eng.RunStream(ctx, image, command, settings, live)
 		status, code := runOK, 0
 		switch {
@@ -174,8 +179,9 @@ func (p *Panel) apiStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Command string `json:"command"`
-		Timeout int    `json:"timeout"`
+		Command   string `json:"command"`
+		Timeout   int    `json:"timeout"`
+		Isolation string `json:"isolation"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body) != nil || strings.TrimSpace(body.Command) == "" {
 		apiErr(w, http.StatusBadRequest, "a command is required")
@@ -185,11 +191,16 @@ func (p *Panel) apiStartRun(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, problem)
 		return
 	}
+	strong := body.Isolation == "strong" || src.Isolation == "strong"
+	if strong && !p.eng.HasRuntime(docker.SandboxRuntime) {
+		apiErr(w, http.StatusBadRequest, "strong isolation needs gVisor installed on the server first")
+		return
+	}
 	timeout := time.Duration(body.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = defaultJobTimeout * time.Second
 	}
-	id, err := p.startOneOff(src, body.Command, timeout)
+	id, err := p.startOneOff(src, body.Command, timeout, strong)
 	if err != nil {
 		code := http.StatusBadRequest
 		if strings.Contains(err.Error(), "runs going") {

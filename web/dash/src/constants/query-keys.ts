@@ -45,6 +45,7 @@ export const queryKeys = {
   traces: (app: string) => ['traces', app] as const,
   approvals: (app: string) => ['approvals', app] as const,
   trace: (app: string, id: string) => ['traces', app, id] as const,
+  isolation: (app: string) => ['isolation', app] as const,
   previewData: (app: string) => ['preview-data', app] as const,
   volumes: (app: string) => ['volumes', app] as const,
   volumeBackups: (app: string, volume: string) => ['volume-backups', app, volume] as const,

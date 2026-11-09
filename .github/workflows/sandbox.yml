@@ -1,0 +1,41 @@
+name: sandbox
+
+# Installs gVisor on a fresh runner and checks strong isolation works and what it costs. Runs when the sandbox code changes, and weekly.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "internal/panel/isolation.go"
+      - "internal/docker/run.go"
+      - "e2e/isolation_test.go"
+      - "e2e/sandbox_test.go"
+      - "internal/docker/sandbox.go"
+      - "internal/panel/sandboxes.go"
+      - ".github/workflows/sandbox.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gvisor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: install gVisor
+        run: |
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list
+          sudo apt-get update -q && sudo apt-get install -y -q runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}' | grep -q runsc
+      - name: strong isolation
+        run: go test -tags e2e -count=1 -timeout 15m -v -run '^(TestStrongIsolation|TestSandboxUnderGVisor)$' ./e2e/...

@@ -81,6 +81,7 @@ command = "node report.js"
 | `aliases` | none | Extra names other services on the network can reach the app by. |
 | `command` | the image's | A list that replaces the image's default command, like `["node", "server.js"]`. |
 | `udp_port` | none | A UDP port the app listens on, published so the router can forward it. Open it to the internet as a **Public UDP port** in the project's Settings. |
+| `isolation` | standard | `"strong"` runs the app under gVisor's sandbox, for code you don't fully trust. See [isolation](/backends#isolation). |
 
 ## [resources]
 

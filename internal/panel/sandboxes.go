@@ -151,6 +151,10 @@ func (p *Panel) runSandbox(w http.ResponseWriter, r *http.Request, a aiApp) {
 	stop := context.AfterFunc(r.Context(), cancel)
 	defer stop()
 
+	// Code an agent wrote gets gVisor's kernel instead of the server's, when the server has it.
+	if p.eng.HasRuntime(docker.SandboxRuntime) {
+		spec.Runtime = docker.SandboxRuntime
+	}
 	started := time.Now()
 	if spec.Image == docker.BrowserImage {
 		// The first browser sandbox on a server builds the image; that wait isn't the sandbox's own time.

@@ -91,6 +91,8 @@ type Use struct {
 // Touch is what it can touch beyond its environment: how its container starts.
 type Touch struct {
 	Options config.RunOptions `json:"options,omitzero"`
+	// Isolation is "strong" when it runs under gVisor's sandbox.
+	Isolation string `json:"isolation,omitempty"`
 }
 
 // Origin is where it came from, which decides who may change it.

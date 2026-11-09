@@ -21,6 +21,7 @@ import { UDPPortSection } from './project/udp-port-section'
 import { AccessTokensSection } from './project/access-tokens-section'
 import { AISection } from './project/ai-section'
 import { AgentPanel } from './project/agent-panel'
+import { IsolationSection } from './project/isolation-section'
 import { VolumesPanel } from './project/volumes-panel'
 import { RegistryPanel } from './project/registry-panel'
 import { DangerZone, SettingsForm } from './project/settings-form'
@@ -454,6 +455,7 @@ export default function ProjectDetailPage() {
           <TCPPortSection app={project.name} />
           <UDPPortSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <AISection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
+          <IsolationSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <DangerZone name={project.name} onDeleted={() => navigate('/')} />
         </TabsContent>
       </Tabs>
