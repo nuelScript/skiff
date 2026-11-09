@@ -48,18 +48,6 @@ func TestCatalog(t *testing.T) {
 		}
 		t.Run(id, func(t *testing.T) {
 			name := "cat-" + id
-			t.Cleanup(func() {
-				post(t, c, base+"/api/down?app="+name, "")
-				var dbs []struct{ ID, Name string }
-				getJSON(t, c, base+"/api/databases", &dbs)
-				for _, d := range dbs {
-					req, _ := http.NewRequest(http.MethodDelete, base+"/api/databases?id="+d.ID, nil)
-					if resp, err := c.Do(req); err == nil {
-						resp.Body.Close()
-					}
-				}
-				_ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+name+") ; docker volume rm -f $(docker volume ls -q --filter label=skiff.volume.app="+name+")").Run()
-			})
 			if needsGPU(t, id) {
 				// The runners have no GPU, so the install has to refuse with the reason before creating anything.
 				resp, err := c.Post(base+"/api/catalog", "application/json", strings.NewReader(`{"id":"`+id+`","name":"`+name+`"}`))
@@ -80,6 +68,18 @@ func TestCatalog(t *testing.T) {
 				}
 				return
 			}
+			t.Cleanup(func() {
+				post(t, c, base+"/api/down?app="+name, "")
+				var dbs []struct{ ID, Name string }
+				getJSON(t, c, base+"/api/databases", &dbs)
+				for _, d := range dbs {
+					req, _ := http.NewRequest(http.MethodDelete, base+"/api/databases?id="+d.ID, nil)
+					if resp, err := c.Do(req); err == nil {
+						resp.Body.Close()
+					}
+				}
+				_ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+name+") ; docker volume rm -f $(docker volume ls -q --filter label=skiff.volume.app="+name+")").Run()
+			})
 			var created struct{ App, ID string }
 			postJSON(t, c, base+"/api/catalog", `{"id":"`+id+`","name":"`+name+`"}`, &created)
 			if ok, log := streamResult(t, c, base+"/api/deploys/log?app="+name+"&id="+created.ID); !ok {
