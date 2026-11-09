@@ -71,7 +71,12 @@ func (p *Panel) collectGarbage() gcReport {
 	if err := p.eng.PruneDanglingImages(); err != nil {
 		log.Printf("skiff: pruning dangling images: %v", err)
 	}
-	if err := p.eng.PruneBuildCache(buildCacheAge); err != nil {
+	// Nearly full, all build cache goes: it only makes the next build faster.
+	age := buildCacheAge
+	if d := diskUsage(); d.Total > 0 && d.Used*100/d.Total >= diskCriticalAt {
+		age = 0
+	}
+	if err := p.eng.PruneBuildCache(age); err != nil {
 		log.Printf("skiff: pruning build cache: %v", err)
 	}
 
@@ -91,6 +96,8 @@ func (p *Panel) gcLoop() {
 			recordDiskSample(time.Now())
 			removeUnlistedBackups(time.Now())
 			d := diskUsage()
+			checkDisk(d)
+			p.checkVolumeBudgets()
 			pressure := d.Total > 0 && float64(d.Used)/float64(d.Total) >= gcDiskPressure
 			if time.Since(last) < gcInterval && !pressure {
 				return

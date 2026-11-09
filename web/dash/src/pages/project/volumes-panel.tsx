@@ -27,6 +27,24 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
   const pending = volumes.some((v) => !v.attached)
   const [adding, setAdding] = useState(false)
   const [backups, setBackups] = useState('')
+  const [budgetFor, setBudgetFor] = useState('')
+  const [budgetGB, setBudgetGB] = useState('')
+
+  const saveBudget = async (name: string) => {
+    setServerError('')
+    const gb = budgetGB.trim() === '' ? 0 : Number(budgetGB)
+    if (!Number.isFinite(gb) || gb < 0) {
+      setServerError('Use a size in GB, or leave it empty for no budget.')
+      return
+    }
+    try {
+      await projectsService.setVolumeBudget(app, name, Math.round(gb * 1024 ** 3))
+      setBudgetFor('')
+      reload()
+    } catch (err) {
+      setServerError(errText(err, 'Could not set the budget.'))
+    }
+  }
   const [serverError, setServerError] = useState('')
   const reload = () => qc.invalidateQueries({ queryKey: queryKeys.volumes(app) })
 
@@ -149,10 +167,44 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                   <p className="truncate text-sm font-medium">{v.name}</p>
                   <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">{v.path}</p>
                 </div>
-                {v.attached ? (
-                  <span className="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums">
+                {budgetFor === v.name ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void saveBudget(v.name)
+                    }}
+                    className="flex shrink-0 items-center gap-1.5"
+                  >
+                    <Input
+                      autoFocus
+                      aria-label={`Budget for ${v.name} in GB`}
+                      inputMode="decimal"
+                      placeholder="GB"
+                      className="h-7 w-20 font-mono text-xs"
+                      value={budgetGB}
+                      onChange={(e) => setBudgetGB(e.target.value)}
+                    />
+                    <Button size="sm" type="submit" variant="outline">
+                      Save
+                    </Button>
+                  </form>
+                ) : v.attached ? (
+                  <button
+                    type="button"
+                    title={editable ? 'Set a size budget' : undefined}
+                    disabled={!editable}
+                    onClick={() => {
+                      setBudgetFor(v.name)
+                      setBudgetGB(v.budget ? String(+(v.budget / 1024 ** 3).toFixed(2)) : '')
+                    }}
+                    className={
+                      'shrink-0 cursor-pointer font-mono text-[11px] tabular-nums disabled:cursor-default ' +
+                      (v.budget && v.size > v.budget ? 'text-danger' : 'text-muted-foreground hover:text-foreground')
+                    }
+                  >
                     {fmtBytes(v.size)}
-                  </span>
+                    {v.budget ? ` of ${fmtBytes(v.budget)}` : editable ? ' · set budget' : ''}
+                  </button>
                 ) : (
                   <span className="shrink-0 text-[11px] text-warning">Not mounted yet</span>
                 )}

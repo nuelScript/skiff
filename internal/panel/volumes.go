@@ -2,6 +2,7 @@ package panel
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -149,6 +150,8 @@ type volumeView struct {
 	Path     string `json:"path"`
 	Size     int64  `json:"size"`
 	Attached bool   `json:"attached"`
+	// Budget is the size, in bytes, past which the team hears about it; 0 means none.
+	Budget int64 `json:"budget"`
 }
 
 // volumeKind says who sets an app's volumes: the dashboard for a project, skiff.toml for a CLI app, the parent project for a preview.
@@ -176,12 +179,14 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 		mounted[v.Name+"\x00"+v.Path] = true
 	}
 	sizes := p.volumeSizes()
+	budgets := volumeBudgets(src.App)
 	out := []volumeView{}
 	for _, v := range p.volumeDefs(src) {
 		out = append(out, volumeView{
 			Name: v.Name, Path: v.Path,
 			Size:     sizes[v.DockerName(src.App)],
 			Attached: mounted[v.Name+"\x00"+v.Path] || v.Owner != "",
+			Budget:   budgets[v.Name],
 		})
 	}
 	return out
@@ -230,6 +235,23 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 		p.audit(r, "volume.add", app, v.Name+" → "+v.Path)
 		w.WriteHeader(http.StatusCreated)
 
+	case http.MethodPut:
+		var body struct {
+			Name   string `json:"name"`
+			Budget int64  `json:"budget"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body) != nil || body.Budget < 0 {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		res, err := sqlDB.Exec(`UPDATE volumes SET budget=? WHERE app=? AND name=?`, body.Budget, app, body.Name)
+		if n, _ := res.RowsAffected(); err != nil || n == 0 {
+			http.Error(w, "no such volume", http.StatusNotFound)
+			return
+		}
+		p.audit(r, "volume.budget", app, fmt.Sprintf("%s: %d", body.Name, body.Budget))
+		w.WriteHeader(http.StatusNoContent)
+
 	case http.MethodDelete:
 		name := r.URL.Query().Get("name")
 		if !deleteVolume(app, name) {
@@ -242,4 +264,21 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func volumeBudgets(app string) map[string]int64 {
+	out := map[string]int64{}
+	rows, err := sqlDB.Query(`SELECT name, budget FROM volumes WHERE app=? AND budget > 0`, app)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var b int64
+		if rows.Scan(&name, &b) == nil {
+			out[name] = b
+		}
+	}
+	return out
 }

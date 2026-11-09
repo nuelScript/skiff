@@ -61,3 +61,7 @@ Deleting a volume from the dashboard removes its files on the next deploy, once 
 Volumes are backed up daily and can be copied to an offsite bucket, so you can restore them from the project's Settings. See [backups and encryption](/backups).
 
 </Callout>
+
+## Budgets
+
+A volume can have a size budget: click its size under **Volumes** in the project's settings and enter one in GB. Skiff checks every hour, and your alert channels hear once when the volume grows past its budget, and again if it shrinks back and grows past it later. A budget doesn't stop the app writing: it's a warning, so you can clear old files or move to a bigger disk in time.

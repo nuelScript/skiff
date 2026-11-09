@@ -133,6 +133,8 @@ Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes
 - **Before each deploy,** Skiff compares the app's memory limit, times its copies, with what the server has free, and the deploy log warns when it may not fit. With less than 1 GB of disk free, the deploy stops before building, since the build would fail partway.
 - **When memory runs out,** the kernel stops something. Skiff decides the order: previews first, then jobs and one-off runs, then your production apps. Managed databases, the router and the dashboard go last.
 - **No app can take all the memory.** One with no limit of its own is capped at 75% of the server.
+- **The disk is watched.** The team that set up the server hears when it passes 80% full and again at 90%, with how long the space should last at the past week's rate. Skiff clears unused images and old build cache every day, and all build cache once the disk is 90% full.
+- **Each volume can have a budget.** Click a volume's size under **Volumes** in the project's settings to set one, and the team hears when it grows past it.
 
 ## What Skiff doesn't do yet
 
