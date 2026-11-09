@@ -485,7 +485,7 @@ function ImageForm({ onDeployed }: { onDeployed: (app: string, id: string) => vo
   )
 }
 
-const DB_LABEL: Record<string, string> = { postgres: 'Postgres', mysql: 'MySQL', mongodb: 'MongoDB', redis: 'Redis' }
+const DB_LABEL: Record<string, string> = { postgres: 'Postgres', mysql: 'MySQL', mongodb: 'MongoDB', redis: 'Redis', clickhouse: 'ClickHouse' }
 
 function CatalogPicker({ onDeployed }: { onDeployed: (app: string, id: string) => void }) {
   const { data: apps = [], isPending } = useQuery({

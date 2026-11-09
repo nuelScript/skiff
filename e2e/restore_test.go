@@ -101,6 +101,16 @@ func TestRestoreReturnsToBackup(t *testing.T) {
 			state:  `echo "$(redis-cli GET a)/$(redis-cli GET b)/$(redis-cli DBSIZE)"`,
 			want:   "original/original/2",
 		},
+		{
+			engine: "clickhouse", name: "chrestore",
+			exec: func(ctr, stmt string) []string {
+				return []string{"exec", ctr, "sh", "-c", `clickhouse-client --user skiff --password "$CLICKHOUSE_PASSWORD" --database chrestore --multiquery -q "` + stmt + `"`}
+			},
+			seed:   "DROP VIEW IF EXISTS tv; DROP TABLE IF EXISTS t; CREATE TABLE t (id UInt32, v String) ENGINE = MergeTree ORDER BY id; INSERT INTO t VALUES (1,'original'),(2,'original'); CREATE VIEW tv AS SELECT id FROM t;",
+			change: "INSERT INTO t VALUES (3,'later'); CREATE TABLE later (id UInt8) ENGINE = MergeTree ORDER BY id; DROP VIEW tv;",
+			state:  "SELECT (SELECT arrayStringConcat(groupArray(concat(toString(id), v)), ',') FROM (SELECT * FROM t ORDER BY id)), (SELECT arrayStringConcat(groupArray(name), ',') FROM (SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY name))",
+			want:   "1original,2original\tt,tv",
+		},
 	}
 
 	for _, e := range engines {

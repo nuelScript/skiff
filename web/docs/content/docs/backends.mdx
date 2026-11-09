@@ -49,7 +49,7 @@ Public TCP and UDP ports start at 1024. Ports under that are for well-known serv
 
 ## The rest of a backend
 
-- **Databases:** managed Postgres, MySQL, MongoDB and Redis, with the connection URL added for you, all with [daily backups](/backups).
+- **Databases:** managed Postgres (with pgvector if you like), MySQL, MongoDB, Redis and ClickHouse, with the connection URL added for you, all with [daily backups](/backups). ClickHouse's URL, in `CLICKHOUSE_URL`, is its HTTP interface on port 8123, which its clients for Python, JavaScript and Go speak.
 - **Migrations:** a release command runs before each new version goes live, and a failure stops the deploy.
 - **Background work:** workers and scheduled jobs run from your app's image.
 - **Real-time:** WebSockets and server-sent events work. When a new version goes live, new requests go to it, and the old version keeps running until its open requests finish, for up to 5 minutes. Set `drain_timeout` under `[deploy]` in `skiff.toml` to change that (in seconds, up to 3600, or 0 to stop it straight away). After that, the app gets a stop signal and 30 seconds to exit, so clients holding a connection open longer still need to reconnect.
