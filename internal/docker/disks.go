@@ -3,9 +3,13 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // A volume can keep its files in a folder of the server's choosing, such as one on an added disk, through the local driver's bind options. It keeps its name, so everything that mounts it carries on as before.
@@ -109,4 +113,33 @@ func (e *Engine) ClearFolder(folder string) error {
 		return cmdErr(out, err)
 	}
 	return nil
+}
+
+// ErrDiskNotMounted means a folder meant for an added disk would land on the system's own disk, as happens when the disk didn't mount after a restart and only its empty mount folder is left.
+var ErrDiskNotMounted = errors.New("the disk isn't mounted; mount it again before using it")
+
+// OnSystemDisk reports whether path, or the nearest folder above it that exists, is on the same device as /.
+func OnSystemDisk(path string) bool {
+	root, err := os.Stat("/")
+	if err != nil {
+		return false
+	}
+	for p := filepath.Clean(path); ; p = filepath.Dir(p) {
+		if fi, err := os.Stat(p); err == nil {
+			a, ok1 := fi.Sys().(*syscall.Stat_t)
+			b, ok2 := root.Sys().(*syscall.Stat_t)
+			return ok1 && ok2 && a.Dev == b.Dev
+		}
+		if p == "/" || p == "." {
+			return false
+		}
+	}
+}
+
+// MakeDiskFolder makes a folder on an added disk, refusing when the disk isn't mounted.
+func MakeDiskFolder(folder string) error {
+	if OnSystemDisk(folder) {
+		return ErrDiskNotMounted
+	}
+	return os.MkdirAll(folder, 0o755)
 }

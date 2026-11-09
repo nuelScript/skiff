@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 // Disks are folders where added block storage is mounted. The server's admin lists them; volumes and databases can then be created on one, or moved there later.
@@ -57,10 +58,10 @@ func getDisk(id string) (disk, bool) {
 	return disk{}, false
 }
 
-// withSpace fills in a disk's size and free space, and notices when nothing is mounted there any more.
+// withSpace fills in a disk's size and free space, and notices when nothing is mounted there any more: the folder is gone, or only the empty mount folder on the system's disk is left.
 func withSpace(d disk) disk {
 	var st syscall.Statfs_t
-	if err := syscall.Statfs(d.Path, &st); err != nil {
+	if err := syscall.Statfs(d.Path, &st); err != nil || docker.OnSystemDisk(d.Path) {
 		d.Missing = true
 		return d
 	}
@@ -174,7 +175,7 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
 		if entries, err := os.ReadDir(target); err == nil && len(entries) > 0 {
 			return fmt.Errorf("%s already has files in it", target)
 		}
-		if err := os.MkdirAll(target, 0o755); err != nil {
+		if err := docker.MakeDiskFolder(target); err != nil {
 			return fmt.Errorf("can't make the folder on the disk: %w", err)
 		}
 		if _, err := p.eng.CopyVolume(ctx, volume, target); err != nil {

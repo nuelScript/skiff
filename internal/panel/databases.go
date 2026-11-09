@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
@@ -559,7 +558,7 @@ func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error
 	}
 	if diskPath != "" {
 		folder := config.DiskFolder(diskPath, container+"-data")
-		if err := os.MkdirAll(folder, 0o755); err != nil {
+		if err := docker.MakeDiskFolder(folder); err != nil {
 			return dbRow{}, fmt.Errorf("can't make the database's folder on its disk: %w", err)
 		}
 		if err := p.eng.CreateVolume(container+"-data", folder, nil); err != nil {

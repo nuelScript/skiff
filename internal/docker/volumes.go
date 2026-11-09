@@ -3,7 +3,6 @@ package docker
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 )
@@ -43,7 +42,7 @@ func (e *Engine) ensureAppVolumeIn(volume, app, name, folder string) (created bo
 		return false, nil
 	}
 	if folder != "" {
-		if err := os.MkdirAll(folder, 0o755); err != nil {
+		if err := MakeDiskFolder(folder); err != nil {
 			return false, fmt.Errorf("can't make the volume's folder on its disk: %w", err)
 		}
 	}

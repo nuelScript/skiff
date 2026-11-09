@@ -1,10 +1,13 @@
 package panel
 
 import (
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 func TestDiskProblem(t *testing.T) {
@@ -66,5 +69,21 @@ func TestVolumesRememberTheirDisk(t *testing.T) {
 	}
 	if toml := projectToml(Source{App: "shop"}, nil, "net", listVolumes("shop")); !strings.Contains(toml, `disk = "/mnt/data"`) {
 		t.Errorf("the deploy isn't told the disk:\n%s", toml)
+	}
+}
+
+// An added disk that didn't mount after a restart leaves its empty folder on the system's disk; nothing may be written there.
+func TestUnmountedDiskIsMissing(t *testing.T) {
+	if !withSpace(disk{Path: "/"}).Missing {
+		t.Error("a folder on the system's disk counted as a mounted disk")
+	}
+	if withSpace(disk{Path: "/dev"}).Missing {
+		t.Error("a separately mounted folder counted as missing")
+	}
+	if err := docker.MakeDiskFolder("/skiff-unmounted-disk/volumes/x"); !errors.Is(err, docker.ErrDiskNotMounted) {
+		t.Errorf("made a disk folder on the system's disk: %v", err)
+	}
+	if _, err := os.Stat("/skiff-unmounted-disk"); err == nil {
+		t.Error("the folder was created")
 	}
 }
