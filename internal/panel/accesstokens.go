@@ -55,6 +55,12 @@ func createAccessToken(app, name string, now time.Time) (accessToken, error) {
 	return t, err
 }
 
+// tokenRequired is whether an app must keep at least one access token: a one-click app installed behind a key, like a model server, whose API has no login of its own.
+func tokenRequired(src Source) bool {
+	r, ok := catalogRecipe(src.Catalog)
+	return ok && r.AccessToken
+}
+
 func (p *Panel) handleAccessTokens(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
 	src, ok := getSource(app)
@@ -68,7 +74,7 @@ func (p *Panel) handleAccessTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, map[string]any{"tokens": listAccessTokens(app)})
+		writeJSON(w, map[string]any{"tokens": listAccessTokens(app), "required": tokenRequired(src)})
 	case http.MethodPost:
 		var body struct {
 			Name string `json:"name"`
@@ -91,11 +97,20 @@ func (p *Panel) handleAccessTokens(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "couldn't create the token", http.StatusInternalServerError)
 			return
 		}
-		_ = writeEdgeFile()
+		// Until the router has it the app would stay open, while the token looked like it was in force.
+		if err := writeEdgeFile(); err != nil {
+			_, _ = sqlDB.Exec(`DELETE FROM access_tokens WHERE id=?`, t.ID)
+			http.Error(w, "couldn't hand the token to the router, so nothing changed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		p.audit(r, "access-token.create", app, name)
 		writeJSON(w, t)
 	case http.MethodDelete:
 		id := sanitizeID(r.URL.Query().Get("id"))
+		if tokenRequired(src) && len(listAccessTokens(app)) <= 1 {
+			http.Error(w, app+" has no login of its own, so it keeps at least one token. Add another before revoking this one", http.StatusBadRequest)
+			return
+		}
 		if _, err := sqlDB.Exec(`DELETE FROM access_tokens WHERE app=? AND id=?`, app, id); err != nil {
 			http.Error(w, "couldn't revoke", http.StatusInternalServerError)
 			return

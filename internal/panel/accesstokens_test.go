@@ -1,13 +1,17 @@
 package panel
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
-
-	"github.com/nuelScript/skiff/internal/edge"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/auth"
+	"github.com/nuelScript/skiff/internal/edge"
 )
 
 func TestAccessTokensReachTheEdgeFile(t *testing.T) {
@@ -44,4 +48,41 @@ func loadEdgeForTest() map[string]struct{ Tokens []string } {
 		out[app] = struct{ Tokens []string }{r.Tokens}
 	}
 	return out
+}
+
+// A model server installed behind a key has no login of its own: its last token can't be revoked, so it never ends up open.
+func TestKeyedAppKeepsItsLastToken(t *testing.T) {
+	openTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	_ = os.MkdirAll(filepath.Join(home, ".skiff"), 0o700)
+	store := auth.NewStore(sqlDB)
+	p := &Panel{auth: store}
+	user, team, err := store.CreateUser("a@acme.dev", "A", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = putSession("s", user.ID, team.ID)
+	_ = putSource(Source{App: "llm", Team: team.ID, Port: "11434", Catalog: "ollama"})
+	first, _ := createAccessToken("llm", "installed with the app", time.Now())
+
+	call := func(method, query string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/project/access-tokens?app=llm"+query, strings.NewReader(`{"name":"rotated"}`))
+		req.AddCookie(&http.Cookie{Name: "skiff_session", Value: "s"})
+		w := httptest.NewRecorder()
+		p.handleAccessTokens(w, req)
+		return w
+	}
+	if w := call(http.MethodGet, ""); !strings.Contains(w.Body.String(), `"required":true`) {
+		t.Errorf("list: %s", w.Body)
+	}
+	if w := call(http.MethodDelete, "&id="+first.ID); w.Code != http.StatusBadRequest || len(listAccessTokens("llm")) != 1 {
+		t.Fatalf("revoking the last token: %d %s", w.Code, w.Body)
+	}
+	if w := call(http.MethodPost, ""); w.Code != http.StatusOK {
+		t.Fatalf("adding a token: %d %s", w.Code, w.Body)
+	}
+	if w := call(http.MethodDelete, "&id="+first.ID); w.Code != http.StatusNoContent {
+		t.Fatalf("revoking once there's another: %d %s", w.Code, w.Body)
+	}
 }
