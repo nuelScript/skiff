@@ -272,6 +272,7 @@ const clickhouseRestore = `set -euo pipefail
 ch() { clickhouse-client --user "$1" --password "$2" --database "$3" "${@:4}"; }
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT; cd "$work"
 tar xf -
+clickhouse-client --user "$1" --password "$2" -q "CREATE DATABASE IF NOT EXISTS \` + "`" + `$3\` + "`" + `"
 for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY engine LIKE '%View' DESC"); do
   ch "$@" -q "DROP TABLE \` + "`" + `$t\` + "`" + ` SYNC"
 done
