@@ -98,6 +98,18 @@ Every model call through Skiff is recorded, so a run shows up even if the agent 
 
 A model call made inside a traced step carries its trace context, and Skiff files the call under that step. Spans named with OpenTelemetry's GenAI conventions (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.tool.name` and so on) show their model, tokens and tool. Runs are kept for a week, up to 20,000 steps per agent.
 
+## Memory
+
+For memory an agent searches by meaning, create a database on the **Databases** page and choose **Postgres + pgvector** (or `skiff db create memory --engine pgvector`). It's Postgres 16 with the [pgvector](https://github.com/pgvector/pgvector) extension already switched on, so `vector` columns and nearest-neighbour queries work straight away:
+
+```sql
+create table notes (id bigserial primary key, body text, embedding vector(1536));
+create index on notes using hnsw (embedding vector_cosine_ops);
+select body from notes order by embedding <=> $1 limit 5;
+```
+
+Underneath it's an ordinary Skiff Postgres database: daily backups, restore checks, point-in-time recovery and offsite copies work the same, and attaching it gives the agent `DATABASE_URL`.
+
 ## Stop it
 
 **Stop agent** on the project's **Overview** does everything at once: its containers, sandboxes and any commands it's running stop, and Skiff refuses its model calls and holds its inbox. **Start** brings it back with its events still waiting.

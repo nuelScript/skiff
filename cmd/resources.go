@@ -80,7 +80,7 @@ func addDBManageCmds(db *cobra.Command) {
 			return nil
 		},
 	}
-	create.Flags().StringVarP(&engine, "engine", "e", "postgres", "postgres, mysql, mongodb or redis")
+	create.Flags().StringVarP(&engine, "engine", "e", "postgres", "postgres, pgvector (Postgres with vector search), mysql, mongodb or redis")
 	var yes bool
 	rm := &cobra.Command{
 		Use: "rm <name>", Short: "Delete a database, its data and its backups", Args: cobra.ExactArgs(1),

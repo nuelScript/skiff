@@ -1,9 +1,13 @@
 package panel
 
 import (
+	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -230,6 +234,7 @@ type Database struct {
 	Attached  []string `json:"attached"`
 	Public    bool     `json:"public"`
 	PublicURL string   `json:"publicUrl,omitempty"`
+	Vector    bool     `json:"vector,omitempty"`
 	// VerifiedAt is when a backup last restored cleanly. CheckFailed means a later check didn't.
 	VerifiedAt  int64 `json:"verifiedAt,omitempty"`
 	CheckFailed bool  `json:"checkFailed,omitempty"`
@@ -379,6 +384,7 @@ func (p *Panel) toDatabase(d dbRow) Database {
 		URL:      e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false),
 		Attached: dbAttachments(d.ID),
 		Public:   d.Public,
+		Vector:   d.Image == pgvectorImage,
 	}
 	out.VerifiedAt, out.CheckFailed = restoreCheckSummary(d.ID)
 	if d.Public && d.PublicPort > 0 {
@@ -417,8 +423,24 @@ func (p *Panel) prewarmDatabaseImages() {
 	p.prewarmImages(imgs...)
 }
 
-// provisionDB starts a managed database for the team and records it.
+// pgvectorImage is Postgres with the pgvector extension, for embeddings and agent memory. It's still the postgres engine, so its backups, restores and recovery are Postgres's own; the major version matches the engine's.
+const (
+	pgvectorChoice = "pgvector"
+	pgvectorImage  = "pgvector/pgvector:pg16"
+)
+
+// knownEngine says whether a create request names something provisionDB can start.
+func knownEngine(engine string) bool {
+	_, ok := dbEngines[engine]
+	return ok || engine == pgvectorChoice
+}
+
+// provisionDB starts a managed database for the team and records it. engine may be "pgvector": Postgres with that extension switched on.
 func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
+	image := ""
+	if engine == pgvectorChoice {
+		engine, image = "postgres", pgvectorImage
+	}
 	e := dbEngines[engine]
 	id := randToken()[:12]
 	container := "skiff-db-" + id
@@ -434,7 +456,7 @@ func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
 		return dbRow{}, err
 	}
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
-		Name: container, Image: e.image, Network: net,
+		Name: container, Image: cmp.Or(image, e.image), Network: net,
 		Volume: container + "-data", MountAt: e.mountAt, Env: env, Cmd: cmd,
 		Labels: map[string]string{"skiff.kind": "database", "skiff.db": id, "skiff.team": team},
 	}); err != nil {
@@ -445,7 +467,28 @@ func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
 		Host: container, Port: e.port, Username: user, Password: pass, DBName: dbname,
 		Created: time.Now().Unix(),
 	}
+	if image != "" {
+		// A database with its own image is otherwise taken for one adopted from outside Skiff, whose volume could be anything.
+		d.Image, d.Volume = image, container+"-data"
+	}
+	if image == pgvectorImage {
+		go p.enableVector(d)
+	}
 	return d, putDB(d)
+}
+
+// enableVector switches the extension on once the new database accepts connections, so apps can use vector columns straight away.
+func (p *Panel) enableVector(d dbRow) {
+	for range 60 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := p.eng.Exec(ctx, d.Container, []string{"psql", "-U", d.Username, "-d", d.DBName, "-v", "ON_ERROR_STOP=1", "-c", "CREATE EXTENSION IF NOT EXISTS vector"}, nil, io.Discard)
+		cancel()
+		if err == nil {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	log.Printf("skiff: couldn't switch on pgvector in %s; run CREATE EXTENSION vector in it", d.Name)
 }
 
 func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
@@ -468,8 +511,7 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		_, ok := dbEngines[body.Engine]
-		if !ok {
+		if !knownEngine(body.Engine) {
 			http.Error(w, "unknown engine", http.StatusBadRequest)
 			return
 		}

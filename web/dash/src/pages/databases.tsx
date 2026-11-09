@@ -38,10 +38,11 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { CardListSkeleton } from '@/components/skeletons'
 import { ErrorState } from '@/components/error-state'
-import type { Database as Db, DbEngine } from '@/services/api.service'
+import type { Database as Db, NewDbEngine } from '@/services/api.service'
 
-const ENGINES: { value: DbEngine; label: string; dot: string; accent: string }[] = [
+const ENGINES: { value: NewDbEngine; label: string; dot: string; accent: string }[] = [
   { value: 'postgres', label: 'PostgreSQL', dot: 'bg-info', accent: 'text-info' },
+  { value: 'pgvector', label: 'Postgres + pgvector', dot: 'bg-info', accent: 'text-info' },
   { value: 'mysql', label: 'MySQL', dot: 'bg-warning', accent: 'text-warning' },
   { value: 'mongodb', label: 'MongoDB', dot: 'bg-success', accent: 'text-success' },
   { value: 'redis', label: 'Redis', dot: 'bg-danger', accent: 'text-danger' },
@@ -56,7 +57,7 @@ export default function DatabasesPage() {
   const confirm = useConfirm()
 
   const [adding, setAdding] = useState(false)
-  const [engine, setEngine] = useState<DbEngine>('postgres')
+  const [engine, setEngine] = useState<NewDbEngine>('postgres')
   const [name, setName] = useState('')
   const createMut = useMutation({
     mutationFn: () => create(engine, name.trim()),
@@ -117,7 +118,7 @@ export default function DatabasesPage() {
             )}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Select value={engine} onValueChange={(v) => setEngine(v as DbEngine)}>
+            <Select value={engine} onValueChange={(v) => setEngine(v as NewDbEngine)}>
               <SelectTrigger className="shrink-0 cursor-pointer bg-inset sm:w-44">
                 <SelectValue />
               </SelectTrigger>
@@ -216,7 +217,7 @@ function DatabaseCard({
   const [shell, setShell] = useState(false)
   const [backups, setBackups] = useState(false)
   const [pubBusy, setPubBusy] = useState(false)
-  const meta = engineMeta(db.engine)
+  const meta = engineMeta(db.vector ? 'pgvector' : db.engine)
   const running = db.state === 'running'
   const unattached = useMemo(
     () => apps.filter((a) => !db.attached.includes(a)),

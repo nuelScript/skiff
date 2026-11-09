@@ -40,8 +40,8 @@ func (p *Panel) apiCreateDatabase(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if _, ok := dbEngines[body.Engine]; !ok {
-		apiErr(w, http.StatusBadRequest, "engine must be postgres, mysql, mongodb or redis")
+	if !knownEngine(body.Engine) {
+		apiErr(w, http.StatusBadRequest, "engine must be postgres, pgvector, mysql, mongodb or redis")
 		return
 	}
 	name := sanitizeName(body.Name)
