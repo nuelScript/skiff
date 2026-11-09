@@ -108,6 +108,7 @@ func beginBuild(app, id string) (context.Context, func() bool, func()) {
 
 // runDeploy clones, builds, and releases a source (manual deploys and webhooks both use it). authURL overrides the clone URL when set (e.g. a pasted token); otherwise repo sources use a GitHub-App token.
 func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id string) {
+	src = withParentLimits(src)
 	f, err := createDeployLog(src.App, id)
 	if err != nil {
 		p.failUnstartedDeploy(src, id, commit, message, trigger, err)
@@ -363,6 +364,7 @@ func (p *Panel) imageWorkDir(src Source) string {
 }
 
 func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
+	src = withParentLimits(src)
 	f, err := createDeployLog(src.App, id)
 	if err != nil {
 		p.failUnstartedDeploy(src, id, commit, message, "rollback", err)

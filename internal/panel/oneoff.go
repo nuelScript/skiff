@@ -191,7 +191,7 @@ func (p *Panel) apiStartRun(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, problem)
 		return
 	}
-	strong := body.Isolation == "strong" || src.Isolation == "strong"
+	strong := body.Isolation == "strong" || withParentLimits(src).Isolation == "strong"
 	if strong && !p.eng.HasRuntime(docker.SandboxRuntime) {
 		apiErr(w, http.StatusBadRequest, "strong isolation needs gVisor installed on the server first")
 		return
