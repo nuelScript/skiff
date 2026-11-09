@@ -385,6 +385,13 @@ CREATE TABLE IF NOT EXISTS ai_run_usage (
   updated INTEGER NOT NULL,
   alerted INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (app, run)
+CREATE TABLE IF NOT EXISTS ai_prices (
+  team         TEXT NOT NULL,
+  model        TEXT NOT NULL,
+  input_per_m  REAL NOT NULL DEFAULT 0,
+  output_per_m REAL NOT NULL DEFAULT 0,
+  updated      INTEGER NOT NULL,
+  PRIMARY KEY (team, model)
 );
 CREATE TABLE IF NOT EXISTS ai_usage (
   app      TEXT NOT NULL,

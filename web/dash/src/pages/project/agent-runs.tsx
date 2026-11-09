@@ -6,6 +6,9 @@ import { fmtCount, relTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { aiService, type SpanView, type TraceSummary } from '@/services/api.service'
 
+// fmtCost shows small amounts with the precision they need, like $0.0042.
+const fmtCost = (v: number) => '$' + (v >= 1 ? v.toFixed(2) : v.toPrecision(2))
+
 const fmtMs = (ms: number) => (ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 60000)}m`)
 
 // AgentRuns lists an agent's runs from its traces; each opens to its steps, laid out in time.
@@ -38,6 +41,7 @@ export function AgentRuns({ app }: { app: string }) {
                     {t.modelCalls > 0 && ` · ${t.modelCalls} model ${t.modelCalls === 1 ? 'call' : 'calls'}`}
                     {t.toolCalls > 0 && ` · ${t.toolCalls} tool ${t.toolCalls === 1 ? 'call' : 'calls'}`}
                     {t.inputTokens + t.outputTokens > 0 && ` · ${fmtCount(t.inputTokens + t.outputTokens)} tokens`}
+                    {t.cost !== undefined && ` · ${t.costPartial ? 'at least ' : ''}${fmtCost(t.cost)}`}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -90,6 +94,7 @@ function RunDialog({ app, run, onClose }: { app: string; run: TraceSummary | nul
           <DialogDescription>
             {run && `${fmtMs(run.durationMs)} · ${run.spans} steps`}
             {run && run.inputTokens + run.outputTokens > 0 && ` · ${fmtCount(run.inputTokens)} tokens in, ${fmtCount(run.outputTokens)} out`}
+            {run?.cost !== undefined && ` · ${run.costPartial ? 'at least ' : ''}${fmtCost(run.cost)}`}
           </DialogDescription>
         </DialogHeader>
         <ul className="max-h-[50vh] overflow-auto rounded-lg border border-foreground/8 text-xs">
@@ -145,7 +150,7 @@ function SpanRow({
       <button
         type="button"
         onClick={onPick}
-        className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-center gap-3 px-3 py-1.5 text-left sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_2.75rem]"
+        className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-center gap-3 px-3 py-1.5 text-left sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_2.75rem]"
       >
         <span className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: `${Math.min(depth, 8) * 12}px` }}>
           <span className={cn('truncate', s.status === 2 && 'text-danger')}>{s.name}</span>
@@ -156,6 +161,9 @@ function SpanRow({
             <span className="text-muted-foreground shrink-0 font-mono text-[10px] max-sm:hidden">
               {fmtCount((s.inputTokens ?? 0) + (s.outputTokens ?? 0))} tok
             </span>
+          )}
+          {s.cost !== undefined && (
+            <span className="text-muted-foreground shrink-0 font-mono text-[10px] max-sm:hidden">{fmtCost(s.cost)}</span>
           )}
         </span>
         <span className="relative h-4">

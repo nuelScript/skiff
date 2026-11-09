@@ -41,7 +41,7 @@ func TestTracesJoinTheAgentsSpansAndTheGatewaysCalls(t *testing.T) {
 	// One without lands in a trace of its own.
 	callGateway(a.token, "/openai/v1/chat/completions", `{"model":"gpt-4o"}`)
 
-	traces := listTraces("bot", 10)
+	traces := listTraces("bot", 10, nil)
 	if len(traces) != 2 {
 		t.Fatalf("traces: %+v", traces)
 	}
@@ -54,7 +54,7 @@ func TestTracesJoinTheAgentsSpansAndTheGatewaysCalls(t *testing.T) {
 	if run.Name != "handle issue" || run.Spans != 3 || run.Errors != 1 || run.Input != 100 || run.Output != 20 || run.Models != 1 || run.Tools != 1 || run.Duration != 3000 {
 		t.Errorf("run: %+v", run)
 	}
-	spans := traceSpans("bot", traceID)
+	spans := traceSpans("bot", traceID, nil)
 	if len(spans) != 3 || spans[0].Name != "handle issue" || spans[0].Parent != "" {
 		t.Fatalf("spans: %+v", spans)
 	}
@@ -72,7 +72,7 @@ func TestTracesJoinTheAgentsSpansAndTheGatewaysCalls(t *testing.T) {
 	_ = setAIApp(Source{App: "web", Team: "t1"}, true, 0)
 	web, _ := aiAppFor("web")
 	callGateway(web.token, "/openai/v1/chat/completions", `{"model":"gpt-4o"}`)
-	if got := listTraces("web", 10); len(got) != 0 {
+	if got := listTraces("web", 10, nil); len(got) != 0 {
 		t.Errorf("a plain app's traces: %+v", got)
 	}
 }
@@ -100,7 +100,7 @@ func TestSpansArePruned(t *testing.T) {
 	if err := storeSpans("bot", []otlp.Span{old, recent, bad}, now); err != nil {
 		t.Fatal(err)
 	}
-	if spans := traceSpans("bot", traceID); len(spans) != 1 || spans[0].Name != "new" {
+	if spans := traceSpans("bot", traceID, nil); len(spans) != 1 || spans[0].Name != "new" {
 		t.Errorf("after pruning: %+v", spans)
 	}
 }
