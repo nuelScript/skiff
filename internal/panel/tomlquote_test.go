@@ -85,3 +85,18 @@ func TestProjectTomlCarriesBuildArgsAndTarget(t *testing.T) {
 		t.Errorf("build: %+v\n%s", cfg.Build, out)
 	}
 }
+
+func TestProjectTomlMountsAVolumeAtEveryPath(t *testing.T) {
+	out := projectToml(Source{App: "web"}, nil, "net", []config.Volume{{Name: "data", Path: "/a", Also: []string{"/b"}}})
+	path := filepath.Join(t.TempDir(), "skiff.toml")
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(cfg.Volumes) != 1 || !cfg.Volumes[0].Equal(config.Volume{Name: "data", Path: "/a", Also: []string{"/b"}}) {
+		t.Errorf("volumes: %+v", cfg.Volumes)
+	}
+}

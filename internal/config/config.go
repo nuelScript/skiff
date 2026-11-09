@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -50,7 +51,17 @@ type Volume struct {
 	Path string `toml:"path" json:"path"`
 	// Owner is the app holding a volume this app shares with others in its stack; empty means this app holds it.
 	Owner string `toml:"owner" json:"owner,omitempty"`
+	// Also lists more paths the same volume is mounted at, so they share its files.
+	Also []string `toml:"also" json:"also,omitempty"`
 }
+
+// Equal compares two volumes, including every path they mount at.
+func (v Volume) Equal(o Volume) bool {
+	return v.Name == o.Name && v.Path == o.Path && v.Owner == o.Owner && slices.Equal(v.Also, o.Also)
+}
+
+// Paths is every path the volume is mounted at, its own first.
+func (v Volume) Paths() []string { return append([]string{v.Path}, v.Also...) }
 
 // DockerName is the volume's name on the server, for an app that mounts it.
 func (v Volume) DockerName(app string) string {
@@ -86,12 +97,18 @@ func ValidateVolumes(vols []Volume) error {
 			return fmt.Errorf("volume %q: path must be an absolute directory like /data", v.Name)
 		}
 		if names[v.Name] {
-			return fmt.Errorf("volume %q is listed twice", v.Name)
+			return fmt.Errorf("volume %q is listed twice; list its other paths under also", v.Name)
 		}
-		if paths[v.Path] {
-			return fmt.Errorf("two volumes mount at %s", v.Path)
+		names[v.Name] = true
+		for _, p := range v.Paths() {
+			if !validMountPath(p) {
+				return fmt.Errorf("volume %q: path must be an absolute directory like /data", v.Name)
+			}
+			if paths[p] {
+				return fmt.Errorf("two volumes mount at %s", p)
+			}
+			paths[p] = true
 		}
-		names[v.Name], paths[v.Path] = true, true
 	}
 	return nil
 }

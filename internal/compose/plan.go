@@ -49,7 +49,15 @@ type Item struct {
 }
 
 // PlanVolume is a volume a service mounts. Owner is the service holding one shared across services; empty means this service holds it.
-type PlanVolume struct{ Name, Path, Owner string }
+type PlanVolume struct {
+	Name, Path, Owner string
+	// Also lists more paths the service mounts the same volume at.
+	Also []string
+}
+
+func (v PlanVolume) equal(o PlanVolume) bool {
+	return v.Name == o.Name && v.Path == o.Path && v.Owner == o.Owner && slices.Equal(v.Also, o.Also)
+}
 
 // PlanFile is a file or folder from the repository that a service mounts, built into its image.
 type PlanFile struct {
@@ -276,6 +284,10 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 			if vol == "" {
 				vol = safeName(m.Target)
 			}
+			if i := slices.IndexFunc(it.Volumes, func(v PlanVolume) bool { return v.Name == vol }); i >= 0 {
+				it.Volumes[i].Also = append(it.Volumes[i].Also, m.Target)
+				continue
+			}
 			it.Volumes = append(it.Volumes, PlanVolume{Name: vol, Path: m.Target})
 		}
 		if len(it.Volumes) > 5 {
@@ -300,7 +312,7 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 			if other == name || o.Kind != KindApp || o.WorkerOf != "" || !sameBuild(it, o) || o.Port == 0 {
 				continue
 			}
-			if !sameEnv(it.Env, o.Env) || !slices.Equal(it.Volumes, o.Volumes) {
+			if !sameEnv(it.Env, o.Env) || !slices.EqualFunc(it.Volumes, o.Volumes, PlanVolume.equal) {
 				break
 			}
 			it.Kind, it.WorkerOf = KindWorker, other
@@ -346,7 +358,7 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 				}
 			}
 		}
-		p.Notes = append(p.Notes, fmt.Sprintf("volume %s is shared by %s, and %s holds it and its backups", name, strings.Join(users, ", "), owner))
+		p.Notes = append(p.Notes, fmt.Sprintf("volume %s is shared by %s and %s; %s holds it and its backups", name, strings.Join(users[:len(users)-1], ", "), users[len(users)-1], owner))
 	}
 
 	order, cycle := startOrder(f.Order, resolved)

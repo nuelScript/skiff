@@ -693,6 +693,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 		if v.Owner != "" {
 			fmt.Fprintf(&b, "owner = %s\n", tomlQuote(v.Owner))
 		}
+		if len(v.Also) > 0 {
+			fmt.Fprintf(&b, "also = %s\n", tomlList(v.Also))
+		}
 	}
 	return b.String()
 }

@@ -101,7 +101,7 @@ func stackVolumes(plan *compose.Plan, it compose.Item) []config.Volume {
 
 // stackVolume names a shared volume's holder by its app, which is how it's stored.
 func stackVolume(plan *compose.Plan, v compose.PlanVolume) config.Volume {
-	out := config.Volume{Name: v.Name, Path: v.Path}
+	out := config.Volume{Name: v.Name, Path: v.Path, Also: v.Also}
 	if v.Owner != "" {
 		out.Owner = plannedAppName(plan, v.Owner)
 	}
@@ -332,8 +332,8 @@ func appChanges(s *stackSource, team string, it compose.Item, src Source, cur cu
 		switch {
 		case found < 0:
 			details = append(details, "adds volume "+v.Name)
-		case cur.Volumes[it.Service][found].Path != v.Path:
-			details = append(details, fmt.Sprintf("moves volume %s to %s", v.Name, v.Path))
+		case cur.Volumes[it.Service][found].Path != v.Path || !slices.Equal(cur.Volumes[it.Service][found].Also, v.Also):
+			details = append(details, fmt.Sprintf("mounts volume %s at %s", v.Name, strings.Join(v.Paths(), ", ")))
 		case cur.Volumes[it.Service][found].Owner != v.Owner:
 			details = append(details, "shares volume "+v.Name)
 		}
@@ -522,12 +522,12 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 		}
 		wantVols := stackVolumes(s.plan, it)
 		for _, o := range cur.Volumes[it.Service] {
-			if !slices.Contains(wantVols, o) {
+			if !slices.ContainsFunc(wantVols, o.Equal) {
 				deleteVolume(want.App, o.Name)
 			}
 		}
 		for _, v := range wantVols {
-			if !slices.Contains(cur.Volumes[it.Service], v) {
+			if !slices.ContainsFunc(cur.Volumes[it.Service], v.Equal) {
 				if err := addVolume(want.App, v); err != nil {
 					return err
 				}
