@@ -110,6 +110,15 @@ By default an app can connect anywhere, like any server. Under **Outbound networ
 - **It needs Linux,** with Skiff running as root as the installer sets it up, since it writes the server's firewall rules. Elsewhere, the setting says it isn't available.
 - **On a network with a limited app,** a new container is held back from the internet for a moment after it starts, until the rules know it, so a limited app is never briefly open.
 
+What a limited app can still reach:
+
+- **Every private address:** `10.0.0.0/8`, `172.16.0.0/12` and `192.168.0.0/16`. That covers the team's apps and databases, and also anything else on the server's private network, like other machines in the same cloud network.
+- **The server itself:** the limits cover traffic leaving the server, not traffic to it. A limited app can reach any port the server listens on. Skiff's AI gateway, which an app with AI access calls its models through, is one. Keep other services on the server behind a password or bound to `127.0.0.1`.
+- **Name lookups:** Docker answers them from the server, so a limited app can still look up names on the internet, though it can't connect to what they point at.
+- **IPv6:** the limits cover IPv4, which is what Docker's networks use unless IPv6 is turned on for them.
+
+For code you don't trust at all, use a [sandbox](/run-agents#sandboxes) without internet, which has no network.
+
 ## Machine permissions
 
 Every app, worker and job starts with a few safer defaults: programs inside can't gain privileges the way `sudo` does, and the rarely used `NET_RAW`, `MKNOD` and `AUDIT_WRITE` capabilities are dropped. Some software needs more of the server than that: a VPN needs the `NET_ADMIN` capability and `/dev/net/tun`, a database may want `IPC_LOCK`, and a few tools need privileged mode. Each is off until the server's admin, an owner of the team that set Skiff up, grants it under **Machine permissions** in the project's settings. The change applies on the next deploy and is recorded in Activity.
