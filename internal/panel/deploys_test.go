@@ -101,13 +101,13 @@ func TestInjectToken(t *testing.T) {
 }
 
 func TestBeginBuildSupersede(t *testing.T) {
-	_, superseded1, done1 := beginBuild("supersede-app", "id1")
+	_, superseded1, done1 := beginBuild(Source{App: "supersede-app"}, "id1")
 	defer done1()
 	if superseded1() {
 		t.Fatal("first build reported superseded before any newer build")
 	}
 
-	_, superseded2, done2 := beginBuild("supersede-app", "id2")
+	_, superseded2, done2 := beginBuild(Source{App: "supersede-app"}, "id2")
 	defer done2()
 	if !superseded1() {
 		t.Fatal("first build not superseded by a newer one")
@@ -123,7 +123,7 @@ func TestBeginBuildSupersede(t *testing.T) {
 }
 
 func TestCancelInflight(t *testing.T) {
-	_, superseded, done := beginBuild("cancel-app", "idA")
+	_, superseded, done := beginBuild(Source{App: "cancel-app"}, "idA")
 	defer done()
 
 	if cancelInflight("cancel-app", "idB") {
@@ -195,7 +195,7 @@ func TestRemoveStaleDeployConfigs(t *testing.T) {
 		_ = os.MkdirAll(filepath.Dir(f), 0o755)
 		_ = os.WriteFile(f, []byte("x"), 0o600)
 	}
-	long := time.Now().Add(-3 * deployDeadline)
+	long := time.Now().Add(-4 * time.Hour)
 	_ = os.Chtimes(old, long, long)
 	_ = os.Chtimes(nested, long, long)
 	removeStaleDeployConfigs(builds, time.Now())
@@ -231,5 +231,21 @@ func TestTailLogAlwaysEnds(t *testing.T) {
 		if timedOut || !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("status %q: timed out=%v, body %q", status, timedOut, rec.Body.String())
 		}
+	}
+}
+
+// A deploy may wait as long as the app's health check allows, on top of its build.
+func TestDeployDeadlineCoversTheHealthWait(t *testing.T) {
+	openTestDB(t)
+	putSource(Source{App: "llm", HealthTimeout: 1800})
+	putSource(Source{App: "llm-pr-1", Parent: "llm"})
+	for _, app := range []string{"llm", "llm-pr-1"} {
+		src, _ := getSource(app)
+		if got := deadlineFor(src); got != deployDeadline+30*time.Minute {
+			t.Errorf("%s: deadline %s", app, got)
+		}
+	}
+	if got := deadlineFor(Source{App: "web"}); got != deployDeadline {
+		t.Errorf("default deadline %s", got)
 	}
 }
