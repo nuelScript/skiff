@@ -40,12 +40,14 @@ export type ControlPlane = {
 }
 
 export type AttentionItem = {
-  kind: 'deploy.failed' | 'app.down' | 'oom' | 'disk' | 'memory'
+  kind: 'deploy.failed' | 'app.down' | 'app.crashloop' | 'oom' | 'disk' | 'memory'
   app?: string
   state?: string
   at?: number
   serving?: boolean
   percent?: number
+  restarts?: number
+  exitCode?: number
 }
 
 export type Overview = {

@@ -103,6 +103,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.appLogLoop()
 	go p.logDrainLoop()
 	go p.oomLoop()
+	go p.crashLoopWatch()
 	return p, nil
 }
 

@@ -225,11 +225,24 @@ func apiFollowLogs(ctx context.Context, c *http.Client, container string, since 
 
 // WatchOOM calls fn with the app whenever one of its containers is killed for exceeding its memory limit, until ctx ends. It reports an error when events can't be read, and needs the local Docker socket.
 func (e *Engine) WatchOOM(ctx context.Context, fn func(app, container string)) error {
+	return e.watchApps(ctx, "oom", func(app, container string, _ bool, _ map[string]string) { fn(app, container) })
+}
+
+// WatchDeaths calls fn whenever one of an app's or worker's containers exits, with its exit code, until ctx ends.
+func (e *Engine) WatchDeaths(ctx context.Context, fn func(app, container string, worker bool, exitCode int)) error {
+	return e.watchApps(ctx, "die", func(app, container string, worker bool, attrs map[string]string) {
+		code, _ := strconv.Atoi(attrs["exitCode"])
+		fn(app, container, worker, code)
+	})
+}
+
+// watchApps follows one kind of container event for Skiff's apps and workers.
+func (e *Engine) watchApps(ctx context.Context, event string, fn func(app, container string, worker bool, attrs map[string]string)) error {
 	c := e.api()
 	if c == nil {
 		return errors.New("no docker socket")
 	}
-	f, _ := json.Marshal(map[string][]string{"type": {"container"}, "event": {"oom"}})
+	f, _ := json.Marshal(map[string][]string{"type": {"container"}, "event": {event}})
 	resp, err := apiGet(ctx, c, "/events", url.Values{"filters": {string(f)}})
 	if err != nil {
 		return err
@@ -243,12 +256,13 @@ func (e *Engine) WatchOOM(ctx context.Context, fn func(app, container string)) e
 		if err := dec.Decode(&ev); err != nil {
 			return err
 		}
-		app := ev.Actor.Attributes["skiff.app"]
+		attrs := ev.Actor.Attributes
+		app, worker := attrs["skiff.app"], false
 		if app == "" {
-			app = ev.Actor.Attributes["skiff.worker.app"]
+			app, worker = attrs["skiff.worker.app"], true
 		}
 		if app != "" {
-			fn(app, ev.Actor.Attributes["name"])
+			fn(app, attrs["name"], worker, attrs)
 		}
 	}
 }

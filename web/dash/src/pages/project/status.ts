@@ -3,7 +3,7 @@
 export const runningPill = (state: string): string =>
   state === 'running'
     ? 'border-success/25 bg-success/10 text-success'
-    : state === 'exited' || state === 'missing'
+    : state === 'exited' || state === 'missing' || state === 'crashing'
       ? 'border-danger/25 bg-danger/10 text-danger'
       : 'border-foreground/15 bg-foreground/5 text-muted-foreground'
 

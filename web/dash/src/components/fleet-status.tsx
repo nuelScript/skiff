@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { AlertTriangle, ChevronRight, HardDrive, Loader2, MemoryStick, Power } from 'lucide-react'
 import { relTime } from '@/lib/format'
+import { crashSummary } from '@/lib/crash'
 import type { AttentionItem, Overview } from '@/services/api.service'
 
 function Row({ item }: { item: AttentionItem }) {
@@ -44,6 +45,15 @@ function describe(item: AttentionItem) {
         to: project,
         title: `${item.app} isn't running`,
         detail: `Its container is ${item.state}.`,
+        action: 'Open',
+      }
+    case 'app.crashloop':
+      return {
+        icon: AlertTriangle,
+        tone: 'text-danger',
+        to: project,
+        title: `${item.app} keeps crashing`,
+        detail: crashSummary({ restarts: item.restarts ?? 0, exitCode: item.exitCode ?? 0 }),
         action: 'Open',
       }
     case 'oom':

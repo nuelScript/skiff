@@ -17,12 +17,15 @@ const (
 
 // attentionItem is something on the home screen a person should act on.
 type attentionItem struct {
-	Kind    string `json:"kind"` // deploy.failed | app.down | oom | disk | memory
+	Kind    string `json:"kind"` // deploy.failed | app.down | app.crashloop | oom | disk | memory
 	App     string `json:"app,omitempty"`
 	State   string `json:"state,omitempty"`
 	At      int64  `json:"at,omitempty"`
 	Serving bool   `json:"serving,omitempty"` // an older version is still taking traffic
 	Percent int    `json:"percent,omitempty"`
+	// Restarts and ExitCode describe a crash loop.
+	Restarts int `json:"restarts,omitempty"`
+	ExitCode int `json:"exitCode,omitempty"`
 }
 
 type serverUsage struct {
@@ -94,6 +97,9 @@ func projectAttention(app, state string, deployed bool, last *Deploy) (attention
 	}
 	if last != nil && last.Status == "failed" {
 		return attentionItem{Kind: "deploy.failed", App: app, State: state, At: last.Started, Serving: up}, true
+	}
+	if loop := appCrashLoop(app); deployed && loop != nil {
+		return attentionItem{Kind: "app.crashloop", App: app, State: state, At: loop.Since, Restarts: loop.Restarts, ExitCode: loop.ExitCode}, true
 	}
 	if deployed && !up {
 		return attentionItem{Kind: "app.down", App: app, State: state}, true

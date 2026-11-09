@@ -18,7 +18,16 @@ export type App = {
   previews?: number
 }
 
+export type CrashLoop = {
+  worker?: string
+  restarts: number
+  exitCode: number
+  since: number
+  last: number
+}
+
 export type ProjectDetail = {
+  crashLoop?: CrashLoop
   parent?: string
   name: string
   state: string
@@ -142,6 +151,7 @@ export type Worker = {
   replicas: number
   running: number
   created: number
+  crashLoop?: CrashLoop
 }
 
 export type Volume = {

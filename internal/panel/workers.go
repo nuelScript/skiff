@@ -19,6 +19,8 @@ type Worker struct {
 	Replicas int    `json:"replicas"`
 	Running  int    `json:"running"`
 	Created  int64  `json:"created"`
+	// CrashLoop says the worker keeps exiting and being restarted.
+	CrashLoop *crashLoop `json:"crashLoop,omitempty"`
 }
 
 type workerRow struct {
@@ -74,10 +76,14 @@ func toWorker(w workerRow, containers []string) Worker {
 			running++
 		}
 	}
-	return Worker{
+	out := Worker{
 		ID: w.ID, App: w.App, Name: w.Name, Command: w.Command,
 		Replicas: w.Replicas, Running: running, Created: w.Created,
 	}
+	if loop, ok := workerCrashLoops(w.App)[w.Name]; ok {
+		out.CrashLoop = &loop
+	}
+	return out
 }
 
 var workerLocks sync.Map // app → *sync.Mutex
