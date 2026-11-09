@@ -98,3 +98,20 @@ func TestReadJSON(t *testing.T) {
 		t.Errorf("attrs: %v", s.Attrs)
 	}
 }
+
+func TestReadProtobufRefusesDeepNesting(t *testing.T) {
+	nested := func(depth int) []byte {
+		v := lenField(1, []byte("leaf"))
+		for range depth {
+			v = lenField(5, lenField(1, v))
+		}
+		span := cat(lenField(1, bytes.Repeat([]byte{1}, 16)), lenField(2, bytes.Repeat([]byte{2}, 8)), lenField(9, kv("tags", v)))
+		return lenField(1, lenField(2, lenField(2, span)))
+	}
+	if spans, err := Read(bytes.NewReader(nested(2)), "application/x-protobuf", ""); err != nil || len(spans) != 1 {
+		t.Fatalf("a list of lists: %v %d", err, len(spans))
+	}
+	if _, err := Read(bytes.NewReader(nested(200)), "application/x-protobuf", ""); err == nil {
+		t.Fatal("accepted attributes nested 200 deep")
+	}
+}

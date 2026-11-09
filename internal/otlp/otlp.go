@@ -216,7 +216,15 @@ func le64(b []byte) uint64 {
 	return x
 }
 
-func protoAnyValue(b []byte) (any, error) {
+// maxNesting bounds arrays inside arrays. Real attributes are flat; without a bound a crafted export could nest deep enough to overflow the stack.
+const maxNesting = 8
+
+var errNesting = errors.New("an attribute is nested too deeply")
+
+func protoAnyValue(b []byte, depth int) (any, error) {
+	if depth > maxNesting {
+		return nil, errNesting
+	}
 	var v any
 	err := fields(b, func(f field) error {
 		switch f.num {
@@ -232,7 +240,7 @@ func protoAnyValue(b []byte) (any, error) {
 			var list []any
 			if err := fields(f.bytes, func(e field) error {
 				if e.num == 1 {
-					item, err := protoAnyValue(e.bytes)
+					item, err := protoAnyValue(e.bytes, depth+1)
 					list = append(list, item)
 					return err
 				}
@@ -257,7 +265,7 @@ func protoKeyValue(into map[string]any, b []byte) error {
 		case 1:
 			key = string(f.bytes)
 		case 2:
-			v, err := protoAnyValue(f.bytes)
+			v, err := protoAnyValue(f.bytes, 0)
 			val = v
 			return err
 		}
