@@ -1,13 +1,10 @@
 package panel
 
 import (
-	"os/exec"
-	"strconv"
+	"github.com/nuelScript/skiff/internal/docker"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/nuelScript/skiff/internal/docker"
 )
 
 func TestJobSchedulingRules(t *testing.T) {
