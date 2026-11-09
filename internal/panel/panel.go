@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/auth"
@@ -71,8 +72,25 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		selfBranch:  branch,
 	}
 	resStats = newResStore(filepath.Join(home, ".skiff", "resources.json"))
-	go guard("reapOrphanContainers", p.reapOrphanContainers)
 	go func() { _ = eng.EnsureNetwork(dbNetwork) }()
+	go p.aiGatewayLoop()
+	go p.background()
+	return p, nil
+}
+
+// background starts the work only one panel may do at a time. During a self-update the old panel holds the lock until its process exits, so jobs, queued runs, alerts and disk moves never run in both.
+func (p *Panel) background() {
+	waited := false
+	if _, err := holdPanelLock(filepath.Join(skiffDir(), "panel.lock"), func() {
+		waited = true
+		log.Printf("skiff: waiting for the previous panel to stop before starting background work")
+	}); err != nil {
+		log.Printf("skiff: panel lock: %v; starting background work anyway", err)
+	} else if waited {
+		log.Printf("skiff: the previous panel stopped; starting background work")
+	}
+	eng := p.eng
+	go guard("reapOrphanContainers", p.reapOrphanContainers)
 	go guard("reconcileNetworks", p.reconcileNetworks)
 	go guard("recoverDatabases", p.recoverDatabases)
 	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages)
@@ -103,12 +121,30 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.appLogLoop()
 	go p.logDrainLoop()
 	go p.oomLoop()
-	go p.aiGatewayLoop()
 	go p.agentLoop()
 	go guard("clearLeftoverSandboxes", p.clearLeftoverSandboxes)
 	go p.egressLoop()
 	go p.crashLoopWatch()
-	return p, nil
+}
+
+// panelLock stays open for the life of the process; closing it, or the process exiting, lets the next panel start its background work.
+var panelLock *os.File
+
+// holdPanelLock waits until no other panel holds the lock at path, then holds it. waiting is called once if it has to wait.
+func holdPanelLock(path string, waiting func()) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		waiting()
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	panelLock = f
+	return f, nil
 }
 
 // reapOrphanContainers clears leftover skiff containers and re-registers running
