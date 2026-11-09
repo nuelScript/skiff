@@ -116,7 +116,11 @@ func aiEnv(src Source) []EnvVar {
 	if !ok || host == "" {
 		return nil
 	}
-	return []EnvVar{{Key: "SKIFF_AI_URL", Value: "http://" + host}, {Key: "SKIFF_AI_TOKEN", Value: a.token}}
+	env := []EnvVar{{Key: "SKIFF_AI_URL", Value: "http://" + host}, {Key: "SKIFF_AI_TOKEN", Value: a.token}}
+	if _, agent := getAgent(app); agent {
+		env = append(env, otelEnv(app, host, a.token)...)
+	}
+	return env
 }
 
 func aiMonth(t time.Time) string { return t.UTC().Format("2006-01") }
@@ -270,28 +274,32 @@ func gatewayError(w http.ResponseWriter, status int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"type": "skiff_gateway", "message": msg}})
 }
 
-// askForUsage makes an OpenAI stream end with its token count, which it leaves out unless asked.
-func askForUsage(r *http.Request) {
+// peekRequest reads the model a JSON request names. For OpenAI it also makes a stream end with its token count, which OpenAI leaves out unless asked.
+func peekRequest(r *http.Request, kind string) (model string) {
 	if r.Body == nil || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		return
+		return ""
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, aiMaxBody+1))
 	_ = r.Body.Close()
 	body := raw
 	var v map[string]any
-	if err == nil && len(raw) <= aiMaxBody && json.Unmarshal(raw, &v) == nil && v["stream"] == true {
-		opts, _ := v["stream_options"].(map[string]any)
-		if opts == nil {
-			opts = map[string]any{}
-		}
-		opts["include_usage"] = true
-		v["stream_options"] = opts
-		if b, err := json.Marshal(v); err == nil {
-			body = b
+	if err == nil && len(raw) <= aiMaxBody && json.Unmarshal(raw, &v) == nil {
+		model, _ = v["model"].(string)
+		if kind == "openai" && v["stream"] == true {
+			opts, _ := v["stream_options"].(map[string]any)
+			if opts == nil {
+				opts = map[string]any{}
+			}
+			opts["include_usage"] = true
+			v["stream_options"] = opts
+			if b, err := json.Marshal(v); err == nil {
+				body = b
+			}
 		}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
+	return model
 }
 
 // aiGateway forwards /<provider>/<path> to that provider with the team's key, after checking the app's token and budget.
@@ -330,9 +338,8 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 		gatewayError(w, http.StatusBadGateway, "the provider's address in Skiff is invalid")
 		return
 	}
-	if pr.Kind == "openai" {
-		askForUsage(r)
-	}
+	started := time.Now()
+	model := peekRequest(r, pr.Kind)
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(req *httputil.ProxyRequest) {
 			req.Out.URL.Scheme, req.Out.URL.Host, req.Out.Host = target.Scheme, target.Host, target.Host
@@ -349,16 +356,22 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 		FlushInterval: -1,
 		ModifyResponse: func(resp *http.Response) error {
 			if resp.StatusCode >= 300 {
+				gatewaySpan(a, r, pr.Name, pr.Kind, model, started, resp.StatusCode, aiUsage{}, "")
 				return nil
 			}
+			status := resp.StatusCode
 			resp.Body = &aiMeter{
 				body:   resp.Body,
 				stream: strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"),
-				done:   func(u aiUsage) { recordAIUse(a, pr.Name, u, time.Now()) },
+				done: func(u aiUsage) {
+					recordAIUse(a, pr.Name, u, time.Now())
+					gatewaySpan(a, r, pr.Name, pr.Kind, model, started, status, u, "")
+				},
 			}
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			gatewaySpan(a, r, pr.Name, pr.Kind, model, started, http.StatusBadGateway, aiUsage{}, err.Error())
 			gatewayError(w, http.StatusBadGateway, "couldn't reach "+target.Host+": "+err.Error())
 		},
 	}

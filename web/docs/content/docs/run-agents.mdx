@@ -68,6 +68,18 @@ A sandbox:
 
 An agent runs up to three sandboxes at once. The project's **Overview** lists the last few with their output, and **Stop agent** ends any that are running.
 
+## Runs
+
+The agent panel lists the agent's runs, and each opens to its steps laid out in time, with the model, tokens and any error on each.
+
+Every model call through Skiff is recorded, so a run shows up even if the agent does nothing. For the agent's own steps (planning, tool calls, retries), use OpenTelemetry, which most agent frameworks support. Skiff sets the standard variables for an agent, so its exporter sends to Skiff with no setup:
+
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Skiff's address and the agent's token.
+- `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`: `http/protobuf`. Skiff also takes OTLP's JSON encoding.
+- `OTEL_SERVICE_NAME`: the project's name.
+
+A model call made inside a traced step carries its trace context, and Skiff files the call under that step. Spans named with OpenTelemetry's GenAI conventions (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.tool.name` and so on) show their model, tokens and tool. Runs are kept for a week, up to 20,000 steps per agent.
+
 ## Stop it
 
 **Stop agent** on the project's **Overview** does everything at once: its containers, sandboxes and any commands it's running stop, and Skiff refuses its model calls and holds its inbox. **Start** brings it back with its events still waiting.

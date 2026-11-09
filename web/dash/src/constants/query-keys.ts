@@ -41,6 +41,8 @@ export const queryKeys = {
   aiProviders: ['ai-providers'] as const,
   projectAI: (app: string) => ['project-ai', app] as const,
   agent: (app: string) => ['agent', app] as const,
+  traces: (app: string) => ['traces', app] as const,
+  trace: (app: string, id: string) => ['traces', app, id] as const,
   previewData: (app: string) => ['preview-data', app] as const,
   volumes: (app: string) => ['volumes', app] as const,
   volumeBackups: (app: string, volume: string) => ['volume-backups', app, volume] as const,

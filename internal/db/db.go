@@ -413,6 +413,25 @@ CREATE TABLE IF NOT EXISTS sandboxes (
   output    TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_sandboxes_app ON sandboxes(app, id);
+CREATE TABLE IF NOT EXISTS spans (
+  app           TEXT NOT NULL,
+  trace_id      TEXT NOT NULL,
+  span_id       TEXT NOT NULL,
+  parent_id     TEXT NOT NULL DEFAULT '',
+  name          TEXT NOT NULL,
+  start_ns      INTEGER NOT NULL,
+  end_ns        INTEGER NOT NULL,
+  status        INTEGER NOT NULL DEFAULT 0,
+  status_msg    TEXT NOT NULL DEFAULT '',
+  model         TEXT NOT NULL DEFAULT '',
+  tool          TEXT NOT NULL DEFAULT '',
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  attrs         TEXT NOT NULL DEFAULT '{}',
+  source        TEXT NOT NULL DEFAULT 'app',
+  PRIMARY KEY (app, trace_id, span_id)
+);
+CREATE INDEX IF NOT EXISTS idx_spans_start ON spans(app, start_ns);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

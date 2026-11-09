@@ -9,6 +9,7 @@ import { relTime } from '@/lib/format'
 import { useConfirm } from '@/providers/confirm-provider'
 import { aiService, type AgentEvent, type Sandbox } from '@/services/api.service'
 import { JobWebhook } from './job-webhook'
+import { AgentRuns } from './agent-runs'
 
 const sourceLabel: Record<string, string> = { webhook: 'Webhook', github: 'GitHub', schedule: 'Schedule' }
 
@@ -135,6 +136,8 @@ export function AgentPanel({ app }: { app: string }) {
           )}
         </div>
       </div>
+
+      <AgentRuns app={app} />
 
       {data.sandboxes.length > 0 && (
         <div className="flex min-w-0 flex-col gap-3">

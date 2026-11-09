@@ -43,6 +43,35 @@ export type Sandbox = {
   output: string
 }
 
+export type TraceSummary = {
+  id: string
+  name: string
+  start: number
+  durationMs: number
+  spans: number
+  errors: number
+  inputTokens: number
+  outputTokens: number
+  modelCalls: number
+  toolCalls: number
+}
+
+export type SpanView = {
+  id: string
+  parent: string
+  name: string
+  startNs: number
+  endNs: number
+  status: number
+  message?: string
+  model?: string
+  tool?: string
+  inputTokens?: number
+  outputTokens?: number
+  source: 'app' | 'gateway'
+  attrs: Record<string, unknown>
+}
+
 export type Agent =
   | { agent: false }
   | {
@@ -85,6 +114,14 @@ class AIService extends BaseService {
 
   setAgentSchedule(app: string, schedule: string) {
     return this.put('/project/agent', { schedule }, { params: { app } })
+  }
+
+  traces(app: string) {
+    return this.get<{ traces: TraceSummary[] }>('/project/traces', { params: { app } })
+  }
+
+  trace(app: string, trace: string) {
+    return this.get<{ spans: SpanView[] }>('/project/traces', { params: { app, trace } })
   }
 
   agentAction(app: string, action: 'stop' | 'start') {
