@@ -1,17 +1,22 @@
 package panel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os/exec"
+	"strconv"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 const (
 	defaultJobTimeout = 30 * 60
-	maxJobTimeout     = 24 * 3600
+	maxJobTimeout     = 7 * 24 * 3600
 	maxJobRetries     = 10
 	keepJobRuns       = 50
 	jobOutputLimit    = 32 << 10
@@ -90,10 +95,78 @@ func listRuns(job string, limit int) []JobRun {
 	return out
 }
 
-// settleRunsAfterRestart marks runs the panel was watching when it stopped, since nothing will finish them now.
-func settleRunsAfterRestart() {
-	_, _ = sqlDB.Exec(`UPDATE job_runs SET status=?, finished=?, output=output || ? WHERE status=?`,
-		runFailed, time.Now().Unix(), "\nSkiff restarted while this was running, so its result is unknown.", runRunning)
+type orphanRun struct {
+	id, started    int64
+	job            string
+	attempt        int
+	trigger, input string
+}
+
+// adoptRunsAfterRestart picks up runs that were going when Skiff stopped. A run whose container is still going is followed to its end; the rest are tried again if they have retries left, so a long run resumes from the checkpoints it saved.
+func (p *Panel) adoptRunsAfterRestart() {
+	rows, err := sqlDB.Query(`SELECT id, job, attempt, started, trigger, input FROM job_runs WHERE status=?`, runRunning)
+	if err != nil {
+		return
+	}
+	var runs []orphanRun
+	for rows.Next() {
+		var r orphanRun
+		if rows.Scan(&r.id, &r.job, &r.attempt, &r.started, &r.trigger, &r.input) == nil {
+			runs = append(runs, r)
+		}
+	}
+	rows.Close()
+	if len(runs) == 0 {
+		return
+	}
+	live := p.eng.LabelledRuns(docker.JobRunLabel)
+	for _, r := range runs {
+		containers := live[strconv.FormatInt(r.id, 10)]
+		j, ok := getJob(r.job)
+		if ok && len(j.Steps) == 0 && len(containers) == 1 && claimJob(j.ID) {
+			go func() {
+				defer releaseJob(j.ID)
+				guard("job:"+j.ID, func() { p.followRun(j, r, containers[0]) })
+			}()
+			continue
+		}
+		// A run of steps can't be followed from the middle, so it starts again.
+		for _, c := range containers {
+			_ = p.eng.Remove(c)
+		}
+		finishRun(r.id, runFailed, 0, "Skiff restarted while this was running, so its result is unknown.")
+		if ok && r.trigger != triggerManual && r.attempt <= j.Retries && claimJob(j.ID) {
+			go func() {
+				defer releaseJob(j.ID)
+				guard("job:"+j.ID, func() { p.execJobFrom(j, triggerRetry, 0, r.input, r.attempt+1) })
+			}()
+		}
+	}
+}
+
+// followRun waits for a run still going after a restart, records how it ended, and carries on with its retries.
+func (p *Panel) followRun(j jobRow, r orphanRun, container string) {
+	timeout := jobTimeout(j)
+	ctx, cancel := context.WithTimeout(context.Background(), max(time.Until(time.Unix(r.started, 0).Add(timeout)), time.Second))
+	defer cancel()
+	var out bytes.Buffer
+	code, err := p.eng.Follow(ctx, container, &out)
+	text := out.String() + "\n(Skiff restarted during this run; the run kept going.)"
+	status := runOK
+	switch {
+	case ctx.Err() == context.DeadlineExceeded:
+		status = runTimeout
+		text += fmt.Sprintf("\nStopped after %s, this job's timeout.", timeout)
+	case err != nil || code != 0:
+		status = runFailed
+	}
+	finishRun(r.id, status, code, text)
+	if status != runOK && r.trigger != triggerManual && r.attempt <= j.Retries {
+		time.Sleep(retryWait(r.attempt))
+		p.execJobFrom(j, triggerRetry, 0, r.input, r.attempt+1)
+		return
+	}
+	p.settleJob(j, status, status == runOK)
 }
 
 func deleteAppJobs(app string) {
@@ -142,6 +215,11 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 	defer cancel()
 	settings := p.appSettings(src)
 	settings.Env = withTriggerEnv(settings.Env, j, trigger, input)
+	settings.Labels = maps.Clone(settings.Labels)
+	if settings.Labels == nil {
+		settings.Labels = map[string]string{}
+	}
+	settings.Labels[docker.JobRunLabel] = strconv.FormatInt(id, 10)
 	settings.OOMScore = max(settings.OOMScore, oomOneOff)
 	if len(j.Steps) > 0 {
 		out, status, code, results := p.runSteps(ctx, image, j.Steps, settings)
@@ -177,11 +255,16 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 
 // execJob runs a job, retrying as it asks, and tells the team when it starts failing and when it recovers. id is a queued run to use for the first attempt, or 0.
 func (p *Panel) execJob(j jobRow, trigger string, id int64, input string) {
+	p.execJobFrom(j, trigger, id, input, 1)
+}
+
+// execJobFrom is execJob starting at a later attempt, for a run picked up after a restart.
+func (p *Panel) execJobFrom(j jobRow, trigger string, id int64, input string, first int) {
 	var status string
 	var err error
-	for attempt := 1; ; attempt++ {
+	for attempt := first; ; attempt++ {
 		t := trigger
-		if attempt > 1 {
+		if attempt > first {
 			t, id = triggerRetry, 0
 		}
 		_, status, err = p.attemptJob(j, t, attempt, id, input)

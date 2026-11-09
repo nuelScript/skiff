@@ -79,6 +79,6 @@ and print its output as it comes. Skiff exits with the command's exit code. Ctrl
 			return nil
 		},
 	}
-	cmd.Flags().DurationVar(&timeout, "timeout", 0, "how long it may take, like 2h (default 30m, up to 24h)")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "how long it may take, like 2h (default 30m, up to 168h)")
 	return cmd
 }

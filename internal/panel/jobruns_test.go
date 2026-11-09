@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"github.com/nuelScript/skiff/internal/docker"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestJobRunHistoryIsKeptShort(t *testing.T) {
 	}
 
 	running := startRun(j, triggerSchedule, 1, runRunning)
-	settleRunsAfterRestart()
+	(&Panel{eng: docker.Local()}).adoptRunsAfterRestart()
 	if r := listRuns(j.ID, 1)[0]; r.ID != running || r.Status != runFailed || !strings.Contains(r.Output, "restarted") {
 		t.Errorf("a run cut off by a restart: %+v", r)
 	}
@@ -74,7 +75,7 @@ func TestJobLimits(t *testing.T) {
 		ok               bool
 	}{
 		{0, 0, "", true}, {60, 10, "skip", true}, {86400, 3, "", true},
-		{59, 0, "", false}, {86401, 0, "", false}, {0, 11, "", false}, {0, -1, "", false}, {0, 0, "always", false},
+		{59, 0, "", false}, {7*86400 + 1, 0, "", false}, {0, 11, "", false}, {0, -1, "", false}, {0, 0, "always", false},
 	} {
 		if got := checkJobLimits(c.timeout, c.retries, c.catchUp) == ""; got != c.ok {
 			t.Errorf("%+v: accepted = %v", c, got)

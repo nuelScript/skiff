@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 )
 
 // DBRunSpec runs a managed resource (a database), deliberately unlabeled with skiff=1 so the app reaper leaves it alone.
@@ -124,6 +125,46 @@ func (e *Engine) RunStream(ctx context.Context, image, cmd string, s Settings, w
 		_ = e.command("rm", "-f", name).Run()
 	}
 	return err
+}
+
+// JobRunLabel carries a job run's id on its containers, so a restarted Skiff can find a run still going.
+const JobRunLabel = "skiff.job-run"
+
+// LabelledRuns maps each value of label to the running containers that carry it.
+func (e *Engine) LabelledRuns(label string) map[string][]string {
+	runs := map[string][]string{}
+	out, err := e.command("ps", "--filter", "label="+label, "--format", `{{.Label "`+label+`"}} {{.Names}}`).Output()
+	if err != nil {
+		return runs
+	}
+	for _, l := range splitLines(out) {
+		if v, name, ok := strings.Cut(l, " "); ok {
+			runs[v] = append(runs[v], name)
+		}
+	}
+	return runs
+}
+
+// Follow writes a running container's output, from its start, until it exits, and returns its exit code. Cancelling removes the container.
+func (e *Engine) Follow(ctx context.Context, name string, w io.Writer) (int, error) {
+	code := make(chan string, 1)
+	go func() {
+		out, _ := e.contextCommand(ctx, "wait", name).Output()
+		code <- strings.TrimSpace(string(out))
+	}()
+	c := e.contextCommand(ctx, "logs", "--follow", name)
+	c.Stdout, c.Stderr = w, w
+	_ = c.Run()
+	got := <-code
+	if ctx.Err() != nil {
+		_ = e.command("rm", "-f", name).Run()
+		return 0, ctx.Err()
+	}
+	n, err := strconv.Atoi(got)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't tell how the run ended")
+	}
+	return n, nil
 }
 
 // RunIO runs a throwaway container with its streams attached and no memory limit, for one-off work on a volume whose size isn't known in advance.
