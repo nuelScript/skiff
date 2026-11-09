@@ -13,6 +13,7 @@ import (
 
 	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/egress"
 )
 
 // A sandbox is a throwaway container an agent asks for to run code it wrote: no network unless asked, no privileges, removed when the command ends.
@@ -98,6 +99,22 @@ func sandboxSpec(app string, req sandboxRequest) (docker.SandboxSpec, time.Durat
 	return spec, timeout, nil
 }
 
+// sandboxReach gives a sandbox that wants the internet its app's outbound limits: none at all when the app is kept to the team's own services, and only the listed hosts when it has a list.
+func (p *Panel) sandboxReach(spec *docker.SandboxSpec) error {
+	if !spec.Internet {
+		return nil
+	}
+	src, _ := getSource(spec.App)
+	if egress.Decode(src.Egress).Mode == egress.Private {
+		return errors.New("this agent is kept to the team's own services, so its sandboxes can't use the internet")
+	}
+	if err := p.eng.EnsureSandboxNetwork(); err != nil {
+		return err
+	}
+	spec.Network, spec.Labels = docker.SandboxNetwork, egressLabels(src)
+	return nil
+}
+
 // claimSandbox holds one of the app's sandbox places until release is called.
 func claimSandbox(app string, cancel context.CancelFunc) (release func(), ok bool) {
 	sandboxes.Lock()
@@ -137,6 +154,10 @@ func (p *Panel) runSandbox(w http.ResponseWriter, r *http.Request, a aiApp) {
 	spec, timeout, err := sandboxSpec(a.App, req)
 	if err != nil {
 		gatewayError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := p.sandboxReach(&spec); err != nil {
+		gatewayError(w, http.StatusForbidden, err.Error())
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -179,6 +200,9 @@ func (p *Panel) runSandbox(w http.ResponseWriter, r *http.Request, a aiApp) {
 		out.TimedOut, out.ExitCode, status = true, -1, "timeout"
 	case errors.Is(err, context.Canceled):
 		out.ExitCode, status = -1, "stopped"
+	case errors.Is(err, docker.ErrSandboxDisk):
+		out.ExitCode, status = -1, "failed"
+		out.Output += "\n" + err.Error() + "\n"
 	case err != nil:
 		recordSandboxEnd(id, "failed", -1, err.Error())
 		gatewayError(w, http.StatusBadGateway, err.Error())

@@ -3,18 +3,23 @@ package docker
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -27,7 +32,28 @@ const (
 	sandboxMaxOutput = 256 << 10
 	// sandboxPullTimeout is how long a sandbox may wait for its image the first time, apart from its own timeout.
 	sandboxPullTimeout = 10 * time.Minute
+	// SandboxMaxDisk bounds what a sandbox writes, in its working directory and the rest of its file system. Docker has no size limit that works everywhere, so it's measured while the command runs and a sandbox past it is stopped.
+	SandboxMaxDisk = 2 << 30
 )
+
+// SandboxNetwork is where sandboxes with the internet run. Its containers can't reach one another, so one team's sandbox never reaches another's, and as one of Skiff's networks the outbound limits on a sandbox's label apply.
+const SandboxNetwork = "skiff-sandboxes"
+
+// EnsureSandboxNetwork makes SandboxNetwork if it isn't there yet.
+func (e *Engine) EnsureSandboxNetwork() error {
+	if e.command("network", "inspect", SandboxNetwork).Run() == nil {
+		return nil
+	}
+	if out, err := e.command("network", "create", "--opt", "com.docker.network.bridge.enable_icc=false", SandboxNetwork).CombinedOutput(); err != nil {
+		return fmt.Errorf("network create failed: %s", firstLine(out))
+	}
+	return nil
+}
+
+// ErrSandboxDisk is returned for a sandbox stopped for writing more than SandboxMaxDisk.
+var ErrSandboxDisk = fmt.Errorf("the sandbox wrote more than %d GB, so it was stopped", SandboxMaxDisk>>30)
+
+var sandboxDiskEvery = 2 * time.Second
 
 // SandboxSpec is a throwaway container: files go into its working directory, the command runs, and what's left there comes back.
 type SandboxSpec struct {
@@ -36,10 +62,13 @@ type SandboxSpec struct {
 	Command  string
 	Files    map[string][]byte
 	Internet bool // otherwise it has no network at all
-	Memory   string
-	CPU      string
-	ShmSize  string // shared memory, which browsers need more of than Docker's 64 MB
-	Runtime  string // another OCI runtime, such as gVisor's
+	// Network is where a sandbox with the internet runs, and Labels go on its container, so outbound limits reach it; empty is Docker's default network.
+	Network string
+	Labels  map[string]string
+	Memory  string
+	CPU     string
+	ShmSize string // shared memory, which browsers need more of than Docker's 64 MB
+	Runtime string // another OCI runtime, such as gVisor's
 }
 
 type SandboxResult struct {
@@ -66,7 +95,7 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 	name := "skiff-sbx-" + hex.EncodeToString(id[:])
 	network := "none"
 	if spec.Internet {
-		network = "bridge"
+		network = cmp.Or(spec.Network, "bridge")
 	}
 	// The working directory is a volume of its own: under gVisor, writes elsewhere stay in the sandbox's memory, out of reach of copying them back.
 	work := name + "-work"
@@ -74,6 +103,9 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 		"--network", network, "--workdir", sandboxWorkdir, "--mount", "type=volume,src=" + work + ",dst=" + sandboxWorkdir,
 		"--memory", spec.Memory, "--cpus", spec.CPU, "--pids-limit", "256",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none"}
+	for _, k := range sortedKeys(spec.Labels) {
+		args = append(args, "--label", k+"="+spec.Labels[k])
+	}
 	if spec.ShmSize != "" {
 		args = append(args, "--shm-size", spec.ShmSize)
 	}
@@ -128,10 +160,22 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 
 	var res SandboxResult
 	out := &cappedBuffer{max: sandboxMaxOutput}
-	start := e.contextCommand(ctx, "start", "-a", name)
+	runCtx, stopRun := context.WithCancelCause(ctx)
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		e.watchSandboxDisk(runCtx, name, work, stopRun)
+	}()
+	start := e.contextCommand(runCtx, "start", "-a", name)
 	start.Stdout, start.Stderr = out, out
 	err := start.Run()
+	// A measurement still going holds the volume, which then couldn't be removed.
+	stopRun(nil)
+	<-watched
 	res.Output, res.Truncated = out.String(), out.cut
+	if errors.Is(context.Cause(runCtx), ErrSandboxDisk) {
+		return res, ErrSandboxDisk
+	}
 	if ctx.Err() != nil {
 		return res, ctx.Err()
 	}
@@ -155,6 +199,69 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 	_, _ = io.Copy(io.Discard, tarOut)
 	_ = cp.Wait()
 	return res, nil
+}
+
+// watchSandboxDisk stops the sandbox once it has written more than SandboxMaxDisk. Both measures come from outside the sandbox, so its code can't hide what it wrote: Docker's size of the container's own layer, and the blocks its working volume uses on the server.
+func (e *Engine) watchSandboxDisk(ctx context.Context, name, work string, stop context.CancelCauseFunc) {
+	folder := ""
+	if out, err := e.command("volume", "inspect", "--format", "{{.Mountpoint}}", work).Output(); err == nil {
+		folder = strings.TrimSpace(string(out))
+	}
+	t := time.NewTicker(sandboxDiskEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		used := e.volumeUsed(work, folder)
+		if out, err := e.command("inspect", "--size", "--format", "{{.SizeRw}}", name).Output(); err == nil {
+			n, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+			used += n
+		}
+		if used > SandboxMaxDisk {
+			stop(ErrSandboxDisk)
+			_ = e.command("kill", name).Run()
+			return
+		}
+	}
+}
+
+// volumeUsed is the space a volume's files take up: read straight from its folder when the panel can, as it can running as root on a server, or else through a container of Skiff's own tool image.
+func (e *Engine) volumeUsed(volume, folder string) int64 {
+	if n, ok := diskUsed(folder); ok {
+		return n
+	}
+	out, err := e.command("run", "--rm", "--network", "none", "-v", volume+":/v:ro", VolumeTool, "du", "-sk", "/v").Output()
+	if err != nil {
+		return 0
+	}
+	kb, _ := strconv.ParseInt(strings.Fields(string(out) + " 0")[0], 10, 64)
+	return kb << 10
+}
+
+// diskUsed is the space the files under folder take up, counting allocated blocks so a sparse file isn't taken at its apparent size. It's false when the folder can't be read.
+func diskUsed(folder string) (int64, bool) {
+	if folder == "" {
+		return 0, false
+	}
+	if _, err := os.ReadDir(folder); err != nil {
+		return 0, false
+	}
+	var total int64
+	_ = filepath.WalkDir(folder, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			if st, ok := info.Sys().(*syscall.Stat_t); ok {
+				total += st.Blocks * 512
+			}
+		}
+		return nil
+	})
+	return total, true
 }
 
 // readSandboxFiles keeps the regular files in a tar stream, within the size limits.
