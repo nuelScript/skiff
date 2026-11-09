@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/nuelScript/skiff/internal/egress"
 	"github.com/nuelScript/skiff/internal/github"
 	"github.com/nuelScript/skiff/internal/registry"
 )
@@ -191,4 +192,39 @@ func (p *Panel) removeAppImages(app string) {
 		_ = p.eng.RemoveImage(fmt.Sprintf("skiff-%s:%s", app, t))
 	}
 	_ = p.eng.RemoveImage("skiff-" + app + ":latest")
+}
+
+// previewOf finds the production app a preview stands in for: its project, or the same service in the stack it previews.
+func previewOf(src Source) (Source, bool) {
+	if src.Parent != "" {
+		return getSource(src.Parent)
+	}
+	if src.Stack == "" {
+		return Source{}, false
+	}
+	rec, ok := getStackRecord(src.Stack)
+	if !ok || rec.Parent == "" {
+		return Source{}, false
+	}
+	for _, s := range stackApps(rec.Parent) {
+		if s.Service == src.Service {
+			return s, true
+		}
+	}
+	return Source{}, false
+}
+
+// withParentLimits gives a preview the isolation and outbound limits of the app it previews, read when it runs so tightening production covers its previews too. A preview runs any pushed branch with the project's secrets, so it must not be freer than production. Machine permissions aren't carried over: they're granted to production by the server's admin.
+func withParentLimits(src Source) Source {
+	parent, ok := previewOf(src)
+	if !ok {
+		return src
+	}
+	if parent.Isolation == "strong" {
+		src.Isolation = "strong"
+	}
+	if egress.Decode(parent.Egress).Restricted() {
+		src.Egress = parent.Egress
+	}
+	return src
 }
