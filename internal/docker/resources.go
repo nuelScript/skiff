@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -92,8 +94,29 @@ func (e *Engine) ContainersLabelled(label string) []string {
 	return splitLines(out)
 }
 
+// RemoveVolume deletes a volume and its files. Docker leaves the files of a volume kept in a folder on an added disk, where a new volume of the same name would pick them up, so they're cleared too.
 func (e *Engine) RemoveVolume(name string) error {
+	folder := e.VolumeFolder(name)
+	if err := e.ForgetVolume(name); err != nil {
+		return err
+	}
+	if folder != "" && ownFolder(folder, name) {
+		if err := e.ClearFolder(folder); err != nil {
+			return err
+		}
+		_ = os.Remove(folder)
+	}
+	return nil
+}
+
+// ForgetVolume deletes a volume but leaves a folder it keeps its files in, for a move that copies them from there.
+func (e *Engine) ForgetVolume(name string) error {
 	return e.command("volume", "rm", "-f", name).Run()
+}
+
+// ownFolder reports whether folder is one Skiff made for the volume on a disk, so a bind to anything else is never emptied.
+func ownFolder(folder, name string) bool {
+	return filepath.Base(folder) == name && filepath.Base(filepath.Dir(folder)) == "skiff-volumes"
 }
 
 func (e *Engine) PullImage(image string) error {

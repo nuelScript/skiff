@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,5 +137,16 @@ func TestDatabaseMovesBetweenDisks(t *testing.T) {
 	move(dk.ID)
 	if got := folder(); got != diskPath+"/skiff-volumes/"+vol {
 		t.Errorf("not back on the disk: %q", got)
+	}
+
+	// Docker leaves a folder volume's files behind, where a new volume of the same name would find them.
+	req, _ := http.NewRequest(http.MethodDelete, base+"/api/databases?id="+db.ID, nil)
+	resp, err := c.Do(req)
+	if err != nil || resp.StatusCode >= 300 {
+		t.Fatalf("deleting the database: %v %v", resp, err)
+	}
+	resp.Body.Close()
+	if _, err := os.Stat(diskPath + "/skiff-volumes/" + vol); err == nil {
+		t.Error("the database's files were left on the disk")
 	}
 }
