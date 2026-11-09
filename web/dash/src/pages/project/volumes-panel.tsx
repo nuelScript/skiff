@@ -31,6 +31,13 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
   const [backups, setBackups] = useState('')
   const [budgetFor, setBudgetFor] = useState('')
   const [disk, setDisk] = useState('')
+  const [shared, setShared] = useState('')
+  const { data: sharedList } = useQuery({
+    queryKey: queryKeys.sharedVolumes(app),
+    queryFn: () => projectsService.sharedVolumes(app),
+    enabled: adding,
+  })
+  const borrowed = sharedList?.find((v) => `${v.app}/${v.name}` === shared)
   const { data: disks } = useQuery({ queryKey: queryKeys.disks, queryFn: () => disksService.list(), staleTime: 60000 })
   const [budgetGB, setBudgetGB] = useState('')
 
@@ -60,8 +67,9 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
   const create = form.handleSubmit(async (values) => {
     setServerError('')
     try {
-      await projectsService.addVolume(app, values.name, values.path, disk)
+      await projectsService.addVolume(app, values.name, values.path, borrowed ? '' : disk, borrowed?.app)
       form.reset()
+      setShared('')
       setAdding(false)
       reload()
     } catch (err) {
@@ -69,14 +77,22 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
     }
   })
 
-  const del = async (name: string) => {
+  const del = async (name: string, owner?: string) => {
     if (
-      !(await confirm({
-        title: `Delete the ${name} volume?`,
-        description: 'Its files are deleted on the next deploy. This cannot be undone.',
-        confirmText: 'Delete',
-        destructive: true,
-      }))
+      !(await confirm(
+        owner
+          ? {
+              title: `Stop using ${owner}'s ${name} volume?`,
+              description: `This app no longer mounts it after the next deploy. Its files stay with ${owner}.`,
+              confirmText: 'Stop using',
+            }
+          : {
+              title: `Delete the ${name} volume?`,
+              description: 'Its files are deleted on the next deploy. This cannot be undone.',
+              confirmText: 'Delete',
+              destructive: true,
+            },
+      ))
     )
       return
     try {
@@ -97,7 +113,7 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
               ? "Directories that keep their files across deploys. This app's volumes come from the [[volumes]] section of its skiff.toml."
               : data?.kind === 'preview'
                 ? "This preview mounts its project's volumes, on empty copies of its own — production's files are never touched."
-                : 'Directories that keep their files across deploys, rollbacks and restarts — for SQLite databases, uploads and caches. Shared by every replica, worker and job; previews get empty ones of their own.'}
+                : "Directories that keep their files across deploys, rollbacks and restarts — for SQLite databases, uploads, caches and downloaded models. Shared by every replica, worker and job, and can be shared with the team's other projects; previews get empty ones of their own."}
           </p>
         </div>
         {editable && !adding && (
@@ -114,12 +130,41 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
           className="flex flex-col gap-3 rounded-xl border border-foreground/10 bg-linear-to-b from-foreground/2 to-transparent p-4"
         >
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            {(sharedList?.length ?? 0) > 0 && (
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="vol-source">Volume</FieldLabel>
+                <select
+                  id="vol-source"
+                  value={shared}
+                  onChange={(e) => {
+                    setShared(e.target.value)
+                    const v = sharedList?.find((s) => `${s.app}/${s.name}` === e.target.value)
+                    form.reset(v ? { name: v.name, path: v.path } : { name: 'data', path: '/data' })
+                  }}
+                  className="h-9 cursor-pointer rounded-md border border-input bg-transparent px-2.5 text-sm"
+                >
+                  <option value="">A new, empty volume</option>
+                  {sharedList?.map((v) => (
+                    <option key={`${v.app}/${v.name}`} value={`${v.app}/${v.name}`}>
+                      {v.app}'s {v.name} volume
+                    </option>
+                  ))}
+                </select>
+                {borrowed && (
+                  <p className="text-muted-foreground text-xs">
+                    Both apps see the same files, so a model {borrowed.app} has downloaded is ready here
+                    without downloading it again.
+                  </p>
+                )}
+              </Field>
+            )}
             <Field data-invalid={!!form.formState.errors.name}>
               <FieldLabel htmlFor="vol-name">Name</FieldLabel>
               <Input
                 id="vol-name"
                 className="font-mono"
                 placeholder="data"
+                readOnly={!!borrowed}
                 aria-invalid={!!form.formState.errors.name}
                 {...form.register('name')}
               />
@@ -136,7 +181,7 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
               />
               <FieldError errors={[form.formState.errors.path]} />
             </Field>
-            {(disks?.disks.length ?? 0) > 0 && (
+            {!borrowed && (disks?.disks.length ?? 0) > 0 && (
               <Field>
                 <FieldLabel htmlFor="vol-disk">Keep its files on</FieldLabel>
                 <select
@@ -162,6 +207,7 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
               onClick={() => {
                 setAdding(false)
                 setServerError('')
+                setShared('')
                 form.reset()
               }}
               className="text-muted-foreground hover:text-foreground text-xs"
@@ -188,6 +234,11 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{v.name}</p>
                   <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">{v.path}</p>
+                  {(v.owner || (v.usedBy?.length ?? 0) > 0) && (
+                    <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                      {v.owner ? `Shared from ${v.owner}` : `Also used by ${v.usedBy?.join(', ')}`}
+                    </p>
+                  )}
                 </div>
                 {budgetFor === v.name ? (
                   <form
@@ -213,8 +264,8 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                 ) : v.attached ? (
                   <button
                     type="button"
-                    title={editable ? 'Set a size budget' : undefined}
-                    disabled={!editable}
+                    title={editable && !v.owner ? 'Set a size budget' : undefined}
+                    disabled={!editable || !!v.owner}
                     onClick={() => {
                       setBudgetFor(v.name)
                       setBudgetGB(v.budget ? String(+(v.budget / 1024 ** 3).toFixed(2)) : '')
@@ -225,12 +276,12 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                     }
                   >
                     {fmtBytes(v.size)}
-                    {v.budget ? ` of ${fmtBytes(v.budget)}` : editable ? ' · set budget' : ''}
+                    {v.budget ? ` of ${fmtBytes(v.budget)}` : editable && !v.owner ? ' · set budget' : ''}
                   </button>
                 ) : (
                   <span className="shrink-0 text-[11px] text-warning">Not mounted yet</span>
                 )}
-                {data?.kind !== 'preview' && (
+                {data?.kind !== 'preview' && !v.owner && (
                   <DiskPlace
                     target={{ app, volume: v.name }}
                     label={`the ${v.name} volume`}
@@ -238,10 +289,14 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                     move={v.move}
                     canMove={editable}
                     invalidate={queryKeys.volumes(app)}
-                    downtime={`${app} stops while its files are copied, then deploys again on the moved volume.`}
+                    downtime={
+                      v.usedBy?.length
+                        ? `${[app, ...v.usedBy].join(', ')} stop while its files are copied, then deploy again on the moved volume.`
+                        : `${app} stops while its files are copied, then deploys again on the moved volume.`
+                    }
                   />
                 )}
-                {data?.kind !== 'preview' && v.attached && (
+                {data?.kind !== 'preview' && v.attached && !v.owner && (
                   <button
                     onClick={() => setBackups(v.name)}
                     title="Backups"
@@ -252,8 +307,8 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                 )}
                 {editable && (
                   <button
-                    onClick={() => del(v.name)}
-                    title="Delete"
+                    onClick={() => del(v.name, v.owner)}
+                    title={v.owner ? 'Stop using' : 'Delete'}
                     className="text-muted-foreground p-1.5 transition hover:text-danger"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

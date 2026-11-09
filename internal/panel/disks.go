@@ -228,6 +228,12 @@ func (p *Panel) moveAppVolume(src Source, volume, to, actor string) {
 	}
 	src.actor = actor
 	go p.runDeploy(src, "", "", "", "redeploy", newDeployID())
+	for _, a := range appsMounting(src.App, strings.TrimPrefix(volume, config.VolumeName(src.App, ""))) {
+		if b, ok := getSource(a); ok {
+			b.actor = actor
+			go p.runDeploy(b, "", "", "", "redeploy", newDeployID())
+		}
+	}
 }
 
 // moveDatabase stops a database, moves its volume, and starts it again with the same settings.
@@ -371,6 +377,10 @@ func (p *Panel) handleMove(w http.ResponseWriter, r *http.Request) {
 		}
 		if vol.Name == "" {
 			http.Error(w, "no such volume", http.StatusNotFound)
+			return
+		}
+		if vol.Owner != "" {
+			http.Error(w, "this volume is "+vol.Owner+"'s; move it from there", http.StatusBadRequest)
 			return
 		}
 		name := vol.DockerName(app)

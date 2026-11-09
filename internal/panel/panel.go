@@ -196,6 +196,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/stacks/changes", p.protected(p.handleStackChanges))
 	mux.HandleFunc("/api/stacks/update", p.protected(p.handleStackUpdate))
 	mux.HandleFunc("/api/volumes", p.protected(p.handleVolumes))
+	mux.HandleFunc("GET /api/volumes/shared", p.protected(p.handleSharedVolumes))
 	mux.HandleFunc("/api/volumes/backups", p.protected(p.handleVolumeBackups))
 	mux.HandleFunc("/api/volumes/backups/restore", p.protected(p.handleVolumeBackupRestore))
 	mux.HandleFunc("/api/volumes/backups/download", p.protected(p.handleVolumeBackupDownload))

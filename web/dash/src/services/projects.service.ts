@@ -196,6 +196,14 @@ export type Volume = {
   budget: number
   disk?: string
   move?: MoveState
+  owner?: string
+  usedBy?: string[]
+}
+
+export type SharedVolume = {
+  app: string
+  name: string
+  path: string
 }
 
 export type PreviewDataMode = '' | 'empty' | 'copy'
@@ -445,8 +453,12 @@ class ProjectsService extends BaseService {
     return this.get<Volumes>('/volumes', { params: { app } })
   }
 
-  addVolume(app: string, name: string, path: string, disk = '') {
-    return this.post('/volumes', { name, path, disk }, { params: { app } })
+  addVolume(app: string, name: string, path: string, disk = '', owner = '') {
+    return this.post('/volumes', { name, path, disk, owner }, { params: { app } })
+  }
+
+  sharedVolumes(app: string) {
+    return this.get<SharedVolume[]>('/volumes/shared', { params: { app } })
   }
 
   setVolumeBudget(app: string, name: string, budget: number) {

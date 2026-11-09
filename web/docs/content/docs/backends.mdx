@@ -203,6 +203,9 @@ On a server with NVIDIA GPUs, an app can have some: choose how many under **Limi
 - **The server needs** NVIDIA's driver and its container toolkit, set up for Docker (`nvidia-ctk runtime configure --runtime=docker`, then restart Docker). Until then, the Server page and the setting say what's missing, and a deploy that asks for GPUs stops with the reason.
 - **An app keeps its GPUs** from one deploy to the next, so the new version starts on the same cards while the old one finishes. Its replicas, workers, jobs and one-off runs share them.
 - **A deploy that needs more than are free** stops before replacing anything, and says which apps have the rest. Previews don't get GPUs.
+- **Keep downloaded models on a volume,** mounted where the model server looks: `/root/.ollama` for Ollama, or `/root/.cache/huggingface` for vLLM and anything else using Hugging Face (or set `HF_HOME` to the volume's path). Other projects can [share that volume](/volumes#sharing-with-another-project) instead of downloading the same model again.
+- **A large model can take minutes to load.** Raise the health check **Timeout (seconds)** in the project's settings, or `health_timeout` in `skiff.toml`, up to 1800, so the deploy waits for it before switching traffic.
+- **A sleeping app frees its GPUs.** With **Sleep when idle** on, the app's containers stop after the idle time, so the GPU memory is free for other work. While it sleeps, another deploy may be given those GPUs; when it wakes, both share them.
 
 ## On a small server
 
