@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -75,6 +76,13 @@ type Volume struct {
 	Owner string `toml:"owner" json:"owner,omitempty"`
 	// Also lists more paths the same volume is mounted at, so they share its files.
 	Also []string `toml:"also" json:"also,omitempty"`
+	// Disk is the folder of an added disk a new volume keeps its files on; empty means Docker's own storage. A volume that already exists stays where it is.
+	Disk string `toml:"disk" json:"disk,omitempty"`
+}
+
+// DiskFolder is where a volume named name keeps its files on disk.
+func DiskFolder(disk, name string) string {
+	return strings.TrimSuffix(disk, "/") + "/skiff-volumes/" + name
 }
 
 // Equal compares two volumes, including every path they mount at.
@@ -120,6 +128,9 @@ func ValidateVolumes(vols []Volume) error {
 		}
 		if names[v.Name] {
 			return fmt.Errorf("volume %q is listed twice; list its other paths under also", v.Name)
+		}
+		if v.Disk != "" && (!validMountPath(v.Disk) || path.Clean(v.Disk) != v.Disk) {
+			return fmt.Errorf("volume %q: disk must be the absolute folder an added disk is mounted at, like /mnt/data", v.Name)
 		}
 		names[v.Name] = true
 		for _, p := range v.Paths() {

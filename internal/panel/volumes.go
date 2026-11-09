@@ -15,31 +15,45 @@ import (
 )
 
 func listVolumes(app string) []config.Volume {
-	rows, err := sqlDB.Query(`SELECT name, path, owner, also FROM volumes WHERE app=? ORDER BY created, name`, app)
+	rows, err := sqlDB.Query(`SELECT name, path, owner, also, disk FROM volumes WHERE app=? ORDER BY created, name`, app)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 	var out []config.Volume
+	var disks []string
 	for rows.Next() {
 		var v config.Volume
-		var also string
-		if rows.Scan(&v.Name, &v.Path, &v.Owner, &also) == nil {
+		var also, diskID string
+		if rows.Scan(&v.Name, &v.Path, &v.Owner, &also, &diskID) == nil {
 			_ = json.Unmarshal([]byte(also), &v.Also)
 			out = append(out, v)
+			disks = append(disks, diskID)
+		}
+	}
+	rows.Close()
+	// The disk's folder is looked up once the rows are read: the database has one connection.
+	for i, id := range disks {
+		if id != "" {
+			out[i].Disk = diskPathFor(id)
 		}
 	}
 	return out
 }
 
 func addVolume(app string, v config.Volume) error {
+	return addVolumeOn(app, v, "")
+}
+
+// addVolumeOn records a volume whose first deploy makes it on a disk, or in Docker's storage with an empty diskID.
+func addVolumeOn(app string, v config.Volume, diskID string) error {
 	also := ""
 	if len(v.Also) > 0 {
 		b, _ := json.Marshal(v.Also)
 		also = string(b)
 	}
-	_, err := sqlDB.Exec(`INSERT INTO volumes (app, name, path, created, owner, also) VALUES (?, ?, ?, ?, ?, ?)`,
-		app, v.Name, v.Path, time.Now().Unix(), v.Owner, also)
+	_, err := sqlDB.Exec(`INSERT INTO volumes (app, name, path, created, owner, also, disk) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		app, v.Name, v.Path, time.Now().Unix(), v.Owner, also, diskID)
 	return err
 }
 
@@ -152,6 +166,9 @@ type volumeView struct {
 	Attached bool   `json:"attached"`
 	// Budget is the size, in bytes, past which the team hears about it; 0 means none.
 	Budget int64 `json:"budget"`
+	// Disk is the added disk it keeps its files on; empty means Docker's own storage.
+	Disk string    `json:"disk,omitempty"`
+	Move moveState `json:"move"`
 }
 
 // volumeKind says who sets an app's volumes: the dashboard for a project, skiff.toml for a CLI app, the parent project for a preview.
@@ -180,14 +197,27 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 	}
 	sizes := p.volumeSizes()
 	budgets := volumeBudgets(src.App)
+	disks := listDisks()
 	out := []volumeView{}
 	for _, v := range p.volumeDefs(src) {
-		out = append(out, volumeView{
+		name := v.DockerName(src.App)
+		view := volumeView{
 			Name: v.Name, Path: v.Path,
-			Size:     sizes[v.DockerName(src.App)],
+			Size:     sizes[name],
 			Attached: mounted[v.Name+"\x00"+v.Path] || v.Owner != "",
 			Budget:   budgets[v.Name],
-		})
+			Move:     moveStatus(name),
+		}
+		if folder := p.eng.VolumeFolder(name); folder != "" {
+			view.Disk = diskOf(folder, disks)
+		} else if !p.eng.VolumeExists(name) && v.Disk != "" {
+			for _, d := range disks {
+				if d.Path == v.Disk {
+					view.Disk = d.ID
+				}
+			}
+		}
+		out = append(out, view)
 	}
 	return out
 }
@@ -223,12 +253,21 @@ func (p *Panel) handleVolumes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
+		// From the dashboard, disk names a listed disk rather than a folder.
+		diskID := v.Disk
+		v.Disk = ""
+		if diskID != "" {
+			if _, ok := getDisk(diskID); !ok {
+				http.Error(w, "no such disk", http.StatusBadRequest)
+				return
+			}
+		}
 		v, problem := newVolume(app, v)
 		if problem != "" {
 			http.Error(w, problem, http.StatusBadRequest)
 			return
 		}
-		if err := addVolume(app, v); err != nil {
+		if err := addVolumeOn(app, v, diskID); err != nil {
 			http.Error(w, "couldn't save the volume", http.StatusInternalServerError)
 			return
 		}

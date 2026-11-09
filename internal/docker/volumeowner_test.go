@@ -35,7 +35,7 @@ func TestNewVolumeBelongsToTheContainersUser(t *testing.T) {
 		{"root", "", "0:0"},
 	} {
 		v := fresh()
-		if err := e.EnsureAppVolumeFor(v, "app", "data", VolumeTool, c.user); err != nil {
+		if err := e.EnsureAppVolumeFor(v, "app", "data", VolumeTool, c.user, ""); err != nil {
 			t.Fatal(err)
 		}
 		if got := owner(v); got != c.want {
@@ -53,7 +53,7 @@ func TestNewVolumeBelongsToTheContainersUser(t *testing.T) {
 	if err := e.EnsureAppVolume(v, "app", "data"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnsureAppVolumeFor(v, "app", "data", VolumeTool, "1000"); err != nil {
+	if err := e.EnsureAppVolumeFor(v, "app", "data", VolumeTool, "1000", ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := owner(v); got != "0:0" {

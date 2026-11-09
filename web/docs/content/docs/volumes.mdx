@@ -65,3 +65,19 @@ Volumes are backed up daily and can be copied to an offsite bucket, so you can r
 ## Budgets
 
 A volume can have a size budget: click its size under **Volumes** in the project's settings and enter one in GB. Skiff checks every hour, and your alert channels hear once when the volume grows past its budget, and again if it shrinks back and grows past it later. A budget doesn't stop the app writing: it's a warning, so you can clear old files or move to a bigger disk in time.
+
+## On an added disk
+
+When volumes or databases outgrow the server's own disk, add block storage from your provider and keep them there instead.
+
+1. Attach the storage and mount it, following your provider's guide, so it's a folder like `/mnt/data` that comes back after a restart (an entry in `/etc/fstab`).
+2. On the **Server** page, under **Disks**, add it with a name and that folder. Only the server's admin can, and Skiff checks the folder really is on a different disk from the system's.
+3. A new volume can then keep its files on it (**Keep its files on** when you add the volume), and so can a new database (the disk menu when you create it). In `skiff.toml`, set `disk = "/mnt/data"` on a volume.
+
+To move one that already exists, pick the disk in the menu on its row: **Volumes** on the project's Settings tab, or the database on the **Databases** page. Choose **Server's disk** to move it back. A move:
+
+- Stops what uses it, so there's downtime for as long as the copy takes. An app is deployed again afterwards; a database starts again with the same address and password.
+- Copies the files with their owners and permissions, then checks the copy has every file and byte before removing the old ones. If the copy fails or doesn't match, the volume stays where it was and the app or database comes back on it.
+- Tells your team's alerts if it fails.
+
+The Server page shows each disk's free space. If a disk isn't mounted when the server starts, what's on it can't start until it's back. A disk can only be removed from the list once nothing is on it.

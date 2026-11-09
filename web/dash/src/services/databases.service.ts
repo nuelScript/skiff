@@ -1,3 +1,4 @@
+import type { MoveState } from '@/services/disks.service'
 import { BaseService } from '@/services/base.service'
 
 export type DbEngine = 'postgres' | 'mysql' | 'mongodb' | 'redis'
@@ -39,6 +40,8 @@ export type Database = {
   name: string
   engine: DbEngine
   vector?: boolean
+  disk?: string
+  move?: MoveState
   host: string
   port: number
   created: number
@@ -76,8 +79,8 @@ class DatabasesService extends BaseService {
     return this.post<Database>('/databases/unmanaged', undefined, { params: { container, name } })
   }
 
-  create(engine: NewDbEngine, name: string) {
-    return this.post<Database>('/databases', { engine, name })
+  create(engine: NewDbEngine, name: string, disk = '') {
+    return this.post<Database>('/databases', { engine, name, disk })
   }
 
   remove(id: string) {

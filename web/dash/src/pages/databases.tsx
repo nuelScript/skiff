@@ -1,3 +1,5 @@
+import { DiskPlace } from '@/components/disk-place'
+import { disksService } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { fmtBytes, relTime } from '@/lib/format'
 import { Input } from '@/components/ui/input'
@@ -59,8 +61,10 @@ export default function DatabasesPage() {
   const [adding, setAdding] = useState(false)
   const [engine, setEngine] = useState<NewDbEngine>('postgres')
   const [name, setName] = useState('')
+  const [disk, setDisk] = useState('')
+  const { data: disks } = useQuery({ queryKey: queryKeys.disks, queryFn: () => disksService.list(), staleTime: 60000 })
   const createMut = useMutation({
-    mutationFn: () => create(engine, name.trim()),
+    mutationFn: () => create(engine, name.trim(), disk),
     onSuccess: () => {
       setName('')
       setAdding(false)
@@ -143,6 +147,21 @@ export default function DatabasesPage() {
               placeholder="name (e.g. main)"
               className="h-9 min-w-0 flex-1 rounded-[6px] border border-foreground/12 bg-inset px-3 font-mono text-sm outline-none placeholder:text-foreground/25 focus-visible:border-foreground/30"
             />
+            {(disks?.disks.length ?? 0) > 0 && (
+              <select
+                aria-label="Disk for its files"
+                value={disk}
+                onChange={(e) => setDisk(e.target.value)}
+                className="h-9 shrink-0 cursor-pointer rounded-[6px] border border-foreground/12 bg-inset px-2.5 text-sm"
+              >
+                <option value="">On the server's disk</option>
+                {disks?.disks.map((d) => (
+                  <option key={d.id} value={d.id} disabled={d.missing}>
+                    On {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <Button
               type="submit"
               size="sm"
@@ -263,6 +282,15 @@ function DatabaseCard({
             </p>
           ) : null}
         </div>
+        <DiskPlace
+          target={{ database: db.id }}
+          label={db.name}
+          disk={db.disk}
+          move={db.move}
+          canMove
+          invalidate={queryKeys.databases}
+          downtime={`${db.name} stops while its files are copied, then starts again with the same address and password.`}
+        />
         <span
           className={
             'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ' +
