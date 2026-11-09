@@ -35,6 +35,9 @@ func TestSandboxSpecChecksTheRequest(t *testing.T) {
 	if _, timeout, _ := sandboxSpec("bot", sandboxRequest{Command: "ls", Timeout: 30}); timeout != 30*time.Second {
 		t.Errorf("own timeout %s", timeout)
 	}
+	if b, _, _ := sandboxSpec("bot", sandboxRequest{Command: "python shot.py", Browser: true}); b.Image != sandboxBrowserImage || !b.Internet || b.Memory != "2g" || b.ShmSize == "" {
+		t.Errorf("browser: %+v", b)
+	}
 }
 
 func TestSandboxPlacesPerAgent(t *testing.T) {

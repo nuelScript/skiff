@@ -14,6 +14,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -23,6 +24,8 @@ const (
 	SandboxMaxFile   = 8 << 20
 	SandboxMaxFiles  = 16 << 20
 	sandboxMaxOutput = 256 << 10
+	// sandboxPullTimeout is how long a sandbox may wait for its image the first time, apart from its own timeout.
+	sandboxPullTimeout = 10 * time.Minute
 )
 
 // SandboxSpec is a throwaway container: files go into its working directory, the command runs, and what's left there comes back.
@@ -34,6 +37,7 @@ type SandboxSpec struct {
 	Internet bool // otherwise it has no network at all
 	Memory   string
 	CPU      string
+	ShmSize  string // shared memory, which browsers need more of than Docker's 64 MB
 }
 
 type SandboxResult struct {
@@ -65,9 +69,21 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 	args := []string{"create", "--name", name, "--label", SandboxLabel + "=" + spec.App,
 		"--network", network, "--workdir", sandboxWorkdir,
 		"--memory", spec.Memory, "--cpus", spec.CPU, "--pids-limit", "256",
-		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none",
-		spec.Image, "sh", "-c", spec.Command}
+		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none"}
+	if spec.ShmSize != "" {
+		args = append(args, "--shm-size", spec.ShmSize)
+	}
+	args = append(args, spec.Image, "sh", "-c", spec.Command)
 	defer func() { _ = e.command("rm", "-f", name).Run() }()
+	// A first pull of a large image shouldn't use up the run's own time.
+	if !e.ImageExists(spec.Image) {
+		pullCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxPullTimeout)
+		err := e.Pull(pullCtx, spec.Image, nil, io.Discard)
+		cancel()
+		if err != nil {
+			return SandboxResult{}, fmt.Errorf("couldn't pull %s: %v", spec.Image, err)
+		}
+	}
 	if out, err := e.contextCommand(ctx, args...).CombinedOutput(); err != nil {
 		return SandboxResult{}, fmt.Errorf("couldn't create the sandbox: %s", firstLine(out))
 	}

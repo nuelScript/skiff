@@ -76,3 +76,34 @@ func keys(m map[string][]byte) []string {
 	}
 	return out
 }
+
+// TestBrowserSandbox drives Chromium through Playwright in a sandbox and gets its screenshot back.
+func TestBrowserSandbox(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	eng := docker.Local()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	t.Cleanup(func() { eng.RemoveSandboxes("e2e-browser") })
+	res, err := eng.Sandbox(ctx, docker.SandboxSpec{
+		App: "e2e-browser", Image: "mcr.microsoft.com/playwright/python:v1.64.1-noble", Memory: "2g", CPU: "1", ShmSize: "1g",
+		Command: "python shot.py",
+		Files: map[string][]byte{"shot.py": []byte(`from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
+    page.set_content("<h1 id=t>hello from a sandbox</h1>")
+    print("title text:", page.inner_text("#t"))
+    page.screenshot(path="shot.png")
+    browser.close()
+`)},
+	})
+	if err != nil {
+		t.Fatalf("browser sandbox: %v\n%s", err, res.Output)
+	}
+	png := res.Files["shot.png"]
+	if res.ExitCode != 0 || !strings.Contains(res.Output, "title text: hello from a sandbox") || len(png) < 100 || string(png[1:4]) != "PNG" {
+		t.Errorf("exit %d, %d bytes of screenshot, output:\n%s", res.ExitCode, len(png), res.Output)
+	}
+}
