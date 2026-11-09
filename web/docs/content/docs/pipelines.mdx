@@ -25,7 +25,7 @@ Dagster runs your own code, so deploy your Dagster project from its repository. 
 
 ```dockerfile title="Dockerfile"
 FROM python:3.12-slim
-RUN pip install --no-cache-dir dagster==1.13.26 dagster-webserver==1.13.26 dagster-postgres==0.29.26
+RUN pip install --no-cache-dir dagster==1.13.26 dagster-webserver==1.13.26 dagster-postgres==0.29.26 "psycopg[binary]==3.3.6"
 ENV DAGSTER_HOME=/opt/dagster
 WORKDIR /app
 COPY dagster.yaml /opt/dagster/
@@ -34,7 +34,7 @@ ENTRYPOINT ["/app/start.sh"]
 CMD ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-m", "defs"]
 ```
 
-Dagster's Postgres driver wants an address starting `postgresql://`, so the start script makes one from `DATABASE_URL`. Make it executable (`chmod +x start.sh`) before you commit it.
+Dagster's Postgres storage wants an address starting `postgresql://` and a driver for it, `psycopg`, so the Dockerfile installs one and the start script makes the address from `DATABASE_URL`. Make it executable (`chmod +x start.sh`) before you commit it.
 
 ```sh title="start.sh"
 #!/bin/sh
