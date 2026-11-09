@@ -295,7 +295,7 @@ func askForUsage(r *http.Request) {
 }
 
 // aiGateway forwards /<provider>/<path> to that provider with the team's key, after checking the app's token and budget.
-func aiGateway(w http.ResponseWriter, r *http.Request) {
+func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 	a, ok := aiAppByToken(gatewayToken(r))
 	if !ok {
 		gatewayError(w, http.StatusUnauthorized, "unknown SKIFF_AI_TOKEN; redeploy the app if its AI access was just turned on")
@@ -307,10 +307,10 @@ func aiGateway(w http.ResponseWriter, r *http.Request) {
 	}
 	name, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
 	if name == "_skiff" {
-		agentInbox(w, r, a, rest)
+		p.agentAPI(w, r, a, rest)
 		return
 	}
-	p, ok := teamProvider(a.Team, name)
+	pr, ok := teamProvider(a.Team, name)
 	if !ok {
 		gatewayError(w, http.StatusNotFound, fmt.Sprintf("your team has no AI provider named %q; add one in Skiff under Settings → Integrations", name))
 		return
@@ -321,29 +321,29 @@ func aiGateway(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	base := p.BaseURL
+	base := pr.BaseURL
 	if base == "" {
-		base = aiKinds[p.Kind].base
+		base = aiKinds[pr.Kind].base
 	}
 	target, err := url.Parse(base)
 	if err != nil || target.Host == "" {
 		gatewayError(w, http.StatusBadGateway, "the provider's address in Skiff is invalid")
 		return
 	}
-	if p.Kind == "openai" {
+	if pr.Kind == "openai" {
 		askForUsage(r)
 	}
 	proxy := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.Out.URL.Scheme, pr.Out.URL.Host, pr.Out.Host = target.Scheme, target.Host, target.Host
-			pr.Out.URL.Path = strings.TrimSuffix(target.Path, "/") + "/" + rest
-			pr.Out.URL.RawPath = ""
-			pr.Out.Header.Del("Authorization")
-			pr.Out.Header.Del("x-api-key")
-			if aiKinds[p.Kind].apiKey {
-				pr.Out.Header.Set("x-api-key", p.key)
+		Rewrite: func(req *httputil.ProxyRequest) {
+			req.Out.URL.Scheme, req.Out.URL.Host, req.Out.Host = target.Scheme, target.Host, target.Host
+			req.Out.URL.Path = strings.TrimSuffix(target.Path, "/") + "/" + rest
+			req.Out.URL.RawPath = ""
+			req.Out.Header.Del("Authorization")
+			req.Out.Header.Del("x-api-key")
+			if aiKinds[pr.Kind].apiKey {
+				req.Out.Header.Set("x-api-key", pr.key)
 			} else {
-				pr.Out.Header.Set("Authorization", "Bearer "+p.key)
+				req.Out.Header.Set("Authorization", "Bearer "+pr.key)
 			}
 		},
 		FlushInterval: -1,
@@ -354,7 +354,7 @@ func aiGateway(w http.ResponseWriter, r *http.Request) {
 			resp.Body = &aiMeter{
 				body:   resp.Body,
 				stream: strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"),
-				done:   func(u aiUsage) { recordAIUse(a, p.Name, u, time.Now()) },
+				done:   func(u aiUsage) { recordAIUse(a, pr.Name, u, time.Now()) },
 			}
 			return nil
 		},
@@ -382,7 +382,7 @@ func (p *Panel) aiGatewayLoop() {
 	}
 	aiGatewayHost.Store(addr)
 	allowGatewayIn(addr)
-	srv := &http.Server{Addr: addr, Handler: http.HandlerFunc(aiGateway), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
+	srv := &http.Server{Addr: addr, Handler: http.HandlerFunc(p.aiGateway), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	logged := ""
 	for {
 		err := srv.ListenAndServe()

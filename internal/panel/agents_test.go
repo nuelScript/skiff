@@ -86,7 +86,7 @@ func TestAgentInboxThroughTheGateway(t *testing.T) {
 		r := httptest.NewRequest(method, path, nil)
 		r.Header.Set("Authorization", "Bearer "+a.token)
 		w := httptest.NewRecorder()
-		aiGateway(w, r)
+		(&Panel{}).aiGateway(w, r)
 		return w
 	}
 	if w := call(http.MethodGet, "/_skiff/events"); w.Code != http.StatusNoContent {
@@ -108,7 +108,7 @@ func TestAgentInboxThroughTheGateway(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/_skiff/events", nil)
 	r.Header.Set("Authorization", "Bearer "+web.token)
 	rec := httptest.NewRecorder()
-	aiGateway(rec, r)
+	(&Panel{}).aiGateway(rec, r)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("a plain app's inbox: %d", rec.Code)
 	}

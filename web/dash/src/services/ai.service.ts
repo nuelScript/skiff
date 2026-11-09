@@ -30,6 +30,19 @@ export type AgentEvent = {
   done: boolean
 }
 
+export type Sandbox = {
+  id: number
+  image: string
+  command: string
+  internet: boolean
+  files: number
+  started: number
+  finished: number
+  status: 'running' | 'ok' | 'failed' | 'timeout' | 'stopped'
+  exitCode: number
+  output: string
+}
+
 export type Agent =
   | { agent: false }
   | {
@@ -41,6 +54,7 @@ export type Agent =
       webhookSecret: string
       pending: number
       events: AgentEvent[]
+      sandboxes: Sandbox[]
       statePath: string
     }
 

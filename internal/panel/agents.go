@@ -154,13 +154,15 @@ func recentAgentEvents(app string, limit int) []agentEvent {
 	return out
 }
 
-// agentInbox serves an agent's events on the gateway: GET events waits for the next one, POST events/<id>/done finishes it.
-func agentInbox(w http.ResponseWriter, r *http.Request, a aiApp, path string) {
+// agentAPI is what an agent reaches on the gateway besides models: GET events waits for the next event, POST events/<id>/done finishes it, and POST sandboxes runs code in a throwaway container.
+func (p *Panel) agentAPI(w http.ResponseWriter, r *http.Request, a aiApp, path string) {
 	if _, ok := getAgent(a.App); !ok {
-		gatewayError(w, http.StatusNotFound, a.App+" isn't an agent, so it has no inbox")
+		gatewayError(w, http.StatusNotFound, a.App+" isn't an agent; only agents have an inbox and sandboxes")
 		return
 	}
 	switch {
+	case path == "sandboxes" && r.Method == http.MethodPost:
+		p.runSandbox(w, r, a)
 	case path == "events" && r.Method == http.MethodGet:
 		wait, _ := strconv.Atoi(r.URL.Query().Get("wait"))
 		deadline := time.Now().Add(min(time.Duration(max(wait, 0))*time.Second, agentMaxWait))
@@ -187,7 +189,7 @@ func agentInbox(w http.ResponseWriter, r *http.Request, a aiApp, path string) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		gatewayError(w, http.StatusNotFound, "the inbox has GET /_skiff/events and POST /_skiff/events/<id>/done")
+		gatewayError(w, http.StatusNotFound, "agents have GET /_skiff/events, POST /_skiff/events/<id>/done and POST /_skiff/sandboxes")
 	}
 }
 
@@ -273,6 +275,7 @@ func (p *Panel) stopAgent(a agentRow) error {
 		return err
 	}
 	cancelAppRuns(a.App)
+	p.stopSandboxes(a.App)
 	var failed []string
 	for _, c := range append(p.eng.AppContainers(a.App), p.eng.WorkerContainers(a.App)...) {
 		if err := p.eng.Stop(c); err != nil {
@@ -323,6 +326,7 @@ func (p *Panel) handleProjectAgent(w http.ResponseWriter, r *http.Request) {
 			"agent": true, "stopped": a.Stopped, "schedule": a.Schedule, "next": next,
 			"webhook": dashboardURL + "/api/hooks/agents/" + app, "webhookSecret": a.hookSecret,
 			"pending": pending, "events": recentAgentEvents(app, 20), "statePath": agentStatePath,
+			"sandboxes": recentSandboxes(app, 10),
 		})
 	case http.MethodPut:
 		var body struct {
@@ -365,9 +369,4 @@ func (p *Panel) handleProjectAgent(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-func deleteAgent(app string) {
-	_, _ = sqlDB.Exec(`DELETE FROM agents WHERE app=?`, app)
-	_, _ = sqlDB.Exec(`DELETE FROM agent_events WHERE app=?`, app)
 }
