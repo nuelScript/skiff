@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+
+	"github.com/nuelScript/skiff/internal/config"
 	"io"
 	"os"
 	"os/exec"
@@ -47,5 +49,17 @@ func TestRunOnceStopsAtItsDeadline(t *testing.T) {
 	out, _ := exec.Command("docker", "ps", "-a", "--no-trunc", "--format", "{{.Command}}").Output()
 	if strings.Contains(string(out), marker) {
 		t.Error("the container kept running after its deadline")
+	}
+}
+
+func TestHostNetworkPublishesNothing(t *testing.T) {
+	e := Local()
+	args := strings.Join(e.runArgs(RunSpec{Name: "a-1", App: "a", Image: "x", ContainerPort: 8080, Settings: Settings{Network: "skiff", Permissions: config.Permissions{HostNetwork: true}}}), " ")
+	if !strings.Contains(args, "--network host") || strings.Contains(args, "--network skiff") || strings.Contains(args, " -p ") || strings.Contains(args, "--network-alias") || !strings.Contains(args, "skiff.hostnet=1") {
+		t.Errorf("args = %s", args)
+	}
+	got := routesFromList([]apiContainer{{Names: []string{"/a-1"}, Labels: map[string]string{"skiff.app": "a", "skiff.port": "8080", "skiff.hostnet": "1"}}})
+	if len(got) != 1 || got[0].HostPort != 8080 {
+		t.Errorf("routes = %+v", got)
 	}
 }

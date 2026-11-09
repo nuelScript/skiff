@@ -19,6 +19,7 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
   const [devices, setDevices] = useState('')
   const [sysctls, setSysctls] = useState('')
   const [privileged, setPrivileged] = useState(false)
+  const [hostNetwork, setHostNetwork] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -28,6 +29,7 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
     setDevices((p.devices ?? []).join(', '))
     setSysctls((p.sysctls ?? []).join(', '))
     setPrivileged(!!p.privileged)
+    setHostNetwork(!!p.hostNetwork)
   }
   useEffect(() => {
     if (data) fill(data.granted)
@@ -46,14 +48,15 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
       devices: splitList(devices),
       sysctls: splitList(sysctls),
       privileged,
+      hostNetwork,
     }
-    const strong = next.privileged || next.capabilities?.some((c) => data.strong.includes(c.toUpperCase().replace(/^CAP_/, '')))
+    const strong = next.privileged || next.hostNetwork || next.capabilities?.some((c) => data.strong.includes(c.toUpperCase().replace(/^CAP_/, '')))
     if (
       !isEmpty(next) &&
       !(await confirm({
         title: strong ? `Give ${app} near-full control of the server?` : `Grant ${app} these permissions?`,
         description: strong
-          ? 'Privileged mode and capabilities like SYS_ADMIN let a container reach past its own walls, so anyone who controls this app could control the server. Only grant them to software you trust.'
+          ? "Privileged mode, the server's own network and capabilities like SYS_ADMIN let a container reach past its own walls, so anyone who controls this app could control the server. Only grant them to software you trust."
           : 'Each permission weakens the wall between this app and the server a little. They apply on the next deploy.',
         confirmText: 'Grant',
         destructive: true,
@@ -121,6 +124,18 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
                 <span className="text-muted-foreground block text-xs">
                   The escape hatch, for software that needs almost everything, like Docker-in-Docker. It gives the app
                   near-full control of the server.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-1" checked={hostNetwork} onChange={(e) => setHostNetwork(e.target.checked)} />
+              <span>
+                <span className="flex items-center gap-1.5 font-medium">
+                  <ShieldAlert className="text-danger h-3.5 w-3.5" /> The server's own network
+                </span>
+                <span className="text-muted-foreground block text-xs">
+                  For software that needs to see the server's network, like some VPNs and discovery tools. The app runs one
+                  copy, and a deploy stops the old version before starting the new one, so there's a short gap.
                 </span>
               </span>
             </label>

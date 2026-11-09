@@ -131,6 +131,7 @@ type rawService struct {
 	Devices         rawDevices `yaml:"devices"`
 	Sysctls         rawHosts   `yaml:"sysctls"`
 	Privileged      bool       `yaml:"privileged"`
+	NetworkMode     string     `yaml:"network_mode"`
 }
 
 // rawDevices reads both forms: "/dev/x:/dev/y:rwm", and {source, target, permissions}.
@@ -192,7 +193,7 @@ var serviceKeys = map[string]bool{
 	"expose": true, "volumes": true, "depends_on": true, "mem_limit": true, "cpus": true, "deploy": true,
 	"healthcheck": true, "<<": true, "entrypoint": true, "user": true, "working_dir": true, "init": true, "read_only": true,
 	"shm_size": true, "tmpfs": true, "ulimits": true, "extra_hosts": true, "stop_grace_period": true, "stop_signal": true, "profiles": true,
-	"secrets": true, "configs": true, "cap_add": true, "cap_drop": true, "devices": true, "sysctls": true, "privileged": true,
+	"secrets": true, "configs": true, "cap_add": true, "cap_drop": true, "devices": true, "sysctls": true, "privileged": true, "network_mode": true,
 }
 
 // Parse reads a Compose file, filling in ${VAR} references from lookup.
@@ -255,7 +256,10 @@ func ParseWith(data []byte, lookup func(string) (string, bool), read Reader) (*F
 		for _, kv := range raw.Sysctls {
 			sysctls = append(sysctls, strings.Replace(kv, ":", "=", 1))
 		}
-		s.Wants = config.Permissions{Capabilities: raw.CapAdd, Devices: raw.Devices, Sysctls: sysctls, Privileged: raw.Privileged}.Normalize()
+		s.Wants = config.Permissions{Capabilities: raw.CapAdd, Devices: raw.Devices, Sysctls: sysctls, Privileged: raw.Privileged, HostNetwork: raw.NetworkMode == "host"}.Normalize()
+		if m := raw.NetworkMode; m != "" && m != "host" && m != "bridge" && m != "default" {
+			f.Problems = append(f.Problems, fmt.Sprintf("%s: network_mode %s isn't supported, because Skiff puts a stack's services on one network", name, m))
+		}
 		if raw.StopGracePeriod != "" {
 			d, err := time.ParseDuration(raw.StopGracePeriod)
 			if err != nil {

@@ -96,9 +96,7 @@ var plainTCPPorts = map[int]bool{
 	6379: true, 6432: true, 9042: true, 11211: true, 25565: true, 27017: true,
 }
 
-var unsupportedKeys = map[string]string{
-	"network_mode": "Skiff manages the network",
-}
+var unsupportedKeys = map[string]string{}
 
 // ignoredWhy explains the service keys Skiff leaves out that files use most.
 var ignoredWhy = map[string]string{
@@ -666,6 +664,9 @@ func describeWants(w config.Permissions) string {
 	var parts []string
 	if w.Privileged {
 		parts = append(parts, "privileged mode")
+	}
+	if w.HostNetwork {
+		parts = append(parts, "the server's own network")
 	}
 	if len(w.Capabilities) > 0 {
 		parts = append(parts, "the capabilities "+strings.Join(w.Capabilities, ", "))

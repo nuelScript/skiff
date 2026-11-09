@@ -19,6 +19,8 @@ type Permissions struct {
 	Sysctls []string `json:"sysctls,omitempty" toml:"sysctls"`
 	// Privileged gives the container nearly everything the server has. It's the escape hatch for software that needs it.
 	Privileged bool `json:"privileged,omitempty" toml:"privileged"`
+	// HostNetwork puts the container on the server's own network, for software that needs to see it, like some VPNs and discovery tools. The app then runs one copy, and a deploy stops the old version first.
+	HostNetwork bool `json:"hostNetwork,omitempty" toml:"host_network"`
 }
 
 func (p Permissions) IsZero() bool { return reflect.ValueOf(p).IsZero() }
@@ -83,7 +85,7 @@ func (p Permissions) Validate() error {
 
 // Strong reports whether the grant reaches past the container's own namespace.
 func (p Permissions) Strong() bool {
-	return p.Privileged || slices.ContainsFunc(p.Capabilities, func(c string) bool { return slices.Contains(StrongCapabilities, c) })
+	return p.Privileged || p.HostNetwork || slices.ContainsFunc(p.Capabilities, func(c string) bool { return slices.Contains(StrongCapabilities, c) })
 }
 
 // DockerArgs are the flags for docker run.

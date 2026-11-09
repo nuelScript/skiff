@@ -200,7 +200,7 @@ func TestProblemsAreReported(t *testing.T) {
 		"system folder":   {"services:\n  a:\n    image: x\n    volumes: [/etc/app:/app]\n", "system folder"},
 		"no image":        {"services:\n  a:\n    command: hi\n", "needs an image or a build"},
 		"bad sysctl":      {"services:\n  a:\n    image: x\n    sysctls: [vm.swappiness=10]\n", "whole server"},
-		"host network":    {"services:\n  a:\n    image: x\n    network_mode: host\n", "network_mode"},
+		"other network":   {"services:\n  a:\n    image: x\n    network_mode: \"service:b\"\n", "network_mode service:b"},
 		"unknown depends": {"services:\n  a:\n    image: x\n    depends_on: [ghost]\n", "ghost"},
 		"cycle":           {"services:\n  a:\n    image: x\n    depends_on: [b]\n  b:\n    image: x\n    depends_on: [a]\n", "circle"},
 		"database volume": {"services:\n  a:\n    image: x\n    volumes: [v:/a]\n  b:\n    image: postgres:16\n    volumes: [v:/var/lib/postgresql/data]\n", "managed database"},
@@ -983,5 +983,15 @@ func TestMachinePermissionsAreAskedFor(t *testing.T) {
 	}
 	if len(p.Problems) != 0 {
 		t.Errorf("problems = %v", p.Problems)
+	}
+}
+
+func TestHostNetworkIsARequest(t *testing.T) {
+	p := plan(t, "services:\n  mdns:\n    image: avahi\n    network_mode: host\n")
+	if !item(t, p, "mdns").Wants.HostNetwork || len(p.Problems) != 0 {
+		t.Errorf("wants = %+v, problems = %v", item(t, p, "mdns").Wants, p.Problems)
+	}
+	if !slices.ContainsFunc(p.Notes, func(n string) bool { return strings.Contains(n, "the server's own network") }) {
+		t.Errorf("notes = %v", p.Notes)
 	}
 }

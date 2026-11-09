@@ -687,6 +687,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 		if perms.Privileged {
 			b.WriteString("privileged = true\n")
 		}
+		if perms.HostNetwork {
+			b.WriteString("host_network = true\n")
+		}
 	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))

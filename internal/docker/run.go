@@ -37,7 +37,10 @@ func (e *Engine) settingsArgs(s Settings) []string {
 	if s.CPU != "" {
 		args = append(args, "--cpus", s.CPU)
 	}
-	if s.Network != "" {
+	switch {
+	case s.Permissions.HostNetwork:
+		args = append(args, "--network", "host")
+	case s.Network != "":
 		args = append(args, "--network", s.Network)
 	}
 	args = append(args, mountArgs(s.Volumes)...)
@@ -133,6 +136,9 @@ func (e *Engine) Run(s RunSpec) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("docker run failed: %s", firstLine(out))
 	}
+	if s.Permissions.HostNetwork {
+		return s.ContainerPort, nil
+	}
 	return e.waitHostPort(s.Name, s.ContainerPort)
 }
 
@@ -145,13 +151,22 @@ func (e *Engine) runArgs(s RunSpec) []string {
 		"--name", s.Name,
 		"--restart", "unless-stopped",
 		"--label", "skiff=1",
-		"-p", fmt.Sprintf("%s::%d", bind, s.ContainerPort),
+	}
+	hostNet := s.Permissions.HostNetwork
+	if hostNet {
+		// On the server's own network the app's port is the server's port, so there's nothing to publish.
+		args = append(args, "--label", "skiff.hostnet=1")
+	} else {
+		args = append(args, "-p", fmt.Sprintf("%s::%d", bind, s.ContainerPort))
 	}
 	if s.App != "" {
 		args = append(args, "--label", "skiff.app="+s.App, "--label", fmt.Sprintf("skiff.port=%d", s.ContainerPort))
 	}
 	if s.UDPPort > 0 {
-		args = append(args, "-p", fmt.Sprintf("%s::%d/udp", bind, s.UDPPort), "--label", fmt.Sprintf("skiff.udp=%d", s.UDPPort))
+		if !hostNet {
+			args = append(args, "-p", fmt.Sprintf("%s::%d/udp", bind, s.UDPPort))
+		}
+		args = append(args, "--label", fmt.Sprintf("skiff.udp=%d", s.UDPPort))
 	}
 	for _, k := range sortedKeys(s.Labels) {
 		if s.Labels[k] != "" {
@@ -159,7 +174,7 @@ func (e *Engine) runArgs(s RunSpec) []string {
 		}
 	}
 	// A stable name for other services on the network; docker spreads lookups across replicas.
-	if s.Network != "" {
+	if s.Network != "" && !hostNet {
 		if s.App != "" {
 			args = append(args, "--network-alias", s.App)
 		}
