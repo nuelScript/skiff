@@ -58,22 +58,39 @@ func upgradeSources(t *testing.T) []string {
 func downloadRelease(t *testing.T, tag, to string) {
 	t.Helper()
 	url := fmt.Sprintf("https://github.com/nuelScript/skiff/releases/download/%s/skiff-%s-%s", tag, runtime.GOOS, runtime.GOARCH)
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatal(err)
+	// GitHub's downloads sometimes answer 5xx for a while; that's not what this test is about.
+	var last string
+	for attempt := range 6 {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 10 * time.Second)
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			last = err.Error()
+			continue
+		}
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			last = fmt.Sprintf("%d", resp.StatusCode)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			t.Fatalf("%s: %d", url, resp.StatusCode)
+		}
+		f, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = io.Copy(f, resp.Body)
+		resp.Body.Close()
+		f.Close()
+		if err == nil {
+			return
+		}
+		last = err.Error()
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("%s: %d", url, resp.StatusCode)
-	}
-	f, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		t.Fatal(err)
-	}
+	t.Fatalf("%s: %s, six times", url, last)
 }
 
 // TestUpgrade runs a server on each earlier minor with real state, swaps in this build the way an update does, and checks everything is still there and still works.
