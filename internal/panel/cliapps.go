@@ -133,6 +133,9 @@ func (p *Panel) appRuntime(src Source) (map[string]string, string) {
 			if a, ok := apps[src.App]; ok && a.Container != "" {
 				if rt, err := p.eng.Runtime(a.Container); err == nil {
 					delete(rt.Env, "PORT")
+					for _, e := range aiEnv(src) {
+						rt.Env[e.Key] = e.Value
+					}
 					net := dbNetwork
 					if len(rt.Networks) > 0 {
 						net = rt.Networks[0]

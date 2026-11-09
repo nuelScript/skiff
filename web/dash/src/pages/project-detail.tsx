@@ -18,6 +18,7 @@ import { JobsPanel } from './project/jobs-panel'
 import { WorkersPanel } from './project/workers-panel'
 import { TCPPortSection } from './project/tcp-port-section'
 import { UDPPortSection } from './project/udp-port-section'
+import { AISection } from './project/ai-section'
 import { VolumesPanel } from './project/volumes-panel'
 import { RegistryPanel } from './project/registry-panel'
 import { DangerZone, SettingsForm } from './project/settings-form'
@@ -448,6 +449,7 @@ export default function ProjectDetailPage() {
           <VolumesPanel app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <TCPPortSection app={project.name} />
           <UDPPortSection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
+          <AISection app={project.name} onRedeploy={() => term.redeploy(project.name)} />
           <DangerZone name={project.name} onDeleted={() => navigate('/')} />
         </TabsContent>
       </Tabs>

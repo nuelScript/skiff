@@ -1,0 +1,63 @@
+---
+title: AI gateway
+description: "Your apps call OpenAI, Anthropic or any OpenAI-compatible model through Skiff, which keeps the keys and stops each app at a monthly token budget."
+---
+
+An app that calls a model usually holds the provider's key. If the app is an agent running code it wrote itself, that key is one `print(os.environ)` away from leaking, and nothing stops a loop from spending your month's credit in an afternoon. Skiff holds the keys instead. Each app gets its own token for Skiff, and Skiff adds the real key on the way out.
+
+<Steps>
+<Step>
+### Add a provider
+
+In the dashboard, open **Settings → Integrations → AI providers** and add a key. Pick **OpenAI**, **Anthropic**, or **Other** for anything that works like OpenAI's API (OpenRouter, Groq, Together, or a model running on your own server), with its address. Only a team owner can add or remove providers.
+</Step>
+<Step>
+### Give an app access
+
+On the project's **Settings** tab, under **AI access**, set a monthly token budget (or leave it blank for no limit) and choose **Give AI access**. Redeploy, and the app has two new variables:
+
+- `SKIFF_AI_URL`: where Skiff's gateway is, from inside the app's container.
+- `SKIFF_AI_TOKEN`: this app's token. It works only for your team's providers, and only from this server.
+
+Previews use their project's access and count against its budget.
+</Step>
+<Step>
+### Point the SDK at Skiff
+
+Each provider is at `$SKIFF_AI_URL/<its name>`, and the rest of the path is the provider's own.
+
+```python title="OpenAI"
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url=os.environ["SKIFF_AI_URL"] + "/openai/v1",
+    api_key=os.environ["SKIFF_AI_TOKEN"],
+)
+```
+
+```ts title="Anthropic"
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  baseURL: process.env.SKIFF_AI_URL + "/anthropic",
+  apiKey: process.env.SKIFF_AI_TOKEN,
+});
+```
+</Step>
+</Steps>
+
+## Budgets
+
+Skiff counts the input and output tokens each provider reports, per app, per calendar month (UTC). The dashboard shows the month so far. Your team's alerts hear when an app passes 80% of its budget and when it reaches it. From then on Skiff answers that app's calls with `429` and a message saying why, until the month ends or you raise the budget. Raising it takes effect at once, with no redeploy.
+
+The budget is checked before each call, so calls already running when it's reached finish, and the month can end slightly over.
+
+Budgets are in tokens rather than money because prices differ by model and change often. A rough way to choose one: take what you're willing to spend in a month and divide by your model's price per token.
+
+## Good to know
+
+- Streaming works. For OpenAI, Skiff asks the stream to include its token count, so streamed calls count too. Other OpenAI-compatible providers count streams only if they send usage in the stream.
+- A provider's errors (a bad key, a rate limit, a model that doesn't exist) reach the app unchanged.
+- Turning an app's access off cuts its token off at once. Turning it on again gives it a new token, so redeploy.
+- The key is stored encrypted with the rest of Skiff's secrets. Removing a provider in Skiff doesn't revoke the key at the provider.

@@ -224,7 +224,9 @@ func deleteSource(app string) {
 		del(`DELETE FROM preview_env WHERE app=?`) &&
 		del(`DELETE FROM volumes WHERE app=?`) &&
 		del(`DELETE FROM registry_creds WHERE app=?`) &&
-		del(`DELETE FROM log_drain_cursors WHERE app=?`) {
+		del(`DELETE FROM log_drain_cursors WHERE app=?`) &&
+		del(`DELETE FROM ai_apps WHERE app=?`) &&
+		del(`DELETE FROM ai_usage WHERE app=?`) {
 		_ = tx.Commit()
 	}
 }
@@ -496,7 +498,7 @@ func deployEnv(src Source) []EnvVar {
 	if src.Parent != "" {
 		layers = append(layers, getEnv(src.Parent), getPreviewEnv(src.Parent))
 	}
-	layers = append(layers, getEnv(src.App))
+	layers = append(layers, aiEnv(src), getEnv(src.App))
 	merged := map[string]EnvVar{}
 	for _, layer := range layers {
 		for _, e := range layer {

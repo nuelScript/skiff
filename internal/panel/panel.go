@@ -103,6 +103,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.appLogLoop()
 	go p.logDrainLoop()
 	go p.oomLoop()
+	go p.aiGatewayLoop()
 	go p.crashLoopWatch()
 	return p, nil
 }
@@ -200,6 +201,8 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/cost", p.protected(p.handleCost))
 	mux.HandleFunc("/api/uptime", p.protected(p.handleUptime))
 	mux.HandleFunc("/api/alerts", p.protected(p.handleAlerts))
+	mux.HandleFunc("/api/ai/providers", p.protected(p.handleAIProviders))
+	mux.HandleFunc("/api/project/ai", p.protected(p.handleProjectAI))
 	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
 	mux.HandleFunc("/api/log-drain", p.protected(p.handleLogDrain))
 	mux.HandleFunc("/api/log-drain/test", p.protected(p.handleLogDrainTest))
