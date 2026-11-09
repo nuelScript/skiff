@@ -356,6 +356,8 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 			req.Out.URL.RawPath = ""
 			req.Out.Header.Del("Authorization")
 			req.Out.Header.Del("x-api-key")
+			// Go's transport then asks for gzip itself and unpacks the reply, so the usage in it can be counted.
+			req.Out.Header.Del("Accept-Encoding")
 			if aiKinds[pr.Kind].apiKey {
 				req.Out.Header.Set("x-api-key", pr.key)
 			} else {

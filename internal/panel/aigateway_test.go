@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -182,5 +183,39 @@ func TestAIProviderProblem(t *testing.T) {
 		if got := aiProviderProblem(c.name, c.kind, c.base, c.key) == ""; got != c.ok {
 			t.Errorf("%+v: ok=%v", c, got)
 		}
+	}
+}
+
+func TestAIGatewayCountsCompressedReplies(t *testing.T) {
+	openTestDB(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			io.WriteString(w, `{"usage":{"prompt_tokens":7,"completion_tokens":3}}`)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		io.WriteString(zw, `{"usage":{"prompt_tokens":7,"completion_tokens":3}}`)
+		zw.Close()
+	}))
+	t.Cleanup(srv.Close)
+	addProvider(t, "t1", "openai", "openai", srv.URL, "sk-real-key")
+	if err := setAIApp(Source{App: "agent", Team: "t1"}, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := aiAppFor("agent")
+
+	// The Python and Node SDKs ask for compressed replies.
+	r := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(`{"model":"m"}`))
+	r.Header.Set("Authorization", "Bearer "+a.token)
+	r.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	w := httptest.NewRecorder()
+	(&Panel{}).aiGateway(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "prompt_tokens") {
+		t.Fatalf("reply: %d %q", w.Code, w.Body)
+	}
+	if got := aiUsed("agent", time.Now()); got != (aiTotals{Input: 7, Output: 3, Requests: 1}) {
+		t.Errorf("counted %+v", got)
 	}
 }
