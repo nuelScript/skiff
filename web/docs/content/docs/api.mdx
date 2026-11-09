@@ -12,6 +12,18 @@ curl https://dash.example.com/api/v1/apps \
   -H "Authorization: Bearer $SKIFF_TOKEN"
 ```
 
+## What a token can do
+
+A token can do everything by default. Under **Settings → Integrations**, **Limit what it can do, or to some projects** narrows it, which suits CI and agents:
+
+- **Read** apps, deploys, logs, workers, jobs and runs.
+- **Deploy** and roll back, and open or close previews.
+- **Environment variables**, which hold secrets, to read or change.
+- **Workers, jobs and runs**: change them, and run commands.
+- **Data**: databases, buckets and volumes.
+
+A token limited to some projects can reach only them and their previews; other projects read as not found, and it can't create or remove the team's databases and buckets. A request it can't make is refused with 403 and says why.
+
 ## Apps
 
 | Method | Path | What it does |

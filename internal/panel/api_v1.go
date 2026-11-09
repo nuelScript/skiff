@@ -22,6 +22,7 @@ type ctxKey int
 const (
 	ctxTeam ctxKey = iota
 	ctxActor
+	ctxGrant
 )
 
 func bearerToken(r *http.Request) string {
@@ -33,14 +34,19 @@ func bearerToken(r *http.Request) string {
 
 func (p *Panel) apiAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		team, name, ok := resolveToken(bearerToken(r))
+		team, name, grant, ok := resolveToken(bearerToken(r))
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="skiff"`)
 			apiErr(w, http.StatusUnauthorized, "invalid or missing API token")
 			return
 		}
+		if msg := scopeRefusal(grant, r.Pattern); msg != "" {
+			apiErr(w, http.StatusForbidden, msg)
+			return
+		}
 		ctx := context.WithValue(r.Context(), ctxTeam, team)
 		ctx = context.WithValue(ctx, ctxActor, "token:"+name)
+		ctx = context.WithValue(ctx, ctxGrant, grant)
 		h(w, r.WithContext(ctx))
 	}
 }
@@ -60,7 +66,7 @@ func apiErr(w http.ResponseWriter, code int, msg string) {
 
 func apiSource(r *http.Request, name string) (Source, bool) {
 	src, ok := getSource(name)
-	if !ok || src.Team != apiTeam(r) {
+	if !ok || src.Team != apiTeam(r) || !apiGrant(r).reaches(src) {
 		return Source{}, false
 	}
 	return src, true
@@ -106,7 +112,7 @@ func (p *Panel) apiListApps(w http.ResponseWriter, r *http.Request) {
 	out := []apiApp{}
 	for _, a := range apps {
 		src, ok := getSource(a.Name)
-		if !ok || src.Team != team || src.Parent != "" {
+		if !ok || src.Team != team || src.Parent != "" || !apiGrant(r).reaches(src) {
 			continue
 		}
 		out = append(out, p.apiAppView(a, src))
@@ -235,7 +241,7 @@ func (p *Panel) apiDeployStatus(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusNotFound, "deploy not found")
 		return
 	}
-	if src, ok := getSource(d.App); !ok || src.Team != apiTeam(r) {
+	if _, ok := apiSource(r, d.App); !ok {
 		apiErr(w, http.StatusNotFound, "deploy not found")
 		return
 	}
