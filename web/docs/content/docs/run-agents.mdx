@@ -68,6 +68,24 @@ A sandbox:
 
 An agent runs up to three sandboxes at once. The project's **Overview** lists the last few with their output, and **Stop agent** ends any that are running.
 
+## Approvals
+
+Before something it can't undo, an agent can ask a person first. The request goes to your team's alerts, and appears at the top of the agent's page with **Approve** and **Deny** and room for a note back:
+
+```python title="agent.py"
+r = requests.post(base + "/approvals?wait=60", headers=auth, json={
+    "action": "delete 412 inactive accounts",   # up to 200 characters
+    "detail": "Not signed in since March. Backup taken at 03:40.",
+}).json()
+while r["status"] == "pending":
+    r = requests.get(f"{base}/approvals/{r['id']}?wait=60", headers=auth).json()
+if r["status"] == "approved":
+    delete_accounts()
+# r["note"] holds anything the person wrote back
+```
+
+A request nobody answers within a day comes back `expired`; stopping the agent denies any still waiting. An agent can have 20 requests waiting at once. Skiff only records the answer: the agent is the one that has to wait for it.
+
 ## Runs
 
 The agent panel lists the agent's runs, and each opens to its steps laid out in time, with the model, tokens and any error on each.

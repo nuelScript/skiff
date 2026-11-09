@@ -72,6 +72,17 @@ export type SpanView = {
   attrs: Record<string, unknown>
 }
 
+export type Approval = {
+  id: number
+  action: string
+  detail: string
+  status: 'pending' | 'approved' | 'denied' | 'expired'
+  note?: string
+  by?: string
+  created: number
+  answered?: number
+}
+
 export type Agent =
   | { agent: false }
   | {
@@ -122,6 +133,14 @@ class AIService extends BaseService {
 
   trace(app: string, trace: string) {
     return this.get<{ spans: SpanView[] }>('/project/traces', { params: { app, trace } })
+  }
+
+  approvals(app: string) {
+    return this.get<{ approvals: Approval[] }>('/project/approvals', { params: { app } })
+  }
+
+  answerApproval(app: string, id: number, approve: boolean, note: string) {
+    return this.post('/project/approvals', { id, approve, note }, { params: { app } })
   }
 
   agentAction(app: string, action: 'stop' | 'start') {

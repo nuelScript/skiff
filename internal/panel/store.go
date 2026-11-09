@@ -230,7 +230,8 @@ func deleteSource(app string) {
 		del(`DELETE FROM agents WHERE app=?`) &&
 		del(`DELETE FROM agent_events WHERE app=?`) &&
 		del(`DELETE FROM sandboxes WHERE app=?`) &&
-		del(`DELETE FROM spans WHERE app=?`) {
+		del(`DELETE FROM spans WHERE app=?`) &&
+		del(`DELETE FROM approvals WHERE app=?`) {
 		_ = tx.Commit()
 	}
 }

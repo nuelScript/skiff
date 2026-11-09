@@ -10,6 +10,7 @@ import { useConfirm } from '@/providers/confirm-provider'
 import { aiService, type AgentEvent, type Sandbox } from '@/services/api.service'
 import { JobWebhook } from './job-webhook'
 import { AgentRuns } from './agent-runs'
+import { AgentApprovals } from './agent-approvals'
 
 const sourceLabel: Record<string, string> = { webhook: 'Webhook', github: 'GitHub', schedule: 'Schedule' }
 
@@ -85,6 +86,8 @@ export function AgentPanel({ app }: { app: string }) {
           </Button>
         )}
       </div>
+
+      <AgentApprovals app={app} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
