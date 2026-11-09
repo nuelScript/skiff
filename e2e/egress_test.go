@@ -32,7 +32,9 @@ func TestEgress(t *testing.T) {
 
 	deploy := func(app, egress string) {
 		t.Helper()
-		t.Cleanup(func() { _ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+app+")").Run() })
+		t.Cleanup(func() {
+			_ = exec.Command("sh", "-c", "docker rm -f $(docker ps -aq --filter label=skiff.app="+app+")").Run()
+		})
 		dir := filepath.Join(root, app)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
