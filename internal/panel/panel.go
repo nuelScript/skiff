@@ -92,7 +92,7 @@ func (p *Panel) background() {
 	eng := p.eng
 	go guard("reapOrphanContainers", p.reapOrphanContainers)
 	go guard("reconcileNetworks", p.reconcileNetworks)
-	go guard("recoverDatabases", p.recoverDatabases)
+	go guard("recoverDatabases", func() { p.resumeMoves(); p.recoverDatabases() })
 	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages)
 	go guard("prewarmStorageImages", p.prewarmStorageImages)
 	go guard("writeGateFile", func() { _ = writeGateFile() })

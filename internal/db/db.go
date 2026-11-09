@@ -285,6 +285,16 @@ CREATE TABLE IF NOT EXISTS databases (
   alias       TEXT NOT NULL DEFAULT '',
   preview_app TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS volume_moves (
+  volume  TEXT PRIMARY KEY,
+  dest    TEXT NOT NULL,
+  origin  TEXT NOT NULL,
+  labels  TEXT NOT NULL,
+  phase   TEXT NOT NULL,
+  app     TEXT NOT NULL DEFAULT '',
+  db_id   TEXT NOT NULL DEFAULT '',
+  started INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS db_replicas (
   id        TEXT PRIMARY KEY,
   db_id     TEXT NOT NULL,

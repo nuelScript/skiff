@@ -157,8 +157,122 @@ func endMove(volume string, err error) {
 	moves.m[volume] = st
 }
 
-// moveVolume puts a volume's files on another disk, or back in Docker's storage when to is "". Nothing may be using the volume. The source is only removed once the copy is checked, and a failed move leaves the volume where it was.
-func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
+// moveRecord is a move under way, kept in the database so one cut off by a restart is finished or undone when Skiff starts. Phase is "copying" until the copy is checked, then "copied".
+type moveRecord struct {
+	Volume, Dest, Origin, Phase, App, DBID string
+	Labels                                 map[string]string
+}
+
+func saveMove(r moveRecord) error {
+	labels, _ := json.Marshal(r.Labels)
+	_, err := sqlDB.Exec(`INSERT OR REPLACE INTO volume_moves(volume,dest,origin,labels,phase,app,db_id,started) VALUES(?,?,?,?,?,?,?,?)`,
+		r.Volume, r.Dest, r.Origin, string(labels), r.Phase, r.App, r.DBID, time.Now().Unix())
+	return err
+}
+
+func setMovePhase(volume, phase string) {
+	_, _ = sqlDB.Exec(`UPDATE volume_moves SET phase=? WHERE volume=?`, phase, volume)
+}
+
+func forgetMove(volume string) {
+	_, _ = sqlDB.Exec(`DELETE FROM volume_moves WHERE volume=?`, volume)
+}
+
+func listMoveRecords() []moveRecord {
+	rows, err := sqlDB.Query(`SELECT volume,dest,origin,labels,phase,app,db_id FROM volume_moves`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []moveRecord
+	for rows.Next() {
+		var r moveRecord
+		var labels string
+		if rows.Scan(&r.Volume, &r.Dest, &r.Origin, &labels, &r.Phase, &r.App, &r.DBID) == nil {
+			_ = json.Unmarshal([]byte(labels), &r.Labels)
+			out = append(out, r)
+		}
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return out
+}
+
+// resumeMoves settles the moves a restart cut off: a checked copy is finished, anything else is undone so the volume is where it was. It runs before databases are recovered, so a database whose volume is mid-move isn't rebuilt from a backup.
+func (p *Panel) resumeMoves() {
+	for _, r := range listMoveRecords() {
+		problem := ""
+		if err := p.settleMove(r); err != nil {
+			log.Printf("skiff: settling the move of %s: %v", r.Volume, err)
+			problem = "Skiff restarted during the move and couldn't settle it: " + err.Error()
+		} else {
+			forgetMove(r.Volume)
+			if r.Phase != "copied" {
+				problem = "Skiff restarted during the move, so the volume was left where it was. Try the move again."
+			}
+		}
+		if problem != "" {
+			moves.Lock()
+			moves.m[r.Volume] = moveState{To: r.Dest, Error: problem, Since: time.Now().Unix()}
+			moves.Unlock()
+		}
+		if src, ok := getSource(r.App); ok && r.App != "" {
+			go p.runDeploy(src, "", "", "", "redeploy", newDeployID())
+			for _, a := range appsMounting(src.App, strings.TrimPrefix(r.Volume, config.VolumeName(src.App, ""))) {
+				if b, ok := getSource(a); ok {
+					go p.runDeploy(b, "", "", "", "redeploy", newDeployID())
+				}
+			}
+		}
+	}
+}
+
+// settleMove finishes a move whose copy was checked, and otherwise puts the volume back where it was.
+func (p *Panel) settleMove(r moveRecord) error {
+	exists := p.eng.VolumeExists(r.Volume)
+	folder := p.eng.VolumeFolder(r.Volume)
+	if r.Phase == "copied" {
+		if exists && folder != r.Dest {
+			if err := p.eng.RemoveVolume(r.Volume); err != nil {
+				return err
+			}
+			exists = false
+		}
+		if !exists {
+			if err := p.eng.CreateVolume(r.Volume, r.Dest, r.Labels); err != nil {
+				return err
+			}
+		}
+		if r.Origin != "" && p.eng.ClearFolder(r.Origin) == nil {
+			_ = os.Remove(r.Origin)
+		}
+		return nil
+	}
+	if exists && folder != r.Origin {
+		// A part-made copy in the new place; the files are still in the old one.
+		if r.Dest == "" {
+			if err := p.eng.RemoveVolume(r.Volume); err != nil {
+				return err
+			}
+		} else if err := p.eng.ForgetVolume(r.Volume); err != nil {
+			return err
+		}
+		exists = false
+	}
+	if !exists {
+		if err := p.eng.CreateVolume(r.Volume, r.Origin, r.Labels); err != nil {
+			return err
+		}
+	}
+	if r.Dest != "" {
+		_ = p.eng.ClearFolder(r.Dest)
+	}
+	return nil
+}
+
+// moveVolume puts a volume's files on another disk, or back in Docker's storage when to is "". Nothing may be using the volume. The source is only removed once the copy is checked, and a failed move leaves the volume where it was. The move is recorded under owner, so a restart part-way settles it.
+func (p *Panel) moveVolume(ctx context.Context, volume, to string, owner moveRecord) (err error) {
 	if users := p.eng.VolumeUsers(volume); len(users) > 0 {
 		return fmt.Errorf("%d containers still use the volume", len(users))
 	}
@@ -171,6 +285,16 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
 		return nil
 	}
 	labels := p.eng.VolumeLabels(volume)
+	owner.Volume, owner.Dest, owner.Origin, owner.Labels, owner.Phase = volume, target, from, labels, "copying"
+	if err := saveMove(owner); err != nil {
+		return err
+	}
+	settled := true
+	defer func() {
+		if settled {
+			forgetMove(volume)
+		}
+	}()
 	if target != "" {
 		if entries, err := os.ReadDir(target); err == nil && len(entries) > 0 {
 			return fmt.Errorf("%s already has files in it", target)
@@ -182,11 +306,13 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
 			_ = p.eng.ClearFolder(target)
 			return err
 		}
-		if err := p.eng.RemoveVolume(volume); err != nil {
+		setMovePhase(volume, "copied")
+		if err := p.eng.RemoveVolume(volume); err != nil && p.eng.VolumeExists(volume) {
 			_ = p.eng.ClearFolder(target)
 			return fmt.Errorf("couldn't let go of the old volume: %w", err)
 		}
 		if err := p.eng.CreateVolume(volume, target, labels); err != nil {
+			settled = false // the files are only on the disk now; the next start makes the volume there
 			return fmt.Errorf("the files are copied to %s but the volume couldn't be made there: %w", target, err)
 		}
 	} else {
@@ -203,6 +329,7 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string) error {
 			_ = p.eng.CreateVolume(volume, from, labels)
 			return err
 		}
+		setMovePhase(volume, "copied")
 	}
 	if from != "" {
 		if err := p.eng.ClearFolder(from); err == nil {
@@ -220,7 +347,7 @@ func (p *Panel) moveAppVolume(src Source, volume, to, actor string) {
 		_ = p.eng.Stop(c)
 		_ = p.eng.Remove(c)
 	}
-	err := p.moveVolume(ctx, volume, to)
+	err := p.moveVolume(ctx, volume, to, moveRecord{App: src.App})
 	endMove(volume, err)
 	if err != nil {
 		log.Printf("skiff: moving %s: %v", volume, err)
@@ -243,7 +370,7 @@ func (p *Panel) moveDatabase(d dbRow, to string) {
 	defer cancel()
 	_ = p.eng.Stop(d.Container)
 	_ = p.eng.Remove(d.Container)
-	err := p.moveVolume(ctx, d.volume(), to)
+	err := p.moveVolume(ctx, d.volume(), to, moveRecord{DBID: d.ID})
 	endMove(d.volume(), err)
 	if _, startErr := p.runDatabaseContainer(d, d.Public); startErr != nil && err == nil {
 		err = startErr
