@@ -41,7 +41,7 @@ func (p *Panel) apiCreateDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !knownEngine(body.Engine) {
-		apiErr(w, http.StatusBadRequest, "engine must be postgres, pgvector, mysql, mongodb, redis or clickhouse")
+		apiErr(w, http.StatusBadRequest, "engine must be postgres, pgvector, timescaledb, mysql, mongodb, redis or clickhouse")
 		return
 	}
 	name := sanitizeName(body.Name)

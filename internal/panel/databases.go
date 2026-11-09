@@ -298,6 +298,7 @@ type Database struct {
 	Public    bool     `json:"public"`
 	PublicURL string   `json:"publicUrl,omitempty"`
 	Vector    bool     `json:"vector,omitempty"`
+	Timescale bool     `json:"timescale,omitempty"`
 	// Disk is the added disk the database keeps its files on; empty means Docker's own storage.
 	Disk string    `json:"disk,omitempty"`
 	Move moveState `json:"move"`
@@ -445,13 +446,14 @@ func (p *Panel) toDatabase(d dbRow) Database {
 	e := dbEngines[d.Engine]
 	out := Database{
 		ID: d.ID, Name: d.Name, Engine: d.Engine, Host: d.Host, Port: d.Port,
-		Created:  d.Created,
-		State:    p.eng.State(d.Container),
-		URL:      e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false),
-		Attached: dbAttachments(d.ID),
-		Public:   d.Public,
-		Vector:   d.Image == pgvectorImage,
-		Move:     moveStatus(d.volume()),
+		Created:   d.Created,
+		State:     p.eng.State(d.Container),
+		URL:       e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false),
+		Attached:  dbAttachments(d.ID),
+		Public:    d.Public,
+		Vector:    d.Image == pgvectorImage,
+		Timescale: d.Image == timescaleImage,
+		Move:      moveStatus(d.volume()),
 	}
 	if folder := p.eng.VolumeFolder(d.volume()); folder != "" {
 		out.Disk = diskOf(folder, listDisks())
@@ -501,10 +503,23 @@ const (
 	pgvectorImage  = "pgvector/pgvector:pg16"
 )
 
+// timescaleImage is Postgres with TimescaleDB, for time series. Like pgvector it's the postgres engine underneath, on the same major version, but its dumps go back through Timescale's own restore steps.
+const (
+	timescaleChoice = "timescaledb"
+	timescaleImage  = "timescale/timescaledb:2.30.2-pg16"
+)
+
+// postgresFlavors are the choices that start Postgres from another image, with the extension switched on.
+var postgresFlavors = map[string]struct{ image, extension string }{
+	pgvectorChoice:  {pgvectorImage, "vector"},
+	timescaleChoice: {timescaleImage, "timescaledb"},
+}
+
 // knownEngine says whether a create request names something provisionDB can start.
 func knownEngine(engine string) bool {
 	_, ok := dbEngines[engine]
-	return ok || engine == pgvectorChoice
+	_, flavor := postgresFlavors[engine]
+	return ok || flavor
 }
 
 // provisionDB starts a managed database for the team and records it. engine may be "pgvector": Postgres with that extension switched on.
@@ -515,8 +530,9 @@ func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
 // provisionDBOn is provisionDB with the database's files on an added disk, or in Docker's storage when diskPath is empty.
 func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error) {
 	image := ""
-	if engine == pgvectorChoice {
-		engine, image = "postgres", pgvectorImage
+	extension := ""
+	if f, ok := postgresFlavors[engine]; ok {
+		engine, image, extension = "postgres", f.image, f.extension
 	}
 	e := dbEngines[engine]
 	id := randToken()[:12]
@@ -558,24 +574,24 @@ func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error
 		// A database with its own image is otherwise taken for one adopted from outside Skiff, whose volume could be anything.
 		d.Image, d.Volume = image, container+"-data"
 	}
-	if image == pgvectorImage {
-		go p.enableVector(d)
+	if extension != "" {
+		go p.enableExtension(d, extension)
 	}
 	return d, putDB(d)
 }
 
-// enableVector switches the extension on once the new database accepts connections, so apps can use vector columns straight away.
-func (p *Panel) enableVector(d dbRow) {
+// enableExtension switches the extension on once the new database accepts connections, so apps can use it straight away.
+func (p *Panel) enableExtension(d dbRow, extension string) {
 	for range 60 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err := p.eng.Exec(ctx, d.Container, []string{"psql", "-U", d.Username, "-d", d.DBName, "-v", "ON_ERROR_STOP=1", "-c", "CREATE EXTENSION IF NOT EXISTS vector"}, nil, io.Discard)
+		err := p.eng.Exec(ctx, d.Container, []string{"psql", "-U", d.Username, "-d", d.DBName, "-v", "ON_ERROR_STOP=1", "-c", "CREATE EXTENSION IF NOT EXISTS " + extension}, nil, io.Discard)
 		cancel()
 		if err == nil {
 			return
 		}
 		time.Sleep(2 * time.Second)
 	}
-	log.Printf("skiff: couldn't switch on pgvector in %s; run CREATE EXTENSION vector in it", d.Name)
+	log.Printf("skiff: couldn't switch on %s in %s; run CREATE EXTENSION %s in it", extension, d.Name, extension)
 }
 
 func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
@@ -822,5 +838,5 @@ func (p *Panel) handleDBShell(w http.ResponseWriter, r *http.Request) {
 
 // tunesPostgres is whether Skiff sizes a database's Postgres settings: its own Postgres, plain or with pgvector, not one adopted from outside with a setup of its own.
 func tunesPostgres(d dbRow) bool {
-	return d.Engine == "postgres" && (d.Image == "" || d.Image == pgvectorImage)
+	return d.Engine == "postgres" && (d.Image == "" || d.Image == pgvectorImage || d.Image == timescaleImage)
 }

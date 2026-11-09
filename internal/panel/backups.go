@@ -227,11 +227,27 @@ func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	return b, nil
 }
 
+// timescaleRestore loads a dump into a new database through Timescale's restore steps, each in a fresh session as Timescale asks, and swaps it in for the old one only once it has all loaded.
+const timescaleRestore = `set -e
+u=$1; db=$2; tmp="${db}_restore"
+q() { psql -X -q -U "$u" -v ON_ERROR_STOP=1 "$@"; }
+q -d postgres -c "DROP DATABASE IF EXISTS \"$tmp\" WITH (FORCE)" -c "CREATE DATABASE \"$tmp\""
+trap 'q -d postgres -c "DROP DATABASE IF EXISTS \"$tmp\" WITH (FORCE)" >/dev/null 2>&1' EXIT
+q -d "$tmp" -c "CREATE EXTENSION IF NOT EXISTS timescaledb" -c "SELECT timescaledb_pre_restore()" >/dev/null
+q -d "$tmp" --single-transaction -f -
+q -d "$tmp" -c "SELECT timescaledb_post_restore()" >/dev/null
+q -d postgres -c "DROP DATABASE \"$db\" WITH (FORCE)" -c "ALTER DATABASE \"$tmp\" RENAME TO \"$db\""
+trap - EXIT
+`
+
 // loadBackup replaces the database's contents with a dump.
 func (p *Panel) loadBackup(ctx context.Context, d dbRow, dump io.Reader) error {
 	e := dbEngines[d.Engine]
 	if e.offlineRestore {
 		return p.restoreRedis(ctx, d, dump)
+	}
+	if d.Image == timescaleImage {
+		return p.eng.Exec(ctx, d.Container, []string{"sh", "-c", timescaleRestore, "sh", d.Username, d.DBName}, dump, io.Discard)
 	}
 	return p.eng.Exec(ctx, d.Container, e.restoreCmd(d.Username, d.Password, d.DBName),
 		io.MultiReader(strings.NewReader(e.restoreReset), dump), io.Discard)

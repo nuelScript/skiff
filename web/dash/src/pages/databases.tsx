@@ -45,6 +45,7 @@ import type { Database as Db, NewDbEngine } from '@/services/api.service'
 const ENGINES: { value: NewDbEngine; label: string; dot: string; accent: string }[] = [
   { value: 'postgres', label: 'PostgreSQL', dot: 'bg-info', accent: 'text-info' },
   { value: 'pgvector', label: 'Postgres + pgvector', dot: 'bg-info', accent: 'text-info' },
+  { value: 'timescaledb', label: 'Postgres + TimescaleDB', dot: 'bg-info', accent: 'text-info' },
   { value: 'mysql', label: 'MySQL', dot: 'bg-warning', accent: 'text-warning' },
   { value: 'mongodb', label: 'MongoDB', dot: 'bg-success', accent: 'text-success' },
   { value: 'redis', label: 'Redis', dot: 'bg-danger', accent: 'text-danger' },
@@ -237,7 +238,7 @@ function DatabaseCard({
   const [shell, setShell] = useState(false)
   const [backups, setBackups] = useState(false)
   const [pubBusy, setPubBusy] = useState(false)
-  const meta = engineMeta(db.vector ? 'pgvector' : db.engine)
+  const meta = engineMeta(db.vector ? 'pgvector' : db.timescale ? 'timescaledb' : db.engine)
   const running = db.state === 'running'
   const unattached = useMemo(
     () => apps.filter((a) => !db.attached.includes(a)),

@@ -67,6 +67,7 @@ Enter the endpoint, bucket and keys in the offsite section. New backups are copi
 A restore returns the database or volume to exactly what's in the backup. Anything created after it is removed, including new tables and files. Before every restore, Skiff backs up the current data, so you can undo it. That backup is listed as *before restore*. If it can't be taken, the restore doesn't run.
 
 - **Postgres** restores in one transaction, so a failure changes nothing. Other connections are closed first, so your apps will reconnect.
+- **Postgres with TimescaleDB** loads the backup into a new database with Timescale's own restore steps, then swaps it in, so a failure changes nothing here either.
 - **MySQL, MongoDB and ClickHouse** can't do this in one step, so a failure partway can leave them incomplete. If that happens, restore the *before restore* backup.
 - **Redis** stops briefly. The file is checked first, so a damaged backup causes no downtime.
 - **Volumes** unpack while your app keeps running, and it restarts for a moment when the files are swapped. If the swap fails, the original files go back. If the backup is no longer on your server, Skiff fetches it from your bucket.
