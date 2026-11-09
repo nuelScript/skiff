@@ -91,6 +91,7 @@ type Reach struct {
 type Use struct {
 	Memory string `json:"memory,omitempty"`
 	CPU    string `json:"cpu,omitempty"`
+	GPUs   int    `json:"gpus,omitempty"`
 }
 
 // Touch is what it can touch beyond its environment: how its container starts.

@@ -14,8 +14,10 @@ import (
 
 // Settings are what every container Skiff starts for an app shares, whatever it's for: what it can use, what it sees and how it starts.
 type Settings struct {
-	Memory  string // optional, e.g. "512m"; otherwise the safety cap
-	CPU     string // optional, e.g. "0.5"
+	Memory string // optional, e.g. "512m"; otherwise the safety cap
+	CPU    string // optional, e.g. "0.5"
+	// GPUs are the UUIDs of the GPUs the container gets.
+	GPUs    []string
 	Env     map[string]string
 	Network string // optional docker network to join (for reaching managed resources by name)
 	Volumes []Mount
@@ -44,6 +46,7 @@ func (e *Engine) settingsArgs(s Settings) []string {
 		args = append(args, "--network", s.Network)
 	}
 	args = append(args, mountArgs(s.Volumes)...)
+	args = append(args, gpuArgs(s.GPUs)...)
 	if s.OOMScore != 0 {
 		args = append(args, "--oom-score-adj", strconv.Itoa(s.OOMScore))
 	}

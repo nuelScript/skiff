@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { CostSection } from '@/components/cost-section'
 import { ControlPlaneBackup } from '@/components/control-plane-backup'
 import { DisksSection } from '@/components/disks-section'
+import { GPUsSection } from '@/components/gpus-section'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FeedSkeleton } from '@/components/skeletons'
 import { ErrorState } from '@/components/error-state'
@@ -170,6 +171,8 @@ export default function ServerPage() {
       <CostSection />
 
       <DisksSection />
+
+      <GPUsSection />
 
       <ControlPlaneBackup />
 

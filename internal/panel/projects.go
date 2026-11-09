@@ -147,6 +147,7 @@ type projectView struct {
 	SetupNote string `json:"setupNote,omitempty"`
 	Memory    string `json:"memory"`
 	CPU       string `json:"cpu"`
+	GPUs      int    `json:"gpus"`
 	// Domains are the project's custom domains, main one first; URL stays its Skiff address.
 	Domains []string `json:"domains"`
 	// Image is set for a project that runs a prebuilt image instead of building a repo.
@@ -196,6 +197,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			SetupNote:   catalogNote(src.Catalog),
 			Memory:      src.Memory,
 			CPU:         src.CPU,
+			GPUs:        src.GPUs,
 			Domains:     domainsOr(projectDomains(src.Team)[app]),
 			CrashLoop:   appCrashLoop(app),
 		})
@@ -218,6 +220,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			Image         string `json:"image"`
 			Memory        string `json:"memory"`
 			CPU           string `json:"cpu"`
+			GPUs          *int   `json:"gpus"`
 			Private       bool   `json:"private"`
 			RateLimit     int    `json:"rateLimit"`
 		}
@@ -239,6 +242,17 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		src.Memory, src.CPU = body.Memory, body.CPU
+		if body.GPUs != nil {
+			if *body.GPUs < 0 || *body.GPUs > config.MaxGPUs {
+				http.Error(w, fmt.Sprintf("GPUs must be from 0 to %d", config.MaxGPUs), http.StatusBadRequest)
+				return
+			}
+			if *body.GPUs > 0 && src.Parent != "" {
+				http.Error(w, "previews don't get GPUs", http.StatusBadRequest)
+				return
+			}
+			src.GPUs = *body.GPUs
+		}
 		if body.RateLimit < 0 || body.RateLimit > maxRateLimit {
 			http.Error(w, "rate limit must be between 0 and 1,000,000 requests a minute", http.StatusBadRequest)
 			return

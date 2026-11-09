@@ -141,6 +141,7 @@ var migrations = []string{
 	`ALTER TABLE volumes ADD COLUMN disk TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE jobs ADD COLUMN steps TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE job_runs ADD COLUMN steps TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN gpus INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `
@@ -220,7 +221,8 @@ CREATE TABLE IF NOT EXISTS sources (
   isolation    TEXT NOT NULL DEFAULT '',
   egress       TEXT NOT NULL DEFAULT '',
   permissions  TEXT NOT NULL DEFAULT '',
-  wants_permissions TEXT NOT NULL DEFAULT ''
+  wants_permissions TEXT NOT NULL DEFAULT '',
+  gpus         INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

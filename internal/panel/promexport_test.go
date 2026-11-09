@@ -53,3 +53,15 @@ func TestMetricsForATokenLimitedToSomeApps(t *testing.T) {
 		t.Errorf("a limited token saw the server's figures:\n%s", body)
 	}
 }
+
+func TestGPUMetrics(t *testing.T) {
+	var b strings.Builder
+	for _, m := range gpuMetrics([]docker.GPU{{Index: 0, UUID: "a", Name: "NVIDIA L4", MemoryUsed: 1024, MemoryTotal: 23034, Utilization: 37, Temperature: 45}}, map[string]string{"a": "llm"}) {
+		m.write(&b)
+	}
+	for _, want := range []string{`skiff_gpu_utilization_percent{gpu="0",name="NVIDIA L4",app="llm"} 37`, `skiff_gpu_memory_used_bytes{gpu="0",name="NVIDIA L4",app="llm"} 1.073741824e+09`, `skiff_gpu_temperature_celsius{gpu="0",name="NVIDIA L4",app="llm"} 45`} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %s in:\n%s", want, b.String())
+		}
+	}
+}

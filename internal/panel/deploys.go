@@ -703,8 +703,16 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	if t := cmp.Or(healthOf(src).HealthTimeout, defaultHealthTimeout(src)); t != int(health.DefaultTimeout/time.Second) {
 		fmt.Fprintf(&b, "health_timeout = %d\n", t)
 	}
-	if hc := healthOf(src); hc.Memory != "" || hc.CPU != "" {
+	// A preview takes its project's limits, not its GPUs: there are rarely enough to go round.
+	gpus := src.GPUs
+	if src.Parent != "" {
+		gpus = 0
+	}
+	if hc := healthOf(src); hc.Memory != "" || hc.CPU != "" || gpus > 0 {
 		b.WriteString("\n[resources]\n")
+		if gpus > 0 {
+			fmt.Fprintf(&b, "gpus = %d\n", gpus)
+		}
 		if hc.Memory != "" {
 			fmt.Fprintf(&b, "memory = %s\n", tomlQuote(hc.Memory))
 		}

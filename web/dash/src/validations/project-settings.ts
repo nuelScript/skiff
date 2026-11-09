@@ -32,6 +32,7 @@ export const projectSettingsSchema = z
       .max(1000000, 'Up to 1,000,000 a minute'),
     memory: z.string(),
     cpu: z.string(),
+    gpus: z.number().int().min(0).max(16),
     healthTimeout: z
       .number({ error: 'Enter a number of seconds' })
       .int()
