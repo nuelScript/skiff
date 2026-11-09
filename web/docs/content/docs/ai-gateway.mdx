@@ -53,6 +53,17 @@ Skiff counts the input and output tokens each provider reports, per app, per cal
 
 The budget is checked before each call, so calls already running when it's reached finish, and the month can end slightly over.
 
+### Per run
+
+A monthly budget won't stop one task that loops from using all of it. Under **AI access**, a **per-run** budget caps each run on its own. A run is the trace the call belongs to: an app using OpenTelemetry sends a `traceparent` header with every call, so its runs are found with no work. Otherwise, name the run yourself with an `X-Skiff-Run` header, such as the id of the job or message being handled:
+
+```python title="agent.py"
+client.chat.completions.create(model="gpt-4o-mini", messages=msgs,
+                               extra_headers={"X-Skiff-Run": f"ticket-{ticket.id}"})
+```
+
+When a run reaches its limit, Skiff answers its next calls with `429` and says why, and your team's alerts hear about it once. Other runs, and calls that name no run, carry on. Runs are forgotten a week after their last call.
+
 Budgets are in tokens rather than money because prices differ by model and change often. A rough way to choose one: take what you're willing to spend in a month and divide by your model's price per token.
 
 ## Good to know

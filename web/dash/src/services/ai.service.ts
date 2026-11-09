@@ -15,6 +15,7 @@ export type AIUsage = { input: number; output: number; requests: number }
 export type ProjectAI = {
   enabled: boolean
   budget: number
+  runBudget: number
   used: AIUsage
   providers: string[]
   gateway: boolean
@@ -115,8 +116,8 @@ class AIService extends BaseService {
     return this.get<ProjectAI>('/project/ai', { params: { app } })
   }
 
-  setProject(app: string, enabled: boolean, budget: number) {
-    return this.put('/project/ai', { enabled, budget }, { params: { app } })
+  setProject(app: string, enabled: boolean, budget: number, runBudget?: number) {
+    return this.put('/project/ai', { enabled, budget, runBudget }, { params: { app } })
   }
 
   agent(app: string) {

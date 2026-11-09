@@ -86,11 +86,12 @@ type aiApp struct {
 	App, Team string
 	token     string
 	Budget    int64 // tokens a month; 0 means no limit
+	RunBudget int64 // tokens one run may use; 0 means no limit
 }
 
 func aiAppFor(app string) (aiApp, bool) {
 	var a aiApp
-	err := sqlDB.QueryRow(`SELECT app, team, token, budget FROM ai_apps WHERE app=?`, app).Scan(&a.App, &a.Team, &a.token, &a.Budget)
+	err := sqlDB.QueryRow(`SELECT app, team, token, budget, run_budget FROM ai_apps WHERE app=?`, app).Scan(&a.App, &a.Team, &a.token, &a.Budget, &a.RunBudget)
 	if err != nil || seal.OpenAll(&a.token) != nil {
 		return aiApp{}, false
 	}
@@ -138,7 +139,10 @@ func aiUsed(app string, now time.Time) aiTotals {
 	return t
 }
 
-func recordAIUse(a aiApp, provider string, u aiUsage, now time.Time) {
+func recordAIUse(a aiApp, provider, run string, u aiUsage, now time.Time) {
+	if run != "" {
+		recordRunUse(a, run, u.in+u.out, now)
+	}
 	_, _ = sqlDB.Exec(`INSERT INTO ai_usage(app, month, provider, requests, input, output) VALUES(?,?,?,1,?,?)
 		ON CONFLICT(app, month, provider) DO UPDATE SET requests=requests+1, input=input+excluded.input, output=output+excluded.output`,
 		a.App, aiMonth(now), provider, u.in, u.out)
@@ -329,6 +333,11 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	run := runOf(r)
+	if a.RunBudget > 0 && run != "" && runUsed(a.App, run) >= a.RunBudget {
+		gatewayError(w, http.StatusTooManyRequests, fmt.Sprintf("this run has used its budget of %d tokens; start a new run, or raise the per-run budget in Skiff", a.RunBudget))
+		return
+	}
 	base := pr.BaseURL
 	if base == "" {
 		base = aiKinds[pr.Kind].base
@@ -364,7 +373,7 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 				body:   resp.Body,
 				stream: strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"),
 				done: func(u aiUsage) {
-					recordAIUse(a, pr.Name, u, time.Now())
+					recordAIUse(a, pr.Name, run, u, time.Now())
 					gatewaySpan(a, r, pr.Name, pr.Kind, model, started, status, u, "")
 				},
 			}
@@ -507,7 +516,7 @@ func (p *Panel) handleProjectAI(w http.ResponseWriter, r *http.Request) {
 			providers = append(providers, pr.Name)
 		}
 		writeJSON(w, map[string]any{
-			"enabled": on, "budget": a.Budget, "used": aiUsed(app, time.Now()),
+			"enabled": on, "budget": a.Budget, "runBudget": a.RunBudget, "used": aiUsed(app, time.Now()),
 			"providers": providers, "gateway": aiGatewayHost.Load() != nil,
 		})
 	case http.MethodPut:
@@ -520,16 +529,23 @@ func (p *Panel) handleProjectAI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Enabled bool  `json:"enabled"`
-			Budget  int64 `json:"budget"`
+			Enabled   bool   `json:"enabled"`
+			Budget    int64  `json:"budget"`
+			RunBudget *int64 `json:"runBudget"`
 		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body) != nil || body.Budget < 0 {
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body) != nil || body.Budget < 0 || body.RunBudget != nil && *body.RunBudget < 0 {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		if err := setAIApp(src, body.Enabled, body.Budget); err != nil {
 			http.Error(w, "couldn't save", http.StatusInternalServerError)
 			return
+		}
+		if body.Enabled && body.RunBudget != nil {
+			if err := setRunBudget(app, *body.RunBudget); err != nil {
+				http.Error(w, "couldn't save", http.StatusInternalServerError)
+				return
+			}
 		}
 		p.audit(r, "project.ai", app, fmt.Sprintf("enabled=%v budget=%d", body.Enabled, body.Budget))
 		w.WriteHeader(http.StatusNoContent)

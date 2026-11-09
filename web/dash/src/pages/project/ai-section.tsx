@@ -112,6 +112,7 @@ export function AISection({ app, onRedeploy }: { app: string; onRedeploy: () => 
               Turn off
             </Button>
           </form>
+          <RunBudget app={app} budget={data.budget} runBudget={data.runBudget} />
           <pre className="overflow-x-auto rounded-lg bg-inset p-3 font-mono text-[11px] leading-relaxed">
             {`client = OpenAI(
     base_url=os.environ["SKIFF_AI_URL"] + "/${provider}/v1",
@@ -166,5 +167,52 @@ export function AISection({ app, onRedeploy }: { app: string; onRedeploy: () => 
       )}
       {error && <p className="text-xs text-danger">{error}</p>}
     </section>
+  )
+}
+
+// RunBudget caps what one run can use, so a task stuck in a loop stops long before the month's budget.
+function RunBudget({ app, budget, runBudget }: { app: string; budget: number; runBudget: number }) {
+  const qc = useQueryClient()
+  const [value, setValue] = useState('')
+  const [error, setError] = useState('')
+  const save = useMutation({
+    mutationFn: (n: number) => aiService.setProject(app, true, budget, n),
+    onSuccess: () => {
+      setValue('')
+      qc.invalidateQueries({ queryKey: queryKeys.projectAI(app) })
+    },
+    onError: (err) => setError(errText(err, 'Could not save the per-run budget.')),
+  })
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    const n = Number(value.replace(/[,_\s]/g, ''))
+    if (!Number.isInteger(n) || n < 0) {
+      setError('Give the per-run budget as a whole number of tokens; 0 removes it.')
+      return
+    }
+    save.mutate(n)
+  }
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-start gap-2">
+        <Input
+          aria-label="Tokens per run"
+          inputMode="numeric"
+          className="font-mono sm:max-w-48"
+          placeholder={runBudget ? `${runBudget.toLocaleString()} per run` : 'No limit per run'}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button size="sm" type="submit" variant="outline" loading={save.isPending} disabled={!value.trim()}>
+          Set per run
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        A run is the trace a call belongs to, or what the app names with an <code className="font-mono">X-Skiff-Run</code>{' '}
+        header. A run at its limit is refused and the team is told; other runs carry on.
+      </p>
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </form>
   )
 }

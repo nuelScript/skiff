@@ -137,6 +137,7 @@ var migrations = []string{
 	`ALTER TABLE jobs ADD COLUMN bucket_prefix TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE jobs ADD COLUMN bucket_seen INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN bucket_seen_keys TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE ai_apps ADD COLUMN run_budget INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `
@@ -376,6 +377,14 @@ CREATE TABLE IF NOT EXISTS ai_apps (
   token      TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   budget     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS ai_run_usage (
+  app     TEXT NOT NULL,
+  run     TEXT NOT NULL,
+  tokens  INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL,
+  alerted INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (app, run)
 );
 CREATE TABLE IF NOT EXISTS ai_usage (
   app      TEXT NOT NULL,
