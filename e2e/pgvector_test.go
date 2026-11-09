@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -78,5 +79,42 @@ func TestPgvectorDatabase(t *testing.T) {
 	post(t, c, base+"/api/backups/restore?id="+b.ID, "")
 	if got, err := sql(nearest); err != nil || got != "cats,dogs" {
 		t.Errorf("after restore: %q %v", got, err)
+	}
+
+	// Moving it starts it again from its own image, not as a database adopted from outside.
+	diskPath := addedDisk(t)
+	var dk struct{ ID string }
+	postJSON(t, c, base+"/api/disks", fmt.Sprintf(`{"name":"data-1","path":%q}`, diskPath), &dk)
+	post(t, c, base+"/api/move", fmt.Sprintf(`{"database":%q,"disk":%q}`, db.ID, dk.ID))
+	eventually(t, 5*time.Minute, func() bool {
+		var list []struct {
+			ID, Disk string
+			Move     struct {
+				Moving bool
+				Error  string
+			}
+		}
+		getJSON(t, c, base+"/api/databases", &list)
+		for _, d := range list {
+			if d.ID == db.ID {
+				if d.Move.Error != "" {
+					t.Fatalf("the move failed: %s", d.Move.Error)
+				}
+				return !d.Move.Moving && d.Disk == dk.ID
+			}
+		}
+		return false
+	})
+	var got string
+	eventually(t, 2*time.Minute, func() bool {
+		var err error
+		got, err = sql(nearest)
+		return err == nil
+	})
+	if got != "cats,dogs" {
+		t.Errorf("after moving to a disk: %q", got)
+	}
+	if out, _ := exec.Command("docker", "inspect", "-f", "{{.Config.Image}}", ctr).Output(); !strings.HasPrefix(strings.TrimSpace(string(out)), "pgvector/") {
+		t.Errorf("running %s after the move", out)
 	}
 }
