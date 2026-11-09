@@ -253,15 +253,16 @@ func setTomlJobs(src Source, want []config.Job) {
 	for _, j := range want {
 		if old, ok := have[j.Name]; ok {
 			delete(have, j.Name)
-			if old.Schedule != j.Schedule || old.Command != j.Command || old.Timeout != j.TimeoutSeconds() || old.Retries != j.Retries || old.CatchUp != j.CatchUp {
-				_, _ = sqlDB.Exec(`UPDATE jobs SET schedule=?, command=?, timeout=?, retries=?, catch_up=? WHERE id=?`,
-					j.Schedule, j.Command, j.TimeoutSeconds(), j.Retries, j.CatchUp, old.ID)
+			if old.Schedule != j.Schedule || old.Command != j.Command || old.Timeout != j.TimeoutSeconds() || old.Retries != j.Retries || old.CatchUp != j.CatchUp ||
+				encodeSteps(old.Steps) != encodeSteps(j.Steps) {
+				_, _ = sqlDB.Exec(`UPDATE jobs SET schedule=?, command=?, timeout=?, retries=?, catch_up=?, steps=? WHERE id=?`,
+					j.Schedule, j.Command, j.TimeoutSeconds(), j.Retries, j.CatchUp, encodeSteps(j.Steps), old.ID)
 			}
 			setTomlTriggers(old, j)
 			continue
 		}
 		row := jobRow{ID: randToken()[:12], App: src.App, Team: src.Team, Name: j.Name, Schedule: j.Schedule, Command: j.Command, LastOk: 1, Created: time.Now().Unix(),
-			Timeout: j.TimeoutSeconds(), Retries: j.Retries, CatchUp: j.CatchUp, Bucket: j.Bucket, Prefix: j.Prefix}
+			Timeout: j.TimeoutSeconds(), Retries: j.Retries, CatchUp: j.CatchUp, Bucket: j.Bucket, Prefix: j.Prefix, Steps: j.Steps}
 		if j.Webhook {
 			row.HookSecret = randToken()
 		}

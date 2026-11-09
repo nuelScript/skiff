@@ -138,6 +138,17 @@ export type Job = {
   bucket?: string
   prefix?: string
   queued: number
+  steps?: JobStep[]
+}
+
+export type JobStep = { name: string; command: string; after?: string[] }
+
+export type StepResult = {
+  name: string
+  status: 'ok' | 'failed' | 'timeout' | 'skipped'
+  exitCode: number
+  started?: number
+  finished?: number
 }
 
 export type JobRun = {
@@ -149,6 +160,7 @@ export type JobRun = {
   status: 'queued' | 'running' | 'ok' | 'failed' | 'timeout' | 'skipped'
   exitCode: number
   output: string
+  steps?: StepResult[]
 }
 
 export type JobSettings = {
@@ -161,6 +173,7 @@ export type JobSettings = {
   webhook: boolean
   bucket: string
   prefix: string
+  steps?: JobStep[]
 }
 
 export type Worker = {

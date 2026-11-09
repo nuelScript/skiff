@@ -44,6 +44,8 @@ type Run struct {
 	Command string `json:"command,omitempty"`
 	// Shell is a command run with sh -c.
 	Shell string `json:"shell,omitempty"`
+	// Steps make a job a pipeline of commands, each run once the steps it comes after have succeeded.
+	Steps []config.Step `json:"steps,omitempty"`
 	// Release runs once before a new version goes live, such as migrations.
 	Release string `json:"release,omitempty"`
 	// MountedFiles are repository files built into the image, as a JSON list.
