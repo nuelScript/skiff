@@ -20,6 +20,8 @@ export function AccessTokensSection({ app, url }: { app: string; url?: string })
   const [created, setCreated] = useState<AccessToken | null>(null)
   const { copied, copy } = useCopy(1500)
   const tokens = data?.tokens ?? []
+  // An app installed behind a key has no login of its own, so its last token stays.
+  const keepLast = !!data?.required && tokens.length === 1
 
   const create = useMutation({
     mutationFn: () => projectsService.createAccessToken(app, name.trim()),
@@ -65,7 +67,12 @@ export function AccessTokensSection({ app, url }: { app: string; url?: string })
           Once the app has a token, every request to it must carry one as{' '}
           <code className="font-mono">Authorization: Bearer …</code>, and Skiff removes it before the request reaches the
           app. For MCP servers and APIs called by other programs.{' '}
-          {tokens.length > 0 ? (
+          {keepLast ? (
+            <span className="text-foreground">
+              On, and required: {app} has no login of its own, so it always keeps a token. To change it, add a new one,
+              then revoke this one.
+            </span>
+          ) : tokens.length > 0 ? (
             <span className="text-foreground">On: requests without a token are refused.</span>
           ) : (
             'Off: anyone with the address gets through.'
@@ -102,8 +109,10 @@ export function AccessTokensSection({ app, url }: { app: string; url?: string })
               <button
                 type="button"
                 onClick={() => void ask(t)}
+                disabled={keepLast}
                 aria-label={`Revoke ${t.name}`}
-                className="text-muted-foreground cursor-pointer p-1 transition-colors hover:text-danger"
+                title={keepLast ? `${app} has no login of its own. Add another token before revoking this one.` : undefined}
+                className="text-muted-foreground cursor-pointer p-1 transition-colors hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted-foreground"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

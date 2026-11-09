@@ -379,7 +379,7 @@ class ProjectsService extends BaseService {
   }
 
   accessTokens(app: string) {
-    return this.get<{ tokens: AccessToken[] }>('/project/access-tokens', { params: { app } })
+    return this.get<{ tokens: AccessToken[]; required?: boolean }>('/project/access-tokens', { params: { app } })
   }
 
   createAccessToken(app: string, name: string) {
