@@ -786,6 +786,25 @@ func (p *rawPort) UnmarshalYAML(n *yaml.Node) error {
 	}
 	spec, proto, _ := strings.Cut(n.Value, "/")
 	p.Protocol = proto
+	// An IPv6 address is written in brackets, as [::1]:8080:80, and has colons of its own.
+	if strings.HasPrefix(spec, "[") {
+		end := strings.Index(spec, "]:")
+		if end < 0 {
+			return fmt.Errorf("port %q: put the port after the bracketed address, like [::1]:8080:80", n.Value)
+		}
+		p.HostIP = spec[1:end]
+		spec = spec[end+2:]
+		parts := strings.Split(spec, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("port %q: give a published and a container port after the address, like [::1]:8080:80", n.Value)
+		}
+		target, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return fmt.Errorf("port %q: only single ports are supported", n.Value)
+		}
+		p.Published, p.Target = parts[0], target
+		return nil
+	}
 	parts := strings.Split(spec, ":")
 	target, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
