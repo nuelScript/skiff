@@ -144,7 +144,7 @@ func (p *Panel) apiRemoveJob(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, tomlOwned)
 		return
 	}
-	deleteJob(j.ID)
+	p.deleteJob(j.ID)
 	recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "job.delete", Target: j.App, Detail: j.Name + " via api"})
 	w.WriteHeader(http.StatusNoContent)
 }

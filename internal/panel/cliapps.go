@@ -99,7 +99,7 @@ func (p *Panel) syncCLIApps() {
 			continue
 		}
 		p.recordCLIDeploy(a, meta)
-		syncTomlWork(src, meta.Labels)
+		p.syncTomlWork(src, meta.Labels)
 	}
 }
 

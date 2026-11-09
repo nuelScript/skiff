@@ -170,7 +170,33 @@ func (p *Panel) followRun(j jobRow, r orphanRun, container string) {
 	p.settleJob(j, status, status == runOK)
 }
 
-func deleteAppJobs(app string) {
+// stopRuns removes the containers of the runs going that match where, so deleting a job or an app doesn't leave its runs going until their timeouts.
+func (p *Panel) stopRuns(where string, arg any) {
+	rows, err := sqlDB.Query(`SELECT id FROM job_runs WHERE status=? AND `+where, runRunning, arg)
+	if err != nil {
+		return
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if len(ids) == 0 {
+		return
+	}
+	live := p.eng.LabelledRuns(docker.JobRunLabel)
+	for _, id := range ids {
+		for _, c := range live[strconv.FormatInt(id, 10)] {
+			_ = p.eng.Remove(c)
+		}
+	}
+}
+
+func (p *Panel) deleteAppJobs(app string) {
+	p.stopRuns(`app=?`, app)
 	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE app=?`, app)
 	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE app=?`, app)
 }
@@ -273,6 +299,10 @@ func (p *Panel) execJobFrom(j jobRow, trigger string, id int64, input string, fi
 			break
 		}
 		time.Sleep(retryWait(attempt))
+		// A job deleted while it waited to retry stays deleted.
+		if _, ok := getJob(j.ID); !ok {
+			return
+		}
 	}
 	p.settleJob(j, status, err == nil)
 }
