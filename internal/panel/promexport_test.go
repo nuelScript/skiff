@@ -33,3 +33,23 @@ func TestMetricsAreTheTeamsOwn(t *testing.T) {
 		t.Errorf("label = %s", got)
 	}
 }
+
+func TestMetricsForATokenLimitedToSomeApps(t *testing.T) {
+	openTestDB(t)
+	_, _ = sqlDB.Exec(`INSERT INTO teams(id, name, slug, created) VALUES('t1', 'T', 't', 1)`)
+	putSource(Source{App: "shop", Team: "t1", Port: "3000"})
+	putSource(Source{App: "admin", Team: "t1", Port: "3000"})
+	p := &Panel{eng: docker.Local()}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	ctx := context.WithValue(req.Context(), ctxTeam, "t1")
+	req = req.WithContext(context.WithValue(ctx, ctxGrant, tokenGrant{Apps: []string{"shop"}}))
+	w := httptest.NewRecorder()
+	p.apiMetrics(w, req)
+	body := w.Body.String()
+	if !strings.Contains(body, `app="shop"`) || strings.Contains(body, `app="admin"`) {
+		t.Errorf("a token limited to shop:\n%s", body)
+	}
+	if strings.Contains(body, "skiff_server_") {
+		t.Errorf("a limited token saw the server's figures:\n%s", body)
+	}
+}

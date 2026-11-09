@@ -61,7 +61,8 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 	bytesOut := &promMetric{name: "skiff_app_bytes_out_5m", help: "Bytes sent through the router in the last five minutes."}
 	volume := &promMetric{name: "skiff_volume_bytes", help: "Size of an app's volume."}
 
-	sources := p.teamProjects(team)
+	grant := apiGrant(r)
+	sources := slices.DeleteFunc(p.teamProjects(team), func(s Source) bool { return !grant.reaches(s) })
 	slices.SortFunc(sources, func(a, b Source) int { return strings.Compare(a.App, b.App) })
 	for _, src := range sources {
 		l := fmt.Sprintf(`app="%s"`, promLabel(src.App))
@@ -107,8 +108,8 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 	for _, m := range []*promMetric{up, crashing, cpu, mem, memLimit, restarts, replicas, requests, errors5, latency, bytesIn, bytesOut, volume} {
 		m.write(&b)
 	}
-	// The server's own figures belong to the team that set it up, as on the Server page.
-	if team != "" && team == foundingTeam() {
+	// The server's own figures belong to the team that set it up, as on the Server page, and not to a token limited to some of its apps.
+	if team != "" && team == foundingTeam() && !grant.limited() {
 		u := usageOf()
 		server := []*promMetric{
 			{name: "skiff_server_memory_bytes", help: "Memory in use on the server."},

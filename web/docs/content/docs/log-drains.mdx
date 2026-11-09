@@ -66,7 +66,7 @@ By default, drains can only reach public addresses over HTTPS, so a teammate can
 
 ## Metrics
 
-Skiff serves your team's apps in Prometheus's text format at `/api/v1/metrics` on your dashboard's address, for Prometheus, Grafana Agent, Datadog, Better Stack or anything else that scrapes it. Create an API token under **Settings → API tokens** and send it as a bearer token:
+Skiff serves your team's apps in Prometheus's text format at `/api/v1/metrics` on your dashboard's address, for Prometheus, Grafana Agent, Datadog, Better Stack or anything else that scrapes it. Create an API token under **Settings → Integrations** and send it as a bearer token. A token limited to some projects sees only those, and not the server's own figures:
 
 ```yaml title="prometheus.yml"
 scrape_configs:
