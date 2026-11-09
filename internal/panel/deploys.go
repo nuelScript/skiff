@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/egress"
 	"github.com/nuelScript/skiff/internal/health"
 )
@@ -122,6 +123,12 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	}
 	defer f.Close()
 	logln := func(s string) { fmt.Fprintln(f, s) }
+	if src.GPUs > 0 && src.Parent == "" && gpusOptional(src) {
+		if _, err := docker.PickGPUs(src.App, src.GPUs, p.eng.GPUs(), p.eng.GPUsInUse()); err != nil {
+			logln("→ no GPU is free, so this version runs without one: " + err.Error())
+			src.GPUs = 0
+		}
+	}
 
 	if src.Image != "" && message == "" {
 		message = src.Image

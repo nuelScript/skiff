@@ -346,11 +346,13 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			ui.Fail("This app asks for GPUs")
 			return err
 		}
-		picked, err := docker.PickGPUs(cfg.Name, cfg.Resources.GPUs, eng.GPUs(), eng.GPUsInUse())
+		// Held until this deploy ends, by when its containers carry them.
+		picked, releaseGPUs, err := eng.ClaimGPUs(cfg.Name, cfg.Resources.GPUs, 2*timeout+30*time.Minute)
 		if err != nil {
 			ui.Fail("Not enough free GPUs")
 			return err
 		}
+		defer releaseGPUs()
 		gpus = picked
 	}
 
