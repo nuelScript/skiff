@@ -61,7 +61,8 @@ except OSError:
 	// A sandbox that keeps going past the disk limit is stopped, wherever it writes.
 	for _, where := range []string{"/work", "/tmp"} {
 		spec.Internet = false
-		spec.Command = "dd if=/dev/zero of=" + where + "/big bs=1M count=3072; sleep 20; echo finished"
+		// Written in synced pieces, so the sandbox's memory limit doesn't stop the writer before the disk limit can.
+		spec.Command = "for i in $(seq 48); do head -c 67108864 /dev/zero > " + where + "/big$i; sync; done; sleep 20; echo finished"
 		res, err = eng.Sandbox(ctx, spec)
 		if !errors.Is(err, docker.ErrSandboxDisk) || strings.Contains(res.Output, "finished") {
 			t.Errorf("writing 3 GB to %s: %v\n%s", where, err, res.Output)
