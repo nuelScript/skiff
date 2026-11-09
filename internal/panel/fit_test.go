@@ -25,7 +25,11 @@ func TestFitCheck(t *testing.T) {
 	if _, r := fitCheck(Source{}, full, mem, 0); !strings.Contains(r, "500 MB of disk free") {
 		t.Errorf("a full disk refuses: %q", r)
 	}
-	for in, want := range map[string]int64{"512m": 512 << 20, "1g": 1 << 30, "1.5g": 3 << 29, "": 0, "nope": 0, "2048k": 2 << 20} {
+	w, r = fitCheck(Source{Image: "ghcr.io/acme/api:fix"}, full, mem, 0)
+	if r != "" || !strings.Contains(w, "pulling a new image may fail") {
+		t.Errorf("an image deploy on a full disk should warn, not refuse: %q %q", w, r)
+	}
+	for in, want := range map[string]int64{"512m": 512 << 20, "1g": 1 << 30, "1.5g": 3 << 29, "": 0, "nope": 0, "2048k": 2 << 20, "1gb": 1 << 30, "1GiB": 1 << 30, "512MB": 512 << 20, "1024": 1024, "1024b": 1024} {
 		if got := limitBytes(in); got != want {
 			t.Errorf("limitBytes(%q) = %d, want %d", in, got, want)
 		}
@@ -42,5 +46,15 @@ func TestPreviewsGiveWayFirst(t *testing.T) {
 	}
 	if strings.Contains(projectToml(Source{App: "web"}, nil, "net", nil), "oom_score_adj") {
 		t.Error("production uses the default")
+	}
+}
+
+func TestAPreviewIsCheckedAgainstItsProjectsLimit(t *testing.T) {
+	openTestDB(t)
+	putSource(Source{App: "web", Team: "t1", Port: "3000", Memory: "3g"})
+	mem := resourceUsage{Total: 4 << 30, Used: 3 << 30}
+	plenty := resourceUsage{Total: 100 << 30, Used: 10 << 30}
+	if w, _ := fitCheck(Source{App: "web-pr-1", Parent: "web"}, plenty, mem, 0); !strings.Contains(w, "up to 3.0 GB") {
+		t.Errorf("a preview runs with its project's limit: %q", w)
 	}
 }

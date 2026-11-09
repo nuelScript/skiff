@@ -9,19 +9,22 @@ import (
 // diskFloor is the free disk a deploy needs to build and unpack an image.
 const diskFloor = 1 << 30
 
-// fitCheck says, before a deploy, whether it fits what the server has free. Memory only warns, since the kernel may free some; too little disk refuses, since the build would fail partway anyway.
+// fitCheck says, before a deploy, whether it fits what the server has free. Memory only warns, since the kernel may free some. Too little disk refuses a build, which would fail partway anyway, but only warns for an image, which may already be on the server, so a fix can still go out. A preview is checked against its project's limit, which it runs with.
 func fitCheck(src Source, disk, mem resourceUsage, appUses int64) (warning, refusal string) {
 	if disk.Total > 0 && disk.Total-disk.Used < diskFloor {
-		return "", fmt.Sprintf("the server has only %s of disk free, and a deploy needs room to build. Free up space on the Server page, then deploy again", humanBytes(disk.Total-disk.Used))
+		if src.Image == "" {
+			return "", fmt.Sprintf("the server has only %s of disk free, and a deploy needs room to build. Free up space on the Server page, then deploy again", humanBytes(disk.Total-disk.Used))
+		}
+		warning = fmt.Sprintf("the server has only %s of disk free, so pulling a new image may fail. Free up space on the Server page", humanBytes(disk.Total-disk.Used))
 	}
-	need := limitBytes(src.Memory) * int64(max(src.Replicas, 1))
+	need := limitBytes(healthOf(src).Memory) * int64(max(src.Replicas, 1))
 	if need == 0 || mem.Total == 0 {
-		return "", ""
+		return warning, ""
 	}
 	// The version being replaced gives its memory back.
 	free := mem.Total - mem.Used + appUses
 	if need <= free {
-		return "", ""
+		return warning, ""
 	}
 	copies := ""
 	if src.Replicas > 1 {
@@ -30,9 +33,10 @@ func fitCheck(src Source, disk, mem resourceUsage, appUses int64) (warning, refu
 	return fmt.Sprintf("this app may use up to %s%s, and the server has about %s free. If it fills that, the server stops it. Lower its memory limit, run fewer copies, or stop another app", humanBytes(need), copies, humanBytes(free)), ""
 }
 
-// limitBytes reads a memory limit as Docker writes it, like 512m or 1g; 0 when there is none.
+// limitBytes reads a memory limit as Docker does, like 512m, 1g, 1gb or 1GiB; 0 when there is none.
 func limitBytes(s string) int64 {
 	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimSuffix(strings.TrimSuffix(s, "b"), "i")
 	if s == "" || s == "0" {
 		return 0
 	}
@@ -44,10 +48,10 @@ func limitBytes(s string) int64 {
 		mult = 1 << 20
 	case 'g':
 		mult = 1 << 30
-	case 'b':
-		mult = 1
+	case 't':
+		mult = 1 << 40
 	}
-	if mult > 1 || s[len(s)-1] == 'b' {
+	if mult > 1 {
 		s = s[:len(s)-1]
 	}
 	v, err := strconv.ParseFloat(s, 64)
