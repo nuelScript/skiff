@@ -68,8 +68,10 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 	if spec.Internet {
 		network = "bridge"
 	}
+	// The working directory is a volume of its own: under gVisor, writes elsewhere stay in the sandbox's memory, out of reach of copying them back.
+	work := name + "-work"
 	args := []string{"create", "--name", name, "--label", SandboxLabel + "=" + spec.App,
-		"--network", network, "--workdir", sandboxWorkdir,
+		"--network", network, "--workdir", sandboxWorkdir, "--mount", "type=volume,src=" + work + ",dst=" + sandboxWorkdir,
 		"--memory", spec.Memory, "--cpus", spec.CPU, "--pids-limit", "256",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none"}
 	if spec.ShmSize != "" {
@@ -79,7 +81,13 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 		args = append(args, "--runtime", spec.Runtime)
 	}
 	args = append(args, spec.Image, "sh", "-c", spec.Command)
-	defer func() { _ = e.command("rm", "-f", name).Run() }()
+	defer func() {
+		_ = e.command("rm", "-f", name).Run()
+		_ = e.command("volume", "rm", "-f", work).Run()
+	}()
+	if out, err := e.contextCommand(ctx, "volume", "create", "--label", SandboxLabel+"="+spec.App, work).CombinedOutput(); err != nil {
+		return SandboxResult{}, fmt.Errorf("couldn't create the sandbox's working directory: %s", firstLine(out))
+	}
 	// A first pull of a large image shouldn't use up the run's own time.
 	if !e.ImageExists(spec.Image) {
 		pullCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxPullTimeout)
@@ -193,6 +201,11 @@ func (e *Engine) RemoveSandboxes(app string) {
 	}
 	if ids := strings.Fields(string(out)); len(ids) > 0 {
 		_ = e.command(append([]string{"rm", "-f"}, ids...)...).Run()
+	}
+	if vols, err := e.command("volume", "ls", "-q", "--filter", filter).Output(); err == nil {
+		if names := strings.Fields(string(vols)); len(names) > 0 {
+			_ = e.command(append([]string{"volume", "rm", "-f"}, names...)...).Run()
+		}
 	}
 }
 

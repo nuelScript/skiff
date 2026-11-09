@@ -64,8 +64,10 @@ except OSError:
 	if _, err := eng.Sandbox(short, spec); err == nil {
 		t.Error("a sandbox past its time should fail")
 	}
-	if out, _ := exec.Command("docker", "ps", "-aq", "--filter", "label="+docker.SandboxLabel+"=e2e-sbx").Output(); strings.TrimSpace(string(out)) != "" {
-		t.Errorf("sandboxes left behind: %s", out)
+	for _, kind := range [][]string{{"ps", "-aq"}, {"volume", "ls", "-q"}} {
+		if out, _ := exec.Command("docker", append(kind, "--filter", "label="+docker.SandboxLabel+"=e2e-sbx")...).Output(); strings.TrimSpace(string(out)) != "" {
+			t.Errorf("sandboxes left behind (%s): %s", kind[0], out)
+		}
 	}
 }
 
