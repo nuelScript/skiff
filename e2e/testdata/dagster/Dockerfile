@@ -1,5 +1,5 @@
 FROM python:3.12-slim
-RUN pip install --no-cache-dir dagster==1.13.26 dagster-webserver==1.13.26 dagster-postgres==0.29.26 "psycopg[binary]==3.3.6"
+RUN pip install --no-cache-dir dagster==1.13.26 dagster-webserver==1.13.26 dagster-postgres==0.29.26
 ENV DAGSTER_HOME=/opt/dagster
 WORKDIR /app
 COPY dagster.yaml /opt/dagster/
