@@ -91,17 +91,26 @@ func (e *Engine) PullImage(image string) error {
 
 // RunOnce runs a throwaway container executing a shell command (sh -c), for release commands (migrations) and scheduled jobs, with the same settings as the app it belongs to.
 func (e *Engine) RunOnce(ctx context.Context, image, cmd string, s Settings) (string, error) {
+	var out bytes.Buffer
+	err := e.RunStream(ctx, image, cmd, s, &out)
+	return out.String(), err
+}
+
+// RunStream runs cmd in a throwaway container, writing its output to w as it comes.
+func (e *Engine) RunStream(ctx context.Context, image, cmd string, s Settings, w io.Writer) error {
 	var id [6]byte
 	_, _ = rand.Read(id[:])
 	name := "skiff-run-" + hex.EncodeToString(id[:])
 	args := append([]string{"run", "--rm", "--name", name}, e.settingsArgs(s)...)
 	args = append(args, image, "sh", "-c", cmd)
-	out, err := e.contextCommand(ctx, args...).CombinedOutput()
+	c := e.contextCommand(ctx, args...)
+	c.Stdout, c.Stderr = w, w
+	err := c.Run()
 	// Cancelling only stops the docker client, so the container is removed here or it would keep running.
 	if ctx.Err() != nil {
 		_ = e.command("rm", "-f", name).Run()
 	}
-	return string(out), err
+	return err
 }
 
 // RunIO runs a throwaway container with its streams attached and no memory limit, for one-off work on a volume whose size isn't known in advance.

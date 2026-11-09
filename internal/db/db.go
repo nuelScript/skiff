@@ -122,6 +122,7 @@ var migrations = []string{
 	`ALTER TABLE jobs ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN catch_up TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE job_runs ADD COLUMN command TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -330,7 +331,8 @@ CREATE TABLE IF NOT EXISTS job_runs (
   finished  INTEGER NOT NULL DEFAULT 0,
   status    TEXT NOT NULL,
   exit_code INTEGER NOT NULL DEFAULT 0,
-  output    TEXT NOT NULL DEFAULT ''
+  output    TEXT NOT NULL DEFAULT '',
+  command   TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, id);
 CREATE INDEX IF NOT EXISTS idx_job_runs_app ON job_runs(app);

@@ -357,6 +357,20 @@ skiff router [flags]
 | `--site-app` | `www` | app that serves the apex + www.&lt;domain&gt; |
 | `--smtp-addr` | `:25` | address to receive forwarded email on (empty disables) |
 
+## skiff run
+
+Run a command once in a fresh container from an app's latest build
+
+Run a command once in a fresh container from an app's latest build, with its environment and limits, and print its output as it comes. Skiff exits with the command's exit code. Ctrl-C stops the run.    skiff run shop-api -- npm run migrate   skiff run shop-api --timeout 2h -- "python backfill.py && echo done"
+
+```sh
+skiff run <app> -- <command> [flags]
+```
+
+| Flag | Default | What it does |
+| --- | --- | --- |
+| `--timeout` | `0s` | how long it may take, like 2h (default 30m, up to 24h) |
+
 ## skiff server
 
 Manage deploy servers
