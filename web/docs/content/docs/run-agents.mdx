@@ -119,6 +119,8 @@ Every model call through Skiff is recorded, so a run shows up even if the agent 
 
 A model call made inside a traced step carries its trace context, and Skiff files the call under that step. Spans named with OpenTelemetry's GenAI conventions (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.tool.name` and so on) show their model, tokens and tool. Runs are kept for a week, up to 20,000 steps per agent.
 
+To see what a run cost, add your models' prices under **Settings → Integrations → Model prices**, in dollars per million tokens, from your provider's pricing page. Skiff doesn't keep a price list, since providers change theirs often. A name also covers versions that start with it, so `gpt-4o-mini` prices `gpt-4o-mini-2024-07-18`. A run that used a model without a price shows "at least" the cost of the ones with one.
+
 ## Memory
 
 For memory an agent searches by meaning, create a database on the **Databases** page and choose **Postgres + pgvector** (or `skiff db create memory --engine pgvector`). It's Postgres 16 with the [pgvector](https://github.com/pgvector/pgvector) extension already switched on, so `vector` columns and nearest-neighbour queries work straight away:

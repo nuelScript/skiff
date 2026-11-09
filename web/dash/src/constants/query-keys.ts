@@ -40,6 +40,7 @@ export const queryKeys = {
   udpPort: (app: string) => ['udp-port', app] as const,
   accessTokens: (app: string) => ['access-tokens', app] as const,
   aiProviders: ['ai-providers'] as const,
+  aiPrices: ['ai-prices'] as const,
   projectAI: (app: string) => ['project-ai', app] as const,
   agent: (app: string) => ['agent', app] as const,
   traces: (app: string) => ['traces', app] as const,

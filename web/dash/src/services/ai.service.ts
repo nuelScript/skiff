@@ -10,6 +10,8 @@ export type AIProvider = {
   created: number
 }
 
+export type AIPrice = { model: string; input: number; output: number }
+
 export type AIUsage = { input: number; output: number; requests: number }
 
 export type ProjectAI = {
@@ -55,6 +57,8 @@ export type TraceSummary = {
   outputTokens: number
   modelCalls: number
   toolCalls: number
+  cost?: number
+  costPartial?: boolean
 }
 
 export type SpanView = {
@@ -71,6 +75,7 @@ export type SpanView = {
   outputTokens?: number
   source: 'app' | 'gateway'
   attrs: Record<string, unknown>
+  cost?: number
 }
 
 export type Approval = {
@@ -106,6 +111,18 @@ class AIService extends BaseService {
 
   saveProvider(p: { name: string; kind: AIProviderKind; baseUrl: string; key: string }) {
     return this.post('/ai/providers', p)
+  }
+
+  prices() {
+    return this.get<{ prices: AIPrice[] }>('/ai/prices')
+  }
+
+  savePrice(p: AIPrice) {
+    return this.put('/ai/prices', p)
+  }
+
+  removePrice(model: string) {
+    return this.delete('/ai/prices', { params: { model } })
   }
 
   removeProvider(name: string) {

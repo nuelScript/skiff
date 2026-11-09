@@ -183,6 +183,9 @@ type traceSummary struct {
 	Output   int64  `json:"outputTokens"`
 	Models   int    `json:"modelCalls"`
 	Tools    int    `json:"toolCalls"`
+	// Cost is in dollars, from the team's model prices; nil when no model in the run has one, and Partial when only some do.
+	Cost    *float64 `json:"cost,omitempty"`
+	Partial bool     `json:"costPartial,omitempty"`
 }
 
 type spanView struct {
@@ -199,9 +202,10 @@ type spanView struct {
 	Output  int64          `json:"outputTokens,omitempty"`
 	Source  string         `json:"source"`
 	Attrs   map[string]any `json:"attrs"`
+	Cost    *float64       `json:"cost,omitempty"`
 }
 
-func listTraces(app string, limit int) []traceSummary {
+func listTraces(app string, limit int, prices []aiPrice) []traceSummary {
 	rows, err := sqlDB.Query(`SELECT trace_id, MIN(start_ns), MAX(end_ns), COUNT(*), SUM(status=2), SUM(input_tokens), SUM(output_tokens),
 		SUM(model<>'' OR source='gateway'), SUM(tool<>'') FROM spans WHERE app=? GROUP BY trace_id ORDER BY MIN(start_ns) DESC LIMIT ?`, app, limit)
 	if err != nil {
@@ -222,11 +226,43 @@ func listTraces(app string, limit int) []traceSummary {
 		_ = sqlDB.QueryRow(`SELECT name FROM spans s WHERE app=? AND trace_id=? AND (parent_id='' OR NOT EXISTS
 			(SELECT 1 FROM spans p WHERE p.app=s.app AND p.trace_id=s.trace_id AND p.span_id=s.parent_id)) ORDER BY start_ns LIMIT 1`,
 			app, out[i].ID).Scan(&out[i].Name)
+		out[i].Cost, out[i].Partial = traceCost(app, out[i].ID, prices)
 	}
 	return out
 }
 
-func traceSpans(app, trace string) []spanView {
+// traceCost adds up a run's model calls at the team's prices.
+func traceCost(app, trace string, prices []aiPrice) (*float64, bool) {
+	if len(prices) == 0 {
+		return nil, false
+	}
+	rows, err := sqlDB.Query(`SELECT model, SUM(input_tokens), SUM(output_tokens) FROM spans WHERE app=? AND trace_id=? AND model<>'' GROUP BY model`, app, trace)
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+	var total float64
+	priced, unpriced := 0, 0
+	for rows.Next() {
+		var model string
+		var in, out int64
+		if rows.Scan(&model, &in, &out) != nil {
+			continue
+		}
+		if p, ok := priceFor(prices, model); ok {
+			total += costOf(p, in, out)
+			priced++
+		} else if in+out > 0 {
+			unpriced++
+		}
+	}
+	if priced == 0 {
+		return nil, false
+	}
+	return &total, unpriced > 0
+}
+
+func traceSpans(app, trace string, prices []aiPrice) []spanView {
 	rows, err := sqlDB.Query(`SELECT span_id, parent_id, name, start_ns, end_ns, status, status_msg, model, tool, input_tokens, output_tokens, source, attrs
 		FROM spans WHERE app=? AND trace_id=? ORDER BY start_ns`, app, trace)
 	if err != nil {
@@ -239,6 +275,10 @@ func traceSpans(app, trace string) []spanView {
 		var attrs string
 		if rows.Scan(&s.ID, &s.Parent, &s.Name, &s.Start, &s.End, &s.Status, &s.Message, &s.Model, &s.Tool, &s.Input, &s.Output, &s.Source, &attrs) == nil {
 			_ = json.Unmarshal([]byte(attrs), &s.Attrs)
+			if p, ok := priceFor(prices, s.Model); ok && s.Model != "" && s.Input+s.Output > 0 {
+				c := costOf(p, s.Input, s.Output)
+				s.Cost = &c
+			}
 			out = append(out, s)
 		}
 	}
@@ -275,13 +315,15 @@ func orderSpans(spans []spanView) []spanView {
 
 func (p *Panel) handleTraces(w http.ResponseWriter, r *http.Request) {
 	app := sanitizeName(r.URL.Query().Get("app"))
-	if _, ok := getSource(app); !ok || !p.canAccess(r, app) {
+	src, ok := getSource(app)
+	if !ok || !p.canAccess(r, app) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	prices := teamPrices(src.Team)
 	if trace := strings.ToLower(r.URL.Query().Get("trace")); trace != "" {
-		writeJSON(w, map[string]any{"spans": traceSpans(app, trace)})
+		writeJSON(w, map[string]any{"spans": traceSpans(app, trace, prices)})
 		return
 	}
-	writeJSON(w, map[string]any{"traces": listTraces(app, traceListLimit)})
+	writeJSON(w, map[string]any{"traces": listTraces(app, traceListLimit, prices)})
 }
