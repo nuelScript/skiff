@@ -229,6 +229,20 @@ func (e *Engine) watchSandboxDisk(ctx context.Context, name, work string, stop c
 }
 
 // volumeUsed is the space a volume's files take up: read straight from its folder when the panel can, as it can running as root on a server, or else through a container of Skiff's own tool image.
+// VolumeUsed is the space a volume's files take up, whether or not a container is using it.
+func (e *Engine) VolumeUsed(volume string) int64 {
+	return e.volumeUsed(volume, e.VolumeFolder(volume))
+}
+
+// StorageDir is the folder Docker keeps its own volumes in.
+func (e *Engine) StorageDir() string {
+	out, err := e.command("info", "--format", "{{.DockerRootDir}}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func (e *Engine) volumeUsed(volume, folder string) int64 {
 	if n, ok := diskUsed(folder); ok {
 		return n

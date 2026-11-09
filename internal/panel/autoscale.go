@@ -161,7 +161,7 @@ func (p *Panel) replicaSpec(app registry.App, src Source) docker.RunSpec {
 
 func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 	image := fmt.Sprintf("skiff-%s:latest", app.Name)
-	if !p.eng.ImageExists(image) {
+	if !p.eng.ImageExists(image) || movingVolume(src.App) != "" {
 		return 0
 	}
 	check := p.healthPath(src, app.Container)

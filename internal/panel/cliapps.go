@@ -116,6 +116,7 @@ func (p *Panel) cliAppLoop() {
 // appSettings is what the app's workers and jobs run with: its environment, network, volumes, limits and start settings. A CLI app's limits come from its skiff.toml, recorded on its running container. The network is created if it's missing.
 func (p *Panel) appSettings(src Source) docker.Settings {
 	src = withParentLimits(src)
+	holdForMoves(src.App)
 	env, net := p.appRuntime(src)
 	_ = p.eng.EnsureNetwork(net)
 	var container string

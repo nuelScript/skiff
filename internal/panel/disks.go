@@ -133,6 +133,45 @@ func moveStatus(volume string) moveState {
 	return moves.m[volume]
 }
 
+// movingVolume names a volume the app uses that's being moved, or "" when none is. Until the move ends the volume may not exist, and starting a container then would make an empty one in its place.
+func movingVolume(app string) string {
+	for _, v := range listVolumes(app) {
+		if name := v.DockerName(app); moveStatus(name).Moving {
+			return name
+		}
+	}
+	return ""
+}
+
+// waitForMoves holds a container start until the app's volumes stay put.
+func waitForMoves(ctx context.Context, app string) error {
+	for movingVolume(app) != "" {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(moveWaitEvery):
+		}
+	}
+	return nil
+}
+
+var moveWaitEvery = 2 * time.Second
+
+func holdForMoves(app string) { _ = waitForMoves(context.Background(), app) }
+
+// roomToMove checks where a volume is going has space for it, and a margin. Docker's storage is only checked when its folder is on this machine.
+func (p *Panel) roomToMove(volume, to string) error {
+	dest := to
+	if dest == "" {
+		dest = p.eng.StorageDir()
+	}
+	free, total, err := diskFree(dest)
+	if err != nil {
+		return nil
+	}
+	return roomFor(p.eng.VolumeUsed(volume), free, total)
+}
+
 func movesRunning() int {
 	moves.Lock()
 	defer moves.Unlock()
@@ -496,6 +535,10 @@ func (p *Panel) handleMove(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if err := p.roomToMove(d.volume(), to); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if !startMove(d.volume(), to) {
 			http.Error(w, errMoveRunning.Error(), http.StatusConflict)
 			return
@@ -528,6 +571,10 @@ func (p *Panel) handleMove(w http.ResponseWriter, r *http.Request) {
 			// Not made yet: the next deploy makes it on the chosen disk.
 			_, _ = sqlDB.Exec(`UPDATE volumes SET disk=? WHERE app=? AND name=?`, body.Disk, app, vol.Name)
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if err := p.roomToMove(name, to); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		if !startMove(name, to) {

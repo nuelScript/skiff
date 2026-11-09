@@ -141,6 +141,15 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 	status, stopStatus := p.statusReporter(src)
 	defer stopStatus()
 	status(sha, "building")
+	if v := movingVolume(src.App); v != "" {
+		logln("→ waiting for the move of " + v + " to another disk to finish")
+		if waitForMoves(ctx, src.App) != nil {
+			logln("✗ canceled while waiting for a volume move")
+			setDeployStatus(src.App, id, "canceled")
+			status(sha, "canceled")
+			return
+		}
+	}
 	// finish maps a supersede (canceled by a newer deploy) to "canceled", not "failed" — no failure alert.
 	finish := func(failMsg string) {
 		if superseded() {

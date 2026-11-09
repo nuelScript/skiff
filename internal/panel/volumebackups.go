@@ -164,6 +164,9 @@ func hasRoomFor(path string, size int64) error {
 // runVolumeBackup archives a volume from a throwaway container that mounts it read-only.
 func (p *Panel) runVolumeBackup(src Source, volume, trigger string) (volumeBackupRow, error) {
 	name := config.VolumeName(src.App, volume)
+	if moveStatus(name).Moving {
+		return volumeBackupRow{}, errors.New("the volume is being moved to another disk: try again when that finishes")
+	}
 	if !p.eng.VolumeExists(name) {
 		return volumeBackupRow{}, errors.New("the volume doesn't exist yet: deploy the app first")
 	}
