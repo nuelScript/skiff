@@ -313,6 +313,14 @@ class ProjectsService extends BaseService {
     return this.put('/project/tcp-port', { port }, { params: { app } })
   }
 
+  udpPort(app: string) {
+    return this.get<{ port: number }>('/project/udp-port', { params: { app } })
+  }
+
+  setUDPPort(app: string, port: number) {
+    return this.put('/project/udp-port', { port }, { params: { app } })
+  }
+
   previewData(app: string) {
     return this.get<PreviewData>('/project/preview-data', { params: { app } })
   }

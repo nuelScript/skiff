@@ -102,3 +102,67 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
+
+func udpPortProblem(port int, app string, sources []Source) string {
+	if port < 1024 || port > 65535 {
+		return "use a port from 1024 to 65535"
+	}
+	for _, s := range sources {
+		if s.UDPPort == port && s.App != app {
+			return fmt.Sprintf("UDP port %d is already used by %s", port, s.App)
+		}
+	}
+	return ""
+}
+
+// handleUDPPort opens or closes a public UDP port for a project. The app listens on the same number, and needs a redeploy to publish it.
+func (p *Panel) handleUDPPort(w http.ResponseWriter, r *http.Request) {
+	app := sanitizeName(r.URL.Query().Get("app"))
+	src, ok := getSource(app)
+	if !ok || !p.canAccess(r, app) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{"port": src.UDPPort})
+	case http.MethodPut:
+		if !p.isOwner(r) {
+			http.Error(w, "only a team owner can open a public port", http.StatusForbidden)
+			return
+		}
+		if src.Parent != "" {
+			http.Error(w, "previews can't have a public UDP port", http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			Port int `json:"port"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body) != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if body.Port != 0 && body.Port != src.UDPPort {
+			if problem := udpPortProblem(body.Port, app, allSources()); problem != "" {
+				http.Error(w, problem, http.StatusBadRequest)
+				return
+			}
+			pc, err := net.ListenPacket("udp", fmt.Sprintf(":%d", body.Port))
+			if err != nil {
+				http.Error(w, fmt.Sprintf("UDP port %d is in use on this server", body.Port), http.StatusBadRequest)
+				return
+			}
+			_ = pc.Close()
+		}
+		src.UDPPort = body.Port
+		if err := putSource(src); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = writeEdgeFile()
+		p.audit(r, "project.udp-port", app, fmt.Sprint(body.Port))
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}

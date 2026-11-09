@@ -37,6 +37,8 @@ gRPC services work with no setting to change, including streaming. Clients conne
 
 For a game server, message broker or anything else over raw TCP, open a **Public TCP port** in the project's Settings, then redeploy. Skiff holds that port and forwards it to your app, so the address stays the same across deploys, and it counts your app as ready once its port opens. A deploy doesn't move open connections: they end when the old version retires, and clients reconnect to the new one.
 
+For UDP, such as a game server, voice, WebRTC or WireGuard, open a **Public UDP port** in the project's Settings and redeploy. Your app listens on that UDP port, and Skiff opens the same number to the internet through its router. Each client stays on one version until it has sent nothing for two minutes, so a deploy moves new clients to the new version without dropping anyone mid-session. An app deployed with `skiff deploy` also lists the port in `skiff.toml` as `udp_port` under `[deploy]`.
+
 - Your app sees connections coming from Skiff, not the client's address.
 - A connection that sends nothing in either direction for an hour is closed, so keep long-lived clients alive with pings.
 - You may also need to allow the port in your provider's firewall.
@@ -126,5 +128,5 @@ Commands that delete data, like `skiff db rm` and `skiff bucket rm`, need `--yes
 
 ## What Skiff doesn't do yet
 
-- **UDP from outside.** Public ports forward TCP only.
+- **UDP port ranges.** A public UDP port is one port. Software that needs a range, like some WebRTC servers, doesn't fit yet.
 - **More than one server.** Replicas and autoscaling work within your server. There's no failover if it goes down, and no database replicas.

@@ -76,6 +76,7 @@ type Reach struct {
 	Private       bool   `json:"private,omitempty"`
 	RateLimit     int    `json:"rateLimit,omitempty"` // requests per minute per visitor
 	TCPPort       int    `json:"tcpPort,omitempty"`   // a public port forwarded straight to it
+	UDPPort       int    `json:"udpPort,omitempty"`   // a UDP port it listens on, open to the internet as the same number
 	HealthPath    string `json:"healthPath,omitempty"`
 	HealthTimeout int    `json:"healthTimeout,omitempty"` // seconds
 	HealthMode    string `json:"healthMode,omitempty"`

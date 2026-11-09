@@ -14,6 +14,8 @@ type Rule struct {
 	RateLimit int `json:"rateLimit,omitempty"`
 	// TCPPort is a public port the router forwards to the app's containers; 0 means none.
 	TCPPort int `json:"tcpPort,omitempty"`
+	// UDPPort is a public UDP port the router forwards to the app's UDP port; 0 means none.
+	UDPPort int `json:"udpPort,omitempty"`
 }
 
 type Rules map[string]Rule

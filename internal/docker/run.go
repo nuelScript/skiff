@@ -47,12 +47,15 @@ type RunSpec struct {
 	Labels        map[string]string
 	Aliases       []string // extra names on the network, such as a Compose service name
 	Command       []string // replaces the image's default command
+	// UDPPort is a UDP port the app listens on, published for the router to forward to; 0 means none.
+	UDPPort int
 }
 
 type Route struct {
-	App       string
-	Container string
-	HostPort  int
+	App         string
+	Container   string
+	HostPort    int
+	UDPHostPort int
 }
 
 // SafetyCapPercent is how much of the server's memory an app with no limit of its own may use: enough for nearly anything, while leaving room for the other apps and for Skiff to keep running if one runs away.
@@ -124,6 +127,9 @@ func (e *Engine) runArgs(s RunSpec) []string {
 	}
 	if s.App != "" {
 		args = append(args, "--label", "skiff.app="+s.App, "--label", fmt.Sprintf("skiff.port=%d", s.ContainerPort))
+	}
+	if s.UDPPort > 0 {
+		args = append(args, "-p", fmt.Sprintf("%s::%d/udp", bind, s.UDPPort), "--label", fmt.Sprintf("skiff.udp=%d", s.UDPPort))
 	}
 	for _, k := range sortedKeys(s.Labels) {
 		if s.Labels[k] != "" {

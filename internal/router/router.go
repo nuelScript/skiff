@@ -86,6 +86,8 @@ type Router struct {
 
 	tcp     *tcpProxy
 	tcpOnce sync.Once
+	udp     *udpProxy
+	udpOnce sync.Once
 }
 
 func (rt *Router) startMetrics() {
@@ -282,6 +284,9 @@ func (rt *Router) fetchRoutes() (map[string][]int, error) {
 			continue
 		}
 		table[r.App] = append(table[r.App], r.HostPort)
+		if r.UDPHostPort > 0 {
+			table[r.App+udpRoutesSuffix] = append(table[r.App+udpRoutesSuffix], r.UDPHostPort)
+		}
 	}
 	return table, nil
 }
@@ -472,6 +477,7 @@ func edgeServer(addr string, h http.Handler) *http.Server {
 func (rt *Router) ServeHTTPOnly(addr string) error {
 	rt.startMetrics()
 	rt.startTCP()
+	rt.startUDP()
 	rt.startDrain()
 	rt.startMail(nil)
 	// Plain-text HTTP/2 too, since this mode has no TLS to negotiate it over.
@@ -486,6 +492,7 @@ func (rt *Router) ServeHTTPOnly(addr string) error {
 func (rt *Router) ServeTLS(cacheDir string) error {
 	rt.startMetrics()
 	rt.startTCP()
+	rt.startUDP()
 	rt.startDrain()
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,

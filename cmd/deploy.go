@@ -394,6 +394,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 			App:           cfg.Name,
 			Image:         image,
 			ContainerPort: cfg.Build.Port,
+			UDPPort:       cfg.Deploy.UDPPort,
 			Public:        direct,
 			Settings:      settings,
 			Labels:        labels,

@@ -37,6 +37,7 @@ export const queryKeys = {
   workers: (app: string) => ['workers', app] as const,
   stacks: ['stacks'] as const,
   tcpPort: (app: string) => ['tcp-port', app] as const,
+  udpPort: (app: string) => ['udp-port', app] as const,
   previewData: (app: string) => ['preview-data', app] as const,
   volumes: (app: string) => ['volumes', app] as const,
   volumeBackups: (app: string, volume: string) => ['volume-backups', app, volume] as const,

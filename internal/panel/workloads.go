@@ -25,7 +25,7 @@ func sourceSpec(s Source) workload.Spec {
 			SleepAfter: s.SleepAfter, AutoDeploy: s.Auto,
 		},
 		Reach: workload.Reach{
-			Port: port, Private: s.Private, RateLimit: s.RateLimit, TCPPort: s.TCPPort,
+			Port: port, Private: s.Private, RateLimit: s.RateLimit, TCPPort: s.TCPPort, UDPPort: s.UDPPort,
 			HealthPath: s.HealthPath, HealthTimeout: s.HealthTimeout, HealthMode: s.HealthMode,
 		},
 		Use:   workload.Use{Memory: s.Memory, CPU: s.CPU},
@@ -46,7 +46,7 @@ func specSource(w workload.Spec) Source {
 		BuildArgs: w.Run.BuildArgs, BuildTarget: w.Run.BuildTarget,
 		Replicas: w.When.Replicas, Autoscale: w.When.Autoscale, ScaleMin: w.When.ScaleMin, ScaleMax: w.When.ScaleMax,
 		ScaleCPU: w.When.ScaleCPU, SleepAfter: w.When.SleepAfter, Auto: w.When.AutoDeploy,
-		Private: w.Reach.Private, RateLimit: w.Reach.RateLimit, TCPPort: w.Reach.TCPPort,
+		Private: w.Reach.Private, RateLimit: w.Reach.RateLimit, TCPPort: w.Reach.TCPPort, UDPPort: w.Reach.UDPPort,
 		HealthPath: w.Reach.HealthPath, HealthTimeout: w.Reach.HealthTimeout, HealthMode: w.Reach.HealthMode,
 		Memory: w.Use.Memory, CPU: w.Use.CPU,
 		Catalog: w.Origin.Catalog, Stack: w.Origin.Stack, Service: w.Origin.Service,

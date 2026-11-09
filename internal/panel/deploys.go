@@ -650,6 +650,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	if src.RunOptions != "" {
 		fmt.Fprintf(&b, "run_options = %s\n", tomlQuote(src.RunOptions))
 	}
+	if src.UDPPort > 0 {
+		fmt.Fprintf(&b, "udp_port = %d\n", src.UDPPort)
+	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))
 	}
