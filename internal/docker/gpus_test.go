@@ -55,3 +55,21 @@ func TestGPUArgs(t *testing.T) {
 		t.Error("args without GPUs")
 	}
 }
+
+// A job's container holds its app's GPUs without being one of the app's routes; one that names no app still holds them.
+func TestGPUsInUseByJobs(t *testing.T) {
+	used := parseGPUsInUse("web||GPU-a\n|trainer|GPU-b,GPU-c\n||GPU-d\n")
+	want := map[string]string{"GPU-a": "web", "GPU-b": "trainer", "GPU-c": "trainer", "GPU-d": gpuUnknownOwner}
+	for id, owner := range want {
+		if used[id] != owner {
+			t.Errorf("%s held by %q, want %q", id, used[id], owner)
+		}
+	}
+	all := []GPU{{UUID: "GPU-a"}, {UUID: "GPU-b"}, {UUID: "GPU-c"}, {UUID: "GPU-d"}}
+	if _, err := PickGPUs("other", 1, all, used); err == nil {
+		t.Error("another app was given a GPU a job is using")
+	}
+	if got, err := PickGPUs("trainer", 2, all, used); err != nil || len(got) != 2 {
+		t.Errorf("the job's own app: %v %v", got, err)
+	}
+}
