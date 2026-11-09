@@ -177,7 +177,8 @@ export function SettingsForm({
                 {...register('command')}
               />
               <FieldDescription>
-                Replaces the image's command; its entrypoint stays. Quote an argument that has spaces.
+                Replaces the image's command; its entrypoint stays. Leave it empty for the default. Quote an argument that
+                has spaces.
               </FieldDescription>
               <FieldError errors={[formState.errors.command]} />
             </Field>
