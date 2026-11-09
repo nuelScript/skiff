@@ -61,6 +61,14 @@ func TestEgress(t *testing.T) {
 		t.Error("an app without limits on the same network should still reach the internet")
 	}
 
+	// A firewall reload that drops Skiff's rules is noticed and the limit comes back.
+	if out, err := exec.Command("iptables", "-w", "-D", "DOCKER-USER", "-j", "SKIFF-EGRESS").CombinedOutput(); err != nil {
+		t.Fatalf("dropping the jump: %v %s", err, out)
+	}
+	eventually(t, 75*time.Second, func() bool {
+		return exec.Command("iptables", "-w", "-C", "DOCKER-USER", "-j", "SKIFF-EGRESS").Run() == nil && !reaches("e2e-shut", "1.1.1.1")
+	})
+
 	deploy("e2e-shut", "egress = \"list\"\negress_allow = [\"1.1.1.1\"]\n")
 	eventually(t, 30*time.Second, func() bool { return reaches("e2e-shut", "1.1.1.1") })
 	if reaches("e2e-shut", "1.0.0.1") {

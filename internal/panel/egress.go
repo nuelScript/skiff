@@ -14,7 +14,7 @@ import (
 	"github.com/nuelScript/skiff/internal/egress"
 )
 
-// egressLoop keeps the server's outbound rules matching the running containers: right after one starts or stops, and every half minute in case an event was missed.
+// egressLoop keeps the server's outbound rules matching the running containers: right after one starts or stops, and every half minute in case an event was missed or a firewall reload wiped them.
 func (p *Panel) egressLoop() {
 	if !egress.Available() {
 		return
@@ -35,7 +35,7 @@ func (p *Panel) egressLoop() {
 	for {
 		guard("egressLoop", func() {
 			rules, ok := p.egressRules()
-			if !ok || rules == applied {
+			if !ok || rules == applied && egress.InPlace() {
 				return
 			}
 			if err := egress.Apply(rules); err != nil {
