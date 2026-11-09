@@ -76,6 +76,9 @@ func TestCatalog(t *testing.T) {
 					_, _ = io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
 					if status = resp.StatusCode; status < 500 {
+						if keyed(t, id) {
+							checkAccessToken(t, c, base, routerAddr, name, status)
+						}
 						return
 					}
 				}
@@ -85,6 +88,45 @@ func TestCatalog(t *testing.T) {
 			t.Fatalf("%s never answered without a server error, last status %d. Its last output:\n%s", id, status, logs)
 		})
 	}
+}
+
+// keyed says whether a recipe puts a key in front of its app.
+func keyed(t *testing.T, id string) bool {
+	b, err := os.ReadFile(filepath.Join("..", "internal", "panel", "catalog", id+".toml"))
+	return err == nil && strings.Contains(string(b), "access_token = true")
+}
+
+// checkAccessToken makes sure a keyed app refuses requests without its key and answers with the key from its environment.
+func checkAccessToken(t *testing.T, c *http.Client, base, routerAddr, name string, without int) {
+	t.Helper()
+	if without != http.StatusUnauthorized {
+		t.Fatalf("without its key the app answered %d, not 401", without)
+	}
+	var env []struct{ Key, Value string }
+	getJSON(t, c, base+"/api/env?app="+name, &env)
+	key := ""
+	for _, e := range env {
+		if e.Key == "ACCESS_TOKEN" {
+			key = e.Value
+		}
+	}
+	if key == "" {
+		t.Fatal("no ACCESS_TOKEN in the app's environment")
+	}
+	// The key is checked before the app is reached, so the app itself may still be starting.
+	status := 0
+	for deadline := time.Now().Add(5 * time.Minute); time.Now().Before(deadline); time.Sleep(5 * time.Second) {
+		req, _ := http.NewRequest(http.MethodGet, "http://"+routerAddr+"/", nil)
+		req.Host = name + ".localhost"
+		req.Header.Set("Authorization", "Bearer "+key)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
+			if status = resp.StatusCode; status < 400 {
+				return
+			}
+		}
+	}
+	t.Fatalf("with its key the app answered %d", status)
 }
 
 func tail(s string, lines int) string {
