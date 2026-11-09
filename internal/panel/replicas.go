@@ -85,7 +85,7 @@ func (p *Panel) replicaViews(d dbRow) []Replica {
 	return out
 }
 
-// ReplicaStatus is how far a replica has got, read from the database it follows. Phase is copying, catching-up, streaming, lost or stopped.
+// ReplicaStatus is how far a replica has got, read from the database it follows. Phase is copying, catching-up, streaming, lost or stopped. While it copies, pg_basebackup holds the slot under its own name, so only a connection named after the replica counts.
 type ReplicaStatus struct {
 	ID         string  `json:"id"`
 	Phase      string  `json:"phase"`
@@ -263,7 +263,7 @@ func (p *Panel) replicaStatus(d dbRow) []ReplicaStatus {
 	}
 	byID := map[string]seen{}
 	if p.eng.State(d.Container) == "running" {
-		raw, err := p.primarySQL(ctx, d, `SELECT substr(s.slot_name, 7), COALESCE(r.state, ''), COALESCE(s.wal_status, ''),
+		raw, err := p.primarySQL(ctx, d, `SELECT substr(s.slot_name, 7), CASE WHEN r.application_name = substr(s.slot_name, 7) THEN r.state ELSE '' END, COALESCE(s.wal_status, ''),
   COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), r.replay_lsn), 0)::bigint, COALESCE(EXTRACT(EPOCH FROM r.replay_lag), 0)
 FROM pg_replication_slots s LEFT JOIN pg_stat_replication r ON r.pid = s.active_pid WHERE s.slot_name LIKE 'skiff\_%'`)
 		if err == nil {
