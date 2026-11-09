@@ -86,9 +86,15 @@ func building(app string) bool {
 	return ok
 }
 
+// deadlineFor is deployDeadline plus the time the app may take to answer its health check, so a model that loads for half an hour isn't cut off by the deploy's own limit.
+func deadlineFor(src Source) time.Duration {
+	return deployDeadline + time.Duration(healthOf(src).HealthTimeout)*time.Second
+}
+
 // beginBuild registers this build as the app's in-flight one, canceling any prior deploy OR rollback so their container swaps never race. Returns a build context, a "was I superseded" predicate, and a cleanup to defer.
-func beginBuild(app, id string) (context.Context, func() bool, func()) {
-	ctx, cancel := context.WithTimeout(context.Background(), deployDeadline)
+func beginBuild(src Source, id string) (context.Context, func() bool, func()) {
+	app := src.App
+	ctx, cancel := context.WithTimeout(context.Background(), deadlineFor(src))
 	inflightMu.Lock()
 	if prev, ok := inflight[app]; ok {
 		prev.cancel()
@@ -127,7 +133,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 
 	setDeployOwner(id)
 	stopOrphanDeploys(src.App, id)
-	ctx, superseded, done := beginBuild(src.App, id)
+	ctx, superseded, done := beginBuild(src, id)
 	defer done()
 	go p.commentOnPR(src, shortCommit(commit), "building")
 	sha := commit
@@ -327,7 +333,7 @@ func writeDeployConfig(toml string) (path string, clean func(), err error) {
 
 // removeStaleDeployConfigs clears secrets left on disk by earlier versions, which kept the generated skiff.toml in each build directory, and any config a crash left behind. Old enough that no deploy can be using them.
 func removeStaleDeployConfigs(buildsDir string, now time.Time) {
-	cutoff := now.Add(-2 * deployDeadline)
+	cutoff := now.Add(-2 * (deployDeadline + config.MaxHealthTimeout*time.Second))
 	_ = filepath.WalkDir(buildsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -380,7 +386,7 @@ func (p *Panel) runRollback(src Source, targetID, commit, message, id string) {
 	setDeployOwner(id)
 	stopOrphanDeploys(src.App, id)
 
-	ctx, superseded, done := beginBuild(src.App, id)
+	ctx, superseded, done := beginBuild(src, id)
 	defer done()
 
 	if err := p.preparePreviewData(ctx, src, logln); err != nil {
