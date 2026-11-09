@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   databasesService,
   type Database,
-  type DbEngine,
+  type NewDbEngine,
   type UnmanagedDatabase,
 } from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
@@ -23,7 +23,7 @@ export function useDatabases() {
   const reload = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.databases }), [qc])
 
   const create = useCallback(
-    async (engine: DbEngine, name: string) => {
+    async (engine: NewDbEngine, name: string) => {
       await databasesService.create(engine, name)
       reload()
     },

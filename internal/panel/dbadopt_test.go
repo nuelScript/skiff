@@ -44,3 +44,17 @@ func TestCredsFrom(t *testing.T) {
 		t.Errorf("redis: %+v", rd)
 	}
 }
+
+func TestPgvectorIsAChoiceNotAnEngine(t *testing.T) {
+	for _, e := range []string{"postgres", "pgvector", "mysql", "mongodb", "redis"} {
+		if !knownEngine(e) {
+			t.Errorf("%s refused", e)
+		}
+	}
+	if knownEngine("vector") || knownEngine("") {
+		t.Error("an unknown engine was accepted")
+	}
+	if _, ok := dbEngines[pgvectorChoice]; ok {
+		t.Error("pgvector should stay Postgres underneath, with Postgres's backups")
+	}
+}

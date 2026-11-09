@@ -2,6 +2,9 @@ import { BaseService } from '@/services/base.service'
 
 export type DbEngine = 'postgres' | 'mysql' | 'mongodb' | 'redis'
 
+// NewDbEngine is what a database can be created as: pgvector is Postgres with vector search switched on.
+export type NewDbEngine = DbEngine | 'pgvector'
+
 export type Backup = {
   id: string
   size: number
@@ -35,6 +38,7 @@ export type Database = {
   id: string
   name: string
   engine: DbEngine
+  vector?: boolean
   host: string
   port: number
   created: number
@@ -72,7 +76,7 @@ class DatabasesService extends BaseService {
     return this.post<Database>('/databases/unmanaged', undefined, { params: { container, name } })
   }
 
-  create(engine: DbEngine, name: string) {
+  create(engine: NewDbEngine, name: string) {
     return this.post<Database>('/databases', { engine, name })
   }
 
