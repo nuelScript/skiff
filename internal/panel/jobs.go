@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/seal"
 	"github.com/robfig/cron/v3"
 )
@@ -32,9 +33,10 @@ type Job struct {
 	Webhook       string `json:"webhook,omitempty"`
 	WebhookSecret string `json:"webhookSecret,omitempty"`
 	// Bucket and Prefix start the job for each new file under the prefix in one of the team's buckets.
-	Bucket string `json:"bucket,omitempty"`
-	Prefix string `json:"prefix,omitempty"`
-	Queued int    `json:"queued"`
+	Bucket string        `json:"bucket,omitempty"`
+	Prefix string        `json:"prefix,omitempty"`
+	Queued int           `json:"queued"`
+	Steps  []config.Step `json:"steps,omitempty"`
 }
 
 type jobRow struct {
@@ -50,9 +52,10 @@ type jobRow struct {
 	Bucket, Prefix string
 	Seen           int64
 	SeenKeys       string
+	Steps          []config.Step
 }
 
-const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up,hook_secret,bucket,bucket_prefix,bucket_seen,bucket_seen_keys`
+const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up,hook_secret,bucket,bucket_prefix,bucket_seen,bucket_seen_keys,steps`
 
 var (
 	jobMu      sync.Mutex
@@ -85,10 +88,12 @@ func releaseJob(id string) {
 
 func scanJob(row interface{ Scan(...any) error }) (jobRow, bool) {
 	var j jobRow
+	var steps string
 	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created, &j.Timeout, &j.Retries, &j.CatchUp,
-		&j.HookSecret, &j.Bucket, &j.Prefix, &j.Seen, &j.SeenKeys) != nil {
+		&j.HookSecret, &j.Bucket, &j.Prefix, &j.Seen, &j.SeenKeys, &steps) != nil {
 		return jobRow{}, false
 	}
+	j.Steps = decodeSteps(steps)
 	if seal.OpenAll(&j.HookSecret) != nil {
 		return jobRow{}, false
 	}
@@ -128,9 +133,9 @@ func putJob(j jobRow) error {
 	if err != nil {
 		return err
 	}
-	_, err = sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created, j.Timeout, j.Retries, j.CatchUp,
-		secret, j.Bucket, j.Prefix, j.Seen, j.SeenKeys)
+		secret, j.Bucket, j.Prefix, j.Seen, j.SeenKeys, encodeSteps(j.Steps))
 	return err
 }
 
@@ -158,7 +163,7 @@ func toJob(j jobRow) Job {
 		ID: j.ID, App: j.App, Name: j.Name, Schedule: j.Schedule, Command: j.Command,
 		LastRun: j.LastRun, LastOk: j.LastOk != 0, Next: next, Created: j.Created,
 		Timeout: int(jobTimeout(j) / time.Second), Retries: j.Retries, CatchUp: j.CatchUp, Running: jobIsRunning(j.ID),
-		WebhookSecret: j.HookSecret, Bucket: j.Bucket, Prefix: j.Prefix, Queued: queuedRuns(j.ID),
+		WebhookSecret: j.HookSecret, Bucket: j.Bucket, Prefix: j.Prefix, Queued: queuedRuns(j.ID), Steps: j.Steps,
 	}
 	if j.HookSecret != "" {
 		out.Webhook = dashboardURL + "/api/hooks/jobs/" + j.ID
@@ -287,22 +292,32 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 
 // jobInput is a job as the dashboard and the API send it. Timeout is in seconds.
 type jobInput struct {
-	Name     string `json:"name"`
-	Schedule string `json:"schedule"`
-	Command  string `json:"command"`
-	Timeout  int    `json:"timeout"`
-	Retries  int    `json:"retries"`
-	CatchUp  string `json:"catchUp"`
-	Webhook  bool   `json:"webhook"`
-	Bucket   string `json:"bucket"`
-	Prefix   string `json:"prefix"`
+	Name     string        `json:"name"`
+	Schedule string        `json:"schedule"`
+	Command  string        `json:"command"`
+	Timeout  int           `json:"timeout"`
+	Retries  int           `json:"retries"`
+	CatchUp  string        `json:"catchUp"`
+	Webhook  bool          `json:"webhook"`
+	Bucket   string        `json:"bucket"`
+	Prefix   string        `json:"prefix"`
+	Steps    []config.Step `json:"steps"`
 }
 
 // newJob checks a scheduled job's settings, the same for the dashboard and the API.
 func newJob(app string, in jobInput) (jobRow, string) {
 	schedule, command := strings.TrimSpace(in.Schedule), strings.TrimSpace(in.Command)
-	if command == "" {
+	for i := range in.Steps {
+		in.Steps[i].Name, in.Steps[i].Command = strings.TrimSpace(in.Steps[i].Name), strings.TrimSpace(in.Steps[i].Command)
+	}
+	switch {
+	case len(in.Steps) > 0 && command != "":
+		return jobRow{}, "a job with steps runs their commands, so leave its own command empty"
+	case len(in.Steps) == 0 && command == "":
 		return jobRow{}, "a command is required"
+	}
+	if err := config.ValidateSteps(in.Steps); err != nil {
+		return jobRow{}, err.Error()
 	}
 	src, _ := getSource(app)
 	bucket, prefix := strings.TrimSpace(in.Bucket), strings.TrimSpace(in.Prefix)
@@ -315,7 +330,7 @@ func newJob(app string, in jobInput) (jobRow, string) {
 	j := jobRow{
 		ID: randToken()[:12], App: app, Team: src.Team, Name: cmp.Or(strings.TrimSpace(in.Name), "job"),
 		Schedule: schedule, Command: command, LastOk: 1, Created: time.Now().Unix(),
-		Timeout: in.Timeout, Retries: in.Retries, CatchUp: in.CatchUp, Bucket: bucket, Prefix: prefix,
+		Timeout: in.Timeout, Retries: in.Retries, CatchUp: in.CatchUp, Bucket: bucket, Prefix: prefix, Steps: in.Steps,
 	}
 	if in.Webhook {
 		j.HookSecret = randToken()

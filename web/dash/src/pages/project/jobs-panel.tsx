@@ -1,3 +1,5 @@
+import { StepsEditor, stepsLine } from './job-steps'
+import type { JobStep } from '@/services/api.service'
 import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,12 +43,18 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
       bucket: '',
       prefix: '',
       command: '',
+      usesSteps: false,
       timeoutMinutes: '',
       retries: '',
       catchUp: '',
     },
   })
   const trigger = form.watch('trigger')
+  const usesSteps = form.watch('usesSteps')
+  const [steps, setSteps] = useState<JobStep[]>([
+    { name: 'extract', command: '', after: [] },
+    { name: 'load', command: '', after: ['extract'] },
+  ])
   const { data: buckets = [] } = useQuery({
     queryKey: queryKeys.storage,
     queryFn: () => storageService.list(),
@@ -62,7 +70,8 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
         webhook: values.trigger === 'webhook',
         bucket: values.trigger === 'bucket' ? values.bucket : '',
         prefix: values.trigger === 'bucket' ? values.prefix : '',
-        command: values.command,
+        command: values.usesSteps ? '' : values.command,
+        steps: values.usesSteps ? steps.map((s) => ({ ...s, name: s.name.trim(), command: s.command.trim() })) : undefined,
         timeout: values.timeoutMinutes ? +values.timeoutMinutes * 60 : 0,
         retries: values.retries ? +values.retries : 0,
         catchUp: values.catchUp,
@@ -211,14 +220,34 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
               </div>
             )}
             <Field data-invalid={!!form.formState.errors.command}>
-              <FieldLabel htmlFor="job-command">Command</FieldLabel>
-              <Input
-                id="job-command"
-                className="font-mono"
-                placeholder="npm run cleanup"
-                aria-invalid={!!form.formState.errors.command}
-                {...form.register('command')}
-              />
+              <div className="flex items-center justify-between gap-3">
+                <FieldLabel htmlFor="job-command">{usesSteps ? 'Steps' : 'Command'}</FieldLabel>
+                <button
+                  type="button"
+                  onClick={() => form.setValue('usesSteps', !usesSteps)}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors"
+                >
+                  {usesSteps ? 'One command instead' : 'Several steps instead'}
+                </button>
+              </div>
+              {usesSteps ? (
+                <>
+                  <StepsEditor steps={steps} onChange={setSteps} />
+                  <FieldDescription>
+                    Each step runs in its own container once the steps it comes after have succeeded; steps with nothing between
+                    them run side by side. A failed step stops only what comes after it. Steps share the app's volumes, not files
+                    in their containers.
+                  </FieldDescription>
+                </>
+              ) : (
+                <Input
+                  id="job-command"
+                  className="font-mono"
+                  placeholder="npm run cleanup"
+                  aria-invalid={!!form.formState.errors.command}
+                  {...form.register('command')}
+                />
+              )}
               <FieldError errors={[form.formState.errors.command]} />
             </Field>
             <div className={'grid gap-3 ' + (trigger === 'schedule' ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
@@ -303,7 +332,7 @@ export function JobsPanel({ app, cli }: { app: string; cli: boolean }) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{j.name}</p>
                     <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
-                      {j.command}
+                      {j.steps?.length ? stepsLine(j.steps) : j.command}
                     </p>
                   </div>
                   {j.schedule && (

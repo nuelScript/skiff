@@ -84,14 +84,14 @@ func specWorker(w workload.Spec) workerRow {
 func jobSpec(r jobRow) workload.Spec {
 	return workload.Spec{
 		Kind: workload.KindJob, ID: r.ID, App: r.App, Name: r.Name, Team: r.Team, Created: r.Created,
-		Run: workload.Run{Shell: r.Command},
+		Run: workload.Run{Shell: r.Command, Steps: r.Steps},
 		When: workload.When{Schedule: r.Schedule, Timeout: r.Timeout, Retries: r.Retries, CatchUp: r.CatchUp,
 			Webhook: r.HookSecret != "", Bucket: r.Bucket, Prefix: r.Prefix},
 	}
 }
 
 func specJob(w workload.Spec) jobRow {
-	return jobRow{ID: w.ID, App: w.App, Team: w.Team, Name: w.Name, Schedule: w.When.Schedule, Command: w.Run.Shell, Created: w.Created,
+	return jobRow{ID: w.ID, App: w.App, Team: w.Team, Name: w.Name, Schedule: w.When.Schedule, Command: w.Run.Shell, Steps: w.Run.Steps, Created: w.Created,
 		Timeout: w.When.Timeout, Retries: w.When.Retries, CatchUp: w.When.CatchUp, Bucket: w.When.Bucket, Prefix: w.When.Prefix}
 }
 

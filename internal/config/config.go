@@ -57,6 +57,8 @@ type Job struct {
 	// Bucket starts the job for each new file under Prefix in that bucket of the team's.
 	Bucket string `toml:"bucket" json:"bucket,omitempty"`
 	Prefix string `toml:"prefix" json:"prefix,omitempty"`
+	// Steps make the job a pipeline: each step's command runs once the steps it comes after have succeeded. A job with steps has no command of its own.
+	Steps []Step `toml:"steps" json:"steps,omitempty"`
 }
 
 // TimeoutSeconds is the job's timeout in seconds, 0 for the default. Validation has already checked it parses.
@@ -416,8 +418,14 @@ func ValidateJobs(jobs []Job) error {
 			return fmt.Errorf("job %q is listed twice", j.Name)
 		}
 		names[j.Name] = true
-		if strings.TrimSpace(j.Command) == "" {
-			return fmt.Errorf("job %q needs a command", j.Name)
+		switch {
+		case len(j.Steps) > 0 && strings.TrimSpace(j.Command) != "":
+			return fmt.Errorf("job %q has steps, so it doesn't take a command of its own", j.Name)
+		case len(j.Steps) == 0 && strings.TrimSpace(j.Command) == "":
+			return fmt.Errorf("job %q needs a command, or steps", j.Name)
+		}
+		if err := ValidateSteps(j.Steps); err != nil {
+			return fmt.Errorf("job %q: %w", j.Name, err)
 		}
 		if j.Schedule == "" && !j.Webhook && j.Bucket == "" {
 			return fmt.Errorf("job %q needs a schedule, webhook = true, or a bucket to watch", j.Name)

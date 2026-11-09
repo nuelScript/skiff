@@ -134,6 +134,39 @@ A job can watch one of your team's buckets, or a folder in it. Each new file sta
 
 Runs from webhooks and buckets wait their turn: a job runs one at a time, up to 50 can wait, and waiting runs survive a restart.
 
+### Steps
+
+A job can be a pipeline instead of one command: choose **Several steps instead** when you add it, or list `[[jobs.steps]]` in `skiff.toml`. Each step has a name, a command, and the steps it comes **after**:
+
+```toml title="skiff.toml"
+[[jobs]]
+name = "nightly"
+schedule = "0 2 * * *"
+
+[[jobs.steps]]
+name = "extract"
+command = "python extract.py"
+
+[[jobs.steps]]
+name = "transform"
+command = "python transform.py"
+after = ["extract"]
+
+[[jobs.steps]]
+name = "report"
+command = "python report.py"
+after = ["extract"]
+
+[[jobs.steps]]
+name = "load"
+command = "python load.py"
+after = ["transform"]
+```
+
+A step runs once every step it comes after has succeeded, and steps with nothing between them, like `transform` and `report` here, run side by side, up to four at a time. When a step fails, the steps after it are skipped and the others carry on; the run counts as failed. Each run's history shows every step's outcome, and its output is labelled by step.
+
+Each step runs in its own container from the app's image, with `SKIFF_STEP` set to its name, so steps hand data to each other through a volume, a database or a bucket, not through files in their containers. The job's timeout covers the whole run, and a retry runs every step again. A job has steps or a command, not both, and up to 20 steps.
+
 ## One-off runs
 
 Run a command once in a fresh container from your app's latest build, with its environment and limits, for a migration, a backfill or a CI step:

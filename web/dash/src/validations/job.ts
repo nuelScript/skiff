@@ -10,7 +10,8 @@ export const jobSchema = z
       .string()
       .trim()
       .refine((s) => s === '' || !s.startsWith('/'), 'A folder in the bucket, like incoming/'),
-    command: z.string().trim().min(1, 'A command is required'),
+    command: z.string().trim(),
+    usesSteps: z.boolean(),
     timeoutMinutes: z
       .string()
       .trim()
@@ -24,6 +25,8 @@ export const jobSchema = z
   .superRefine((v, ctx) => {
     if (v.trigger === 'schedule' && v.schedule.split(/\s+/).length !== 5)
       ctx.addIssue({ code: 'custom', path: ['schedule'], message: 'Use 5-field cron syntax, e.g. "0 3 * * *"' })
+    if (!v.usesSteps && !v.command)
+      ctx.addIssue({ code: 'custom', path: ['command'], message: 'A command is required' })
     if (v.trigger === 'bucket' && !v.bucket)
       ctx.addIssue({ code: 'custom', path: ['bucket'], message: 'Pick a bucket to watch' })
   })

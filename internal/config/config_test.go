@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -247,7 +248,7 @@ command = "node report.js"
 	if len(c.Workers) != 1 || c.Workers[0] != (Worker{Name: "queue", Command: "node queue.js", Replicas: 2}) {
 		t.Errorf("workers = %+v", c.Workers)
 	}
-	if len(c.Jobs) != 1 || c.Jobs[0] != (Job{Name: "report", Schedule: "0 3 * * *", Command: "node report.js"}) {
+	if len(c.Jobs) != 1 || !reflect.DeepEqual(c.Jobs[0], Job{Name: "report", Schedule: "0 3 * * *", Command: "node report.js"}) {
 		t.Errorf("jobs = %+v", c.Jobs)
 	}
 

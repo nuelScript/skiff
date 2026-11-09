@@ -5,6 +5,7 @@ import { queryKeys } from '@/constants/query-keys'
 import { fmtDuration, relTime } from '@/lib/format'
 import { runStatusLabel, runStatusTone, runTrigger } from '@/lib/jobs'
 import { projectsService } from '@/services/api.service'
+import { StepResults } from './job-steps'
 
 export function JobHistory({ id, live }: { id: string; live: boolean }) {
   const { data: runs, isPending } = useQuery({
@@ -42,6 +43,7 @@ export function JobHistory({ id, live }: { id: string; live: boolean }) {
               </span>
               {took && <span className="text-muted-foreground shrink-0 font-mono text-[11px]">{took}</span>}
             </button>
+            {expanded && r.steps && r.steps.length > 0 && <StepResults steps={r.steps} />}
             {expanded && (
               <pre className="mx-3 mb-3 max-h-64 overflow-auto rounded-md border border-foreground/8 bg-inset p-2.5 font-mono text-[11px] whitespace-pre-wrap">
                 {r.output.trim() || 'No output.'}

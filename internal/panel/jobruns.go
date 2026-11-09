@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -35,14 +36,15 @@ const (
 
 // JobRun is one attempt at a job, or a scheduled time that was skipped.
 type JobRun struct {
-	ID       int64  `json:"id"`
-	Trigger  string `json:"trigger"`
-	Attempt  int    `json:"attempt"`
-	Started  int64  `json:"started"`
-	Finished int64  `json:"finished"`
-	Status   string `json:"status"`
-	ExitCode int    `json:"exitCode"`
-	Output   string `json:"output"`
+	ID       int64        `json:"id"`
+	Trigger  string       `json:"trigger"`
+	Attempt  int          `json:"attempt"`
+	Started  int64        `json:"started"`
+	Finished int64        `json:"finished"`
+	Status   string       `json:"status"`
+	ExitCode int          `json:"exitCode"`
+	Output   string       `json:"output"`
+	Steps    []stepResult `json:"steps,omitempty"`
 }
 
 func startRun(j jobRow, trigger string, attempt int, status string) int64 {
@@ -69,7 +71,7 @@ func pruneRuns(job string) {
 }
 
 func listRuns(job string, limit int) []JobRun {
-	rows, err := sqlDB.Query(`SELECT id, trigger, attempt, started, finished, status, exit_code, output FROM job_runs WHERE job=? ORDER BY id DESC LIMIT ?`, job, limit)
+	rows, err := sqlDB.Query(`SELECT id, trigger, attempt, started, finished, status, exit_code, output, steps FROM job_runs WHERE job=? ORDER BY id DESC LIMIT ?`, job, limit)
 	if err != nil {
 		return nil
 	}
@@ -77,7 +79,11 @@ func listRuns(job string, limit int) []JobRun {
 	out := []JobRun{}
 	for rows.Next() {
 		var r JobRun
-		if rows.Scan(&r.ID, &r.Trigger, &r.Attempt, &r.Started, &r.Finished, &r.Status, &r.ExitCode, &r.Output) == nil {
+		var steps string
+		if rows.Scan(&r.ID, &r.Trigger, &r.Attempt, &r.Started, &r.Finished, &r.Status, &r.ExitCode, &r.Output, &steps) == nil {
+			if steps != "" {
+				_ = json.Unmarshal([]byte(steps), &r.Steps)
+			}
 			out = append(out, r)
 		}
 	}
@@ -137,6 +143,20 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 	settings := p.appSettings(src)
 	settings.Env = withTriggerEnv(settings.Env, j, trigger, input)
 	settings.OOMScore = max(settings.OOMScore, oomOneOff)
+	if len(j.Steps) > 0 {
+		out, status, code, results := p.runSteps(ctx, image, j.Steps, settings)
+		if b, err := json.Marshal(results); err == nil {
+			_, _ = sqlDB.Exec(`UPDATE job_runs SET steps=? WHERE id=?`, string(b), id)
+		}
+		if status == runTimeout {
+			out += fmt.Sprintf("\nStopped after %s, this job's timeout.", timeout)
+		}
+		finishRun(id, status, code, out)
+		if status != runOK {
+			return out, status, fmt.Errorf("a step %s", status)
+		}
+		return out, status, nil
+	}
 	out, err := p.eng.RunOnce(ctx, image, j.Command, settings)
 	status, code := runOK, 0
 	switch {
