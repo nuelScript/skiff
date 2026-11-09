@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/egress"
 )
 
 // filled sets every exported field to a value that isn't its zero, so a field the spec forgets shows up as lost.
@@ -39,6 +40,7 @@ func TestSpecKeepsEveryAppSetting(t *testing.T) {
 		"Port":       "8080",
 		"Origin":     originCLI,
 		"RunOptions": config.EncodeRunOptions(config.RunOptions{User: "app", WorkingDir: "/srv", Init: true}),
+		"Egress":     egress.Policy{Mode: egress.List, Allow: []string{"api.example.com"}}.Encode(),
 	})
 	if got := specSource(sourceSpec(s)); !reflect.DeepEqual(got, s) {
 		t.Errorf("an app lost settings on its way through the spec:\n got %+v\nwant %+v", got, s)

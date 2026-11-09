@@ -67,6 +67,8 @@ type Source struct {
 	UDPPort int `json:"udpPort,omitempty"`
 	// Isolation is "strong" to run under gVisor's sandbox; empty is Docker's usual isolation.
 	Isolation string `json:"isolation,omitempty"`
+	// Egress is where the app may connect, as an egress policy's label value; empty means anywhere.
+	Egress string `json:"-"`
 	// BuildArgs are a stack service's build arguments, as a JSON list of KEY=value; BuildTarget is the Dockerfile stage it builds.
 	BuildArgs   string `json:"-"`
 	BuildTarget string `json:"-"`
@@ -116,7 +118,7 @@ func logPath(app, id string) string {
 	return filepath.Join(skiffDir(), "deploys", sanitizeName(app), sanitizeID(id)+".log")
 }
 
-const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas,release,autoscale,scale_min,scale_max,scale_cpu,origin,sleep_after,health_path,health_timeout,image,memory_limit,cpu_limit,catalog,is_private,rate_limit,stack,service,command,dockerfile,mounted_files,run_options,health_mode,preview_data,tcp_port,build_args,build_target,udp_port,isolation`
+const sourceCols = `app,team,repo,branch,root_dir,port,clone_url,auto,parent,preview_auto,replicas,release,autoscale,scale_min,scale_max,scale_cpu,origin,sleep_after,health_path,health_timeout,image,memory_limit,cpu_limit,catalog,is_private,rate_limit,stack,service,command,dockerfile,mounted_files,run_options,health_mode,preview_data,tcp_port,build_args,build_target,udp_port,isolation,egress`
 
 // errTeamMismatch is returned when a write would hand an existing project to another team.
 var errTeamMismatch = errors.New("an app with that name exists in another team")
@@ -138,11 +140,11 @@ func putSource(s Source) error {
 			health_path=excluded.health_path, health_timeout=excluded.health_timeout, image=excluded.image,
 			memory_limit=excluded.memory_limit, cpu_limit=excluded.cpu_limit, catalog=excluded.catalog,
 			is_private=excluded.is_private, rate_limit=excluded.rate_limit, stack=excluded.stack, service=excluded.service,
-			command=excluded.command, dockerfile=excluded.dockerfile, mounted_files=excluded.mounted_files, run_options=excluded.run_options, health_mode=excluded.health_mode, preview_data=excluded.preview_data, tcp_port=excluded.tcp_port, build_args=excluded.build_args, build_target=excluded.build_target, udp_port=excluded.udp_port, isolation=excluded.isolation
+			command=excluded.command, dockerfile=excluded.dockerfile, mounted_files=excluded.mounted_files, run_options=excluded.run_options, health_mode=excluded.health_mode, preview_data=excluded.preview_data, tcp_port=excluded.tcp_port, build_args=excluded.build_args, build_target=excluded.build_target, udp_port=excluded.udp_port, isolation=excluded.isolation, egress=excluded.egress
 		WHERE sources.team=excluded.team`,
 		s.App, s.Team, s.Repo, s.Branch, s.RootDir, s.Port, s.CloneURL, b2i(s.Auto), s.Parent, b2i(s.PreviewAuto), s.Replicas, s.Release,
 		b2i(s.Autoscale), s.ScaleMin, s.ScaleMax, s.ScaleCPU, s.Origin, s.SleepAfter, s.HealthPath, s.HealthTimeout, s.Image, s.Memory, s.CPU, s.Catalog, b2i(s.Private), s.RateLimit,
-		s.Stack, s.Service, s.Command, s.Dockerfile, s.MountedFiles, s.RunOptions, s.HealthMode, s.PreviewData, s.TCPPort, s.BuildArgs, s.BuildTarget, s.UDPPort, s.Isolation)
+		s.Stack, s.Service, s.Command, s.Dockerfile, s.MountedFiles, s.RunOptions, s.HealthMode, s.PreviewData, s.TCPPort, s.BuildArgs, s.BuildTarget, s.UDPPort, s.Isolation, s.Egress)
 	if err != nil {
 		return err
 	}
@@ -156,7 +158,7 @@ func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	var s Source
 	var auto, previewAuto, autoscale, private int
 	if row.Scan(&s.App, &s.Team, &s.Repo, &s.Branch, &s.RootDir, &s.Port, &s.CloneURL, &auto, &s.Parent, &previewAuto, &s.Replicas, &s.Release,
-		&autoscale, &s.ScaleMin, &s.ScaleMax, &s.ScaleCPU, &s.Origin, &s.SleepAfter, &s.HealthPath, &s.HealthTimeout, &s.Image, &s.Memory, &s.CPU, &s.Catalog, &private, &s.RateLimit, &s.Stack, &s.Service, &s.Command, &s.Dockerfile, &s.MountedFiles, &s.RunOptions, &s.HealthMode, &s.PreviewData, &s.TCPPort, &s.BuildArgs, &s.BuildTarget, &s.UDPPort, &s.Isolation) != nil {
+		&autoscale, &s.ScaleMin, &s.ScaleMax, &s.ScaleCPU, &s.Origin, &s.SleepAfter, &s.HealthPath, &s.HealthTimeout, &s.Image, &s.Memory, &s.CPU, &s.Catalog, &private, &s.RateLimit, &s.Stack, &s.Service, &s.Command, &s.Dockerfile, &s.MountedFiles, &s.RunOptions, &s.HealthMode, &s.PreviewData, &s.TCPPort, &s.BuildArgs, &s.BuildTarget, &s.UDPPort, &s.Isolation, &s.Egress) != nil {
 		return Source{}, false
 	}
 	s.Auto = auto != 0

@@ -125,6 +125,7 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 		Memory: memory, CPU: cpu, Options: config.DecodeRunOptions(src.RunOptions),
 		OOMScore: oomScoreFor(src),
 		Runtime:  runtimeFor(src.Isolation),
+		Labels:   egressLabels(src),
 	}
 }
 

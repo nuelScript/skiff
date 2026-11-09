@@ -106,6 +106,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 	go p.aiGatewayLoop()
 	go p.agentLoop()
 	go guard("clearLeftoverSandboxes", p.clearLeftoverSandboxes)
+	go p.egressLoop()
 	go p.crashLoopWatch()
 	return p, nil
 }
@@ -157,6 +158,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/project/access-tokens", p.protected(p.handleAccessTokens))
 	mux.HandleFunc("/api/project/udp-port", p.protected(p.handleUDPPort))
 	mux.HandleFunc("/api/project/isolation", p.protected(p.handleIsolation))
+	mux.HandleFunc("/api/project/egress", p.protected(p.handleEgress))
 	mux.HandleFunc("/api/project/registry", p.protected(p.handleRegistry))
 	mux.HandleFunc("/api/projects/image", p.protected(p.handleImageProject))
 	mux.HandleFunc("/api/catalog", p.protected(p.handleCatalog))

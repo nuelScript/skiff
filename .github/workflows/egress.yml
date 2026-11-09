@@ -1,0 +1,31 @@
+name: egress
+
+# Checks outbound limits hold on a fresh runner. Changing the server's firewall needs root, which the usual e2e runs don't have. Runs when that code changes, and weekly.
+
+on:
+  schedule:
+    - cron: "30 7 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "internal/egress/**"
+      - "internal/panel/egress.go"
+      - "internal/docker/addrs.go"
+      - "e2e/egress_test.go"
+      - ".github/workflows/egress.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  limits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: outbound limits
+        run: sudo -E env "PATH=$PATH" go test -tags e2e -count=1 -timeout 15m -v -run '^TestEgress$' ./e2e/...

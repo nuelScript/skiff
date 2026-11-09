@@ -1,7 +1,10 @@
 // Package workload is the one definition behind everything Skiff runs for a team: an app, its workers and its scheduled jobs. Each answers the same six questions, so a setting means the same thing whichever kind it's on.
 package workload
 
-import "github.com/nuelScript/skiff/internal/config"
+import (
+	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/egress"
+)
 
 type Kind string
 
@@ -93,6 +96,8 @@ type Touch struct {
 	Options config.RunOptions `json:"options,omitzero"`
 	// Isolation is "strong" when it runs under gVisor's sandbox.
 	Isolation string `json:"isolation,omitempty"`
+	// Egress is where it may connect.
+	Egress egress.Policy `json:"egress,omitzero"`
 }
 
 // Origin is where it came from, which decides who may change it.
