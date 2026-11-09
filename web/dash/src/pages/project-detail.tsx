@@ -25,6 +25,7 @@ import { DeploymentsPanel } from './project/deployments-panel'
 import { Fact } from './project/fact'
 import { ObservabilityPanel } from './project/observability-panel'
 import { runningPill } from './project/status'
+import { crashSummary } from '@/lib/crash'
 
 const TABS = [
   'overview',
@@ -313,6 +314,20 @@ export default function ProjectDetailPage() {
               <span className="font-mono text-[13px]">{project.port || 'From the image'}</span>
             </Fact>
           </dl>
+          {project.crashLoop && (
+            <div className="border-danger/30 bg-danger/5 mb-5 flex items-start justify-between gap-4 rounded-lg border p-3 text-xs leading-relaxed">
+              <p>
+                <strong className="font-semibold">It keeps crashing.</strong> {crashSummary(project.crashLoop)} Its logs
+                show why.
+              </p>
+              <Link
+                to={`/logs?app=${encodeURIComponent(project.name)}`}
+                className="text-danger shrink-0 underline underline-offset-2"
+              >
+                Open logs
+              </Link>
+            </div>
+          )}
           {project.setupNote && <SetupNote app={project.name} note={project.setupNote} />}
           {latest?.status === 'failed' && (
             <p className="text-danger pb-5 text-sm">

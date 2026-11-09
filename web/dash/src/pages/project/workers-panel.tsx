@@ -14,6 +14,7 @@ import { useConfirm } from '@/providers/confirm-provider'
 import { projectsService, type Worker } from '@/services/api.service'
 import { workerSchema, type WorkerInput } from '@/validations/worker'
 import { Stepper } from './stepper'
+import { crashSummary } from '@/lib/crash'
 
 export function WorkersPanel({ app, cli }: { app: string; cli: boolean }) {
   const qc = useQueryClient()
@@ -150,14 +151,15 @@ export function WorkersPanel({ app, cli }: { app: string; cli: boolean }) {
                   <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
                     {wk.command}
                   </p>
+                  {wk.crashLoop && <p className="text-danger mt-1 text-xs">{crashSummary(wk.crashLoop)}</p>}
                 </div>
                 <span
                   className={
                     'shrink-0 font-mono text-[11px] tabular-nums ' +
-                    (wk.running >= wk.replicas ? 'text-success' : 'text-warning')
+                    (wk.crashLoop ? 'text-danger' : wk.running >= wk.replicas ? 'text-success' : 'text-warning')
                   }
                 >
-                  {wk.running}/{wk.replicas} running
+                  {wk.crashLoop ? 'crashing' : `${wk.running}/${wk.replicas} running`}
                 </span>
                 <Link
                   to={`/logs?app=${encodeURIComponent(app)}`}

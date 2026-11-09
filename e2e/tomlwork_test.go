@@ -165,6 +165,17 @@ func TestTomlWorkersAndJobs(t *testing.T) {
 		t.Errorf("a failed run should keep its exit code: %+v", r)
 	}
 
+	// A worker that keeps exiting shows as crashing, with its exit code.
+	deploy("[[workers]]\nname = \"boom\"\ncommand = \"echo boom; exit 3\"\n")
+	eventually(t, 2*time.Minute, func() bool {
+		var list []struct {
+			Name      string
+			CrashLoop *struct{ Restarts, ExitCode int }
+		}
+		fetch("/api/workers?app="+app, &list)
+		return len(list) == 1 && list[0].Name == "boom" && list[0].CrashLoop != nil && list[0].CrashLoop.ExitCode == 3
+	})
+
 	// A one-off run through the API streams its output, keeps its exit code, and can be stopped.
 	var token struct{ Token string }
 	postJSON(t, c, base+"/api/tokens", `{"name":"ci"}`, &token)

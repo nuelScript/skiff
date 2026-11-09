@@ -199,7 +199,7 @@ func postJSON(url string, payload any) error {
 
 func slackText(ev alertEvent) string {
 	icon := map[string]string{
-		"deploy.failed": "🚨", "app.unhealthy": "🔴", "app.oom": "🔴", "app.recovered": "✅",
+		"deploy.failed": "🚨", "app.unhealthy": "🔴", "app.oom": "🔴", "app.crashloop": "🔴", "app.recovered": "✅",
 		"error.spike": "⚠️", "test": "🔔",
 	}[ev.Kind]
 	if icon == "" {
@@ -295,6 +295,7 @@ func (p *Panel) alertLoop() {
 		guard("alertLoop", func() {
 			p.checkHealth()
 			p.checkErrorSpikes()
+			alertCrashRecoveries(time.Now())
 		})
 	}
 }

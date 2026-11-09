@@ -48,6 +48,9 @@ func (p *Panel) displayState(app, container string) string {
 	if isSleeping(app) {
 		return "sleeping"
 	}
+	if appCrashLoop(app) != nil {
+		return "crashing"
+	}
 	return p.eng.State(container)
 }
 
@@ -148,6 +151,8 @@ type projectView struct {
 	Domains []string `json:"domains"`
 	// Image is set for a project that runs a prebuilt image instead of building a repo.
 	Image string `json:"image,omitempty"`
+	// CrashLoop says the app keeps exiting and being restarted.
+	CrashLoop *crashLoop `json:"crashLoop,omitempty"`
 }
 
 func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +197,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 			Memory:      src.Memory,
 			CPU:         src.CPU,
 			Domains:     domainsOr(projectDomains(src.Team)[app]),
+			CrashLoop:   appCrashLoop(app),
 		})
 	case http.MethodPut:
 		var body struct {
