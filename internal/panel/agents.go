@@ -161,6 +161,8 @@ func (p *Panel) agentAPI(w http.ResponseWriter, r *http.Request, a aiApp, path s
 		return
 	}
 	switch {
+	case path == otlpPath:
+		handleOTLP(w, r, a)
 	case path == "sandboxes" && r.Method == http.MethodPost:
 		p.runSandbox(w, r, a)
 	case path == "events" && r.Method == http.MethodGet:

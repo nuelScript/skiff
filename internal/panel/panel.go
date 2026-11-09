@@ -207,6 +207,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("/api/ai/providers", p.protected(p.handleAIProviders))
 	mux.HandleFunc("/api/project/ai", p.protected(p.handleProjectAI))
 	mux.HandleFunc("/api/project/agent", p.protected(p.handleProjectAgent))
+	mux.HandleFunc("/api/project/traces", p.protected(p.handleTraces))
 	mux.HandleFunc("/api/alerts/test", p.protected(p.handleAlertTest))
 	mux.HandleFunc("/api/log-drain", p.protected(p.handleLogDrain))
 	mux.HandleFunc("/api/log-drain/test", p.protected(p.handleLogDrainTest))
