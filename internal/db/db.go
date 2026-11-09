@@ -119,6 +119,9 @@ var migrations = []string{
 	`ALTER TABLE sources ADD COLUMN build_args TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN build_target TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE volumes ADD COLUMN also TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE jobs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE jobs ADD COLUMN catch_up TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -311,9 +314,26 @@ CREATE TABLE IF NOT EXISTS jobs (
   command  TEXT NOT NULL,
   last_run INTEGER NOT NULL DEFAULT 0,
   last_ok  INTEGER NOT NULL DEFAULT 1,
-  created  INTEGER NOT NULL
+  created  INTEGER NOT NULL,
+  timeout  INTEGER NOT NULL DEFAULT 0,
+  retries  INTEGER NOT NULL DEFAULT 0,
+  catch_up TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_app ON jobs(app);
+CREATE TABLE IF NOT EXISTS job_runs (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  job       TEXT NOT NULL,
+  app       TEXT NOT NULL,
+  trigger   TEXT NOT NULL,
+  attempt   INTEGER NOT NULL DEFAULT 1,
+  started   INTEGER NOT NULL,
+  finished  INTEGER NOT NULL DEFAULT 0,
+  status    TEXT NOT NULL,
+  exit_code INTEGER NOT NULL DEFAULT 0,
+  output    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job, id);
+CREATE INDEX IF NOT EXISTS idx_job_runs_app ON job_runs(app);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',

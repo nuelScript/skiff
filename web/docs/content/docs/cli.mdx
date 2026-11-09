@@ -208,8 +208,11 @@ skiff job add <app> <name> [flags]
 
 | Flag | Default | What it does |
 | --- | --- | --- |
+| `--catch-up` |  | "skip" drops runs missed while the server was down (default: run once) |
 | `-c`, `--command` |  | what the job runs |
+| `--retries` | `0` | how many more times a failed run is tried, up to 10 |
 | `-s`, `--schedule` |  | cron schedule in the server's time zone, like "0 3 * * *" |
+| `--timeout` | `0s` | how long a run may take, like 2h (default 30m) |
 
 ### skiff job ls
 
@@ -233,6 +236,14 @@ Run a job now and show its output
 
 ```sh
 skiff job run <app> <job>
+```
+
+### skiff job runs
+
+Show a job's recent runs, newest first
+
+```sh
+skiff job runs <app> <job>
 ```
 
 ## skiff login

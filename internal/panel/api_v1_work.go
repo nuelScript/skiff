@@ -100,16 +100,12 @@ func (p *Panel) apiCreateJob(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, tomlOwned)
 		return
 	}
-	var body struct {
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"`
-		Command  string `json:"command"`
-	}
+	var body jobInput
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body) != nil {
 		apiErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	j, problem := newJob(app, body.Name, body.Schedule, body.Command)
+	j, problem := newJob(app, body)
 	if problem != "" {
 		apiErr(w, http.StatusBadRequest, problem)
 		return
@@ -142,7 +138,7 @@ func (p *Panel) apiRemoveJob(w http.ResponseWriter, r *http.Request) {
 		apiErr(w, http.StatusBadRequest, tomlOwned)
 		return
 	}
-	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, j.ID)
+	deleteJob(j.ID)
 	recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "job.delete", Target: j.App, Detail: j.Name + " via api"})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -160,6 +156,16 @@ func (p *Panel) apiRunJob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer releaseJob(j.ID)
 	recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "job.run", Target: j.App, Detail: j.Name + " via api"})
-	out, err := p.execJob(j)
-	apiJSON(w, http.StatusOK, map[string]any{"ok": err == nil, "output": out})
+	out, status, err := p.runJobNow(j)
+	apiJSON(w, http.StatusOK, map[string]any{"ok": err == nil, "status": status, "output": out})
+}
+
+// apiJobRuns lists a job's recent runs, newest first. Their output is what the app's code wrote.
+func (p *Panel) apiJobRuns(w http.ResponseWriter, r *http.Request) {
+	j, ok := apiJob(r)
+	if !ok {
+		apiErr(w, http.StatusNotFound, "job not found")
+		return
+	}
+	apiJSON(w, http.StatusOK, listRuns(j.ID, keepJobRuns))
 }

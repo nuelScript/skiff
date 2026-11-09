@@ -30,3 +30,22 @@ func TestBuildPassesArgsAndTarget(t *testing.T) {
 		t.Errorf("/mode = %q (%v), want prod from the runtime stage", got, err)
 	}
 }
+
+// TestRunOnceStopsAtItsDeadline checks a one-off run is removed when it times out, rather than left running after the client gives up.
+func TestRunOnceStopsAtItsDeadline(t *testing.T) {
+	if exec.Command("docker", "info").Run() != nil {
+		t.Skip("docker not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	marker := "skiff-deadline-" + strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	_, err := Local().RunOnce(ctx, VolumeTool, "sleep 60 # "+marker, Settings{})
+	if err == nil {
+		t.Fatal("a run past its deadline should fail")
+	}
+	time.Sleep(2 * time.Second)
+	out, _ := exec.Command("docker", "ps", "-a", "--no-trunc", "--format", "{{.Command}}").Output()
+	if strings.Contains(string(out), marker) {
+		t.Error("the container kept running after its deadline")
+	}
+}

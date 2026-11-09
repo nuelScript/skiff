@@ -2,7 +2,6 @@ package panel
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,6 +22,11 @@ type Job struct {
 	LastOk   bool   `json:"lastOk"`
 	Next     int64  `json:"next"`
 	Created  int64  `json:"created"`
+	// Timeout is in seconds; Retries is how many more times a failed run is tried; CatchUp is "skip" to drop runs missed while Skiff was down, or empty to run once.
+	Timeout int    `json:"timeout"`
+	Retries int    `json:"retries"`
+	CatchUp string `json:"catchUp"`
+	Running bool   `json:"running"`
 }
 
 type jobRow struct {
@@ -30,14 +34,24 @@ type jobRow struct {
 	LastRun                                int64
 	LastOk                                 int
 	Created                                int64
+	Timeout, Retries                       int
+	CatchUp                                string
 }
 
-const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created`
+const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up`
 
 var (
 	jobMu      sync.Mutex
 	jobRunning = map[string]bool{}
+	// jobSkipped remembers the scheduled time last recorded as skipped, so a long run records each overlap once.
+	jobSkipped = map[string]int64{}
 )
+
+func jobIsRunning(id string) bool {
+	jobMu.Lock()
+	defer jobMu.Unlock()
+	return jobRunning[id]
+}
 
 func claimJob(id string) bool {
 	jobMu.Lock()
@@ -57,7 +71,7 @@ func releaseJob(id string) {
 
 func scanJob(row interface{ Scan(...any) error }) (jobRow, bool) {
 	var j jobRow
-	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created) != nil {
+	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created, &j.Timeout, &j.Retries, &j.CatchUp) != nil {
 		return jobRow{}, false
 	}
 	return j, true
@@ -92,8 +106,8 @@ func listJobRows(app string) []jobRow {
 func allJobRows() []jobRow { return queryJobs(`SELECT ` + jobCols + ` FROM jobs`) }
 
 func putJob(j jobRow) error {
-	_, err := sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?)`,
-		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created)
+	_, err := sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created, j.Timeout, j.Retries, j.CatchUp)
 	return err
 }
 
@@ -113,53 +127,67 @@ func toJob(j jobRow) Job {
 	return Job{
 		ID: j.ID, App: j.App, Name: j.Name, Schedule: j.Schedule, Command: j.Command,
 		LastRun: j.LastRun, LastOk: j.LastOk != 0, Next: next, Created: j.Created,
+		Timeout: int(jobTimeout(j) / time.Second), Retries: j.Retries, CatchUp: j.CatchUp, Running: jobIsRunning(j.ID),
 	}
 }
 
-func (p *Panel) execJob(j jobRow) (string, error) {
-	src, ok := getSource(j.App)
-	if !ok {
-		return "", fmt.Errorf("unknown app")
-	}
-	image := "skiff-" + j.App + ":latest"
-	if !p.eng.ImageExists(image) {
-		return "", fmt.Errorf("deploy the app before running jobs")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	out, err := p.eng.RunOnce(ctx, image, j.Command, p.appSettings(src))
-	setJobRun(j.ID, time.Now().Unix(), err == nil)
-	return out, err
-}
+// missedAfter is how late a scheduled time can be before it counts as missed, such as while Skiff was down.
+const missedAfter = 2 * time.Minute
 
 func (p *Panel) jobLoop() {
+	settleRunsAfterRestart()
 	time.Sleep(90 * time.Second)
 	for {
-		guard("jobLoop", func() {
-			now := time.Now()
-			for _, j := range allJobRows() {
-				sched, err := cron.ParseStandard(j.Schedule)
-				if err != nil {
-					continue
-				}
-				base := time.Unix(j.Created, 0)
-				if j.LastRun > 0 {
-					base = time.Unix(j.LastRun, 0)
-				}
-				if sched.Next(base).After(now) {
-					continue
-				}
-				if !claimJob(j.ID) {
-					continue
-				}
-				go func(j jobRow) {
-					defer releaseJob(j.ID)
-					guard("job:"+j.ID, func() { _, _ = p.execJob(j) })
-				}(j)
-			}
-		})
+		guard("jobLoop", func() { p.runDueJobs(time.Now()) })
 		time.Sleep(time.Minute)
 	}
+}
+
+func (p *Panel) runDueJobs(now time.Time) {
+	for _, j := range allJobRows() {
+		sched, err := cron.ParseStandard(j.Schedule)
+		if err != nil {
+			continue
+		}
+		base := time.Unix(j.Created, 0)
+		if j.LastRun > 0 {
+			base = time.Unix(j.LastRun, 0)
+		}
+		due := sched.Next(base)
+		if due.After(now) {
+			continue
+		}
+		trigger := triggerSchedule
+		if now.Sub(due) > missedAfter {
+			if j.CatchUp == "skip" {
+				_, _ = sqlDB.Exec(`UPDATE jobs SET last_run=? WHERE id=?`, now.Unix(), j.ID)
+				finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "Missed while Skiff wasn't running, and this job skips missed runs.")
+				continue
+			}
+			trigger = triggerCatchUp
+		}
+		if !claimJob(j.ID) {
+			jobMu.Lock()
+			first := jobSkipped[j.ID] != due.Unix()
+			jobSkipped[j.ID] = due.Unix()
+			jobMu.Unlock()
+			if first {
+				finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "The previous run was still going, so this one was skipped.")
+			}
+			continue
+		}
+		go func(j jobRow) {
+			defer releaseJob(j.ID)
+			guard("job:"+j.ID, func() { p.execJob(j, trigger) })
+		}(j)
+	}
+}
+
+// runJobNow runs a job once for someone waiting on it, without retries, and returns its output.
+func (p *Panel) runJobNow(j jobRow) (string, string, error) {
+	out, status, err := p.attemptJob(j, triggerManual, 1)
+	p.settleJob(j, status, err == nil)
+	return out, status, err
 }
 
 func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +214,9 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, tomlOwned, http.StatusBadRequest)
 			return
 		}
-		var body struct{ Name, Schedule, Command string }
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		j, problem := newJob(app, body.Name, body.Schedule, body.Command)
+		var body jobInput
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body)
+		j, problem := newJob(app, body)
 		if problem != "" {
 			http.Error(w, problem, http.StatusBadRequest)
 			return
@@ -210,7 +238,7 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, tomlOwned, http.StatusBadRequest)
 			return
 		}
-		_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, j.ID)
+		deleteJob(j.ID)
 		p.audit(r, "job.delete", j.App, j.Name)
 		w.WriteHeader(http.StatusNoContent)
 
@@ -219,20 +247,61 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// jobInput is a job as the dashboard and the API send it. Timeout is in seconds.
+type jobInput struct {
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"`
+	Command  string `json:"command"`
+	Timeout  int    `json:"timeout"`
+	Retries  int    `json:"retries"`
+	CatchUp  string `json:"catchUp"`
+}
+
 // newJob checks a scheduled job's settings, the same for the dashboard and the API.
-func newJob(app, name, schedule, command string) (jobRow, string) {
-	schedule, command = strings.TrimSpace(schedule), strings.TrimSpace(command)
+func newJob(app string, in jobInput) (jobRow, string) {
+	schedule, command := strings.TrimSpace(in.Schedule), strings.TrimSpace(in.Command)
 	if command == "" {
 		return jobRow{}, "a command is required"
 	}
 	if _, err := cron.ParseStandard(schedule); err != nil {
 		return jobRow{}, "invalid schedule — use cron syntax like \"0 3 * * *\""
 	}
+	if problem := checkJobLimits(in.Timeout, in.Retries, in.CatchUp); problem != "" {
+		return jobRow{}, problem
+	}
 	src, _ := getSource(app)
 	return jobRow{
-		ID: randToken()[:12], App: app, Team: src.Team, Name: cmp.Or(strings.TrimSpace(name), "job"),
+		ID: randToken()[:12], App: app, Team: src.Team, Name: cmp.Or(strings.TrimSpace(in.Name), "job"),
 		Schedule: schedule, Command: command, LastOk: 1, Created: time.Now().Unix(),
+		Timeout: in.Timeout, Retries: in.Retries, CatchUp: in.CatchUp,
 	}, ""
+}
+
+func checkJobLimits(timeout, retries int, catchUp string) string {
+	switch {
+	case timeout != 0 && (timeout < 60 || timeout > maxJobTimeout):
+		return "the timeout must be between 1 minute and 24 hours"
+	case retries < 0 || retries > maxJobRetries:
+		return fmt.Sprintf("retries must be between 0 and %d", maxJobRetries)
+	case catchUp != "" && catchUp != "skip":
+		return `catch-up must be empty, to run once after downtime, or "skip"`
+	}
+	return ""
+}
+
+func deleteJob(id string) {
+	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job=?`, id)
+	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, id)
+}
+
+// handleJobRuns lists a job's recent runs, newest first.
+func (p *Panel) handleJobRuns(w http.ResponseWriter, r *http.Request) {
+	j, ok := getJob(sanitizeID(r.URL.Query().Get("id")))
+	if !ok || !p.canAccess(r, j.App) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	writeJSON(w, listRuns(j.ID, keepJobRuns))
 }
 
 func (p *Panel) handleJobRun(w http.ResponseWriter, r *http.Request) {
@@ -251,6 +320,6 @@ func (p *Panel) handleJobRun(w http.ResponseWriter, r *http.Request) {
 	}
 	defer releaseJob(j.ID)
 	p.audit(r, "job.run", j.App, j.Name)
-	out, err := p.execJob(j)
-	writeJSON(w, map[string]any{"ok": err == nil, "output": out})
+	out, status, err := p.runJobNow(j)
+	writeJSON(w, map[string]any{"ok": err == nil, "status": status, "output": out})
 }
