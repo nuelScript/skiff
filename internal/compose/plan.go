@@ -457,6 +457,9 @@ func resolveMounts(service string, mounts []Mount, repoPath func(string) PathKin
 			case kind == PathMissing:
 				p.Notes = append(p.Notes, fmt.Sprintf("%s: %s isn't in the repository, so it becomes a volume that starts empty", service, m.Source))
 				asVolume(m)
+			case kind == PathFile && !m.ReadOnly:
+				p.Notes = append(p.Notes, fmt.Sprintf("%s: %s is built into its image from the repository, so changes the app makes to it are lost on each deploy. To keep them, mount the folder it's in instead", service, m.Source))
+				files = append(files, PlanFile{Source: path, Target: m.Target})
 			case kind == PathFile || m.ReadOnly:
 				p.Notes = append(p.Notes, fmt.Sprintf("%s: %s is built into its image from the repository, so changes reach it on the next deploy", service, m.Source))
 				files = append(files, PlanFile{Source: path, Target: m.Target})
