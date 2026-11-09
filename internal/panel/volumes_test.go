@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 func TestVolumeDefs(t *testing.T) {
@@ -149,5 +151,30 @@ func TestSharedVolumes(t *testing.T) {
 	}
 	if w := volumeCall(p, "founder", "DELETE", "app=ollama&name=models", ""); w.Code != http.StatusNoContent {
 		t.Errorf("deleting a volume nobody else uses = %d", w.Code)
+	}
+}
+
+// Workers, jobs and scale-ups mount a volume at every path the app does.
+func TestAppMountsCoverEveryPath(t *testing.T) {
+	if exec.Command("docker", "info").Run() != nil {
+		t.Skip("docker not available")
+	}
+	openTestDB(t)
+	app := "mounts-" + randToken()[:6]
+	if err := putSource(Source{App: app, Team: "t1", Port: "3000"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := addVolume(app, config.Volume{Name: "data", Path: "/data", Also: []string{"/var/cache/app"}}); err != nil {
+		t.Fatal(err)
+	}
+	p := &Panel{eng: docker.Local()}
+	src, _ := getSource(app)
+	t.Cleanup(func() { _ = exec.Command("docker", "volume", "rm", "-f", config.VolumeName(app, "data")).Run() })
+	var paths []string
+	for _, m := range p.appMounts(src) {
+		paths = append(paths, m.Destination)
+	}
+	if strings.Join(paths, ",") != "/data,/var/cache/app" {
+		t.Fatalf("mounted at %v", paths)
 	}
 }
