@@ -85,7 +85,7 @@ func TestDeployLetsTCPConnectionsFinish(t *testing.T) {
 	_, portText, _ := strings.Cut(freeAddr(t), ":")
 	public, _ := strconv.Atoi(portText)
 	eventually(t, 90*time.Second, func() bool {
-		return putStatus(t, c, base+"/api/project/tcp-port?app="+app, fmt.Sprintf(`{"port":%d}`, public)) == 200
+		return putStatus(t, c, base+"/api/project/tcp-port?app="+app, fmt.Sprintf(`{"port":%d}`, public)) == http.StatusNoContent
 	})
 	addr := fmt.Sprintf("127.0.0.1:%d", public)
 	ask := func(n int) ([]string, error) {
