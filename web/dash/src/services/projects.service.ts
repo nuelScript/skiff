@@ -306,7 +306,7 @@ class ProjectsService extends BaseService {
   }
 
   tcpPort(app: string) {
-    return this.get<{ port: number; containerPort: string }>('/project/tcp-port', { params: { app } })
+    return this.get<{ port: number; containerPort: string; lowPorts: boolean }>('/project/tcp-port', { params: { app } })
   }
 
   setTCPPort(app: string, port: number) {
@@ -314,7 +314,7 @@ class ProjectsService extends BaseService {
   }
 
   udpPort(app: string) {
-    return this.get<{ port: number }>('/project/udp-port', { params: { app } })
+    return this.get<{ port: number; lowPorts: boolean }>('/project/udp-port', { params: { app } })
   }
 
   setUDPPort(app: string, port: number) {

@@ -39,6 +39,8 @@ For a game server, message broker or anything else over raw TCP, open a **Public
 
 For UDP, such as a game server, voice, WebRTC or WireGuard, open a **Public UDP port** in the project's Settings and redeploy. Your app listens on that UDP port, and Skiff opens the same number to the internet through its router. Each client stays on one version until it has sent nothing for two minutes, so a deploy moves new clients to the new version without dropping anyone mid-session. An app deployed with `skiff deploy` also lists the port in `skiff.toml` as `udp_port` under `[deploy]`.
 
+Public TCP and UDP ports start at 1024. Ports under that are for well-known services, like DNS on 53, so only the server's admin, an owner of the team that set Skiff up, can open one. Skiff's own ports, such as SSH, the web and the dashboard, can't be taken.
+
 - Your app sees connections coming from Skiff, not the client's address.
 - A connection that sends nothing in either direction for an hour is closed, so keep long-lived clients alive with pings.
 - You may also need to allow the port in your provider's firewall.

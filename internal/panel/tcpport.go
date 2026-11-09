@@ -10,9 +10,22 @@ import (
 // reservedTCPPorts are used by Skiff itself or by the server's own services.
 var reservedTCPPorts = map[int]string{22: "SSH", 25: "email", 80: "the web", 443: "the web", 7070: "the dashboard", 7071: "the dashboard"}
 
-func tcpPortProblem(port int, app string, sources []Source, usedByDBs map[int]string) string {
-	if port < 1024 || port > 65535 {
-		return "use a port from 1024 to 65535"
+// lowPortsNeed explains who can open a port under 1024: they're the well-known services' ports, so the server's admin decides.
+const lowPortsNeed = "ports under 1024 can only be opened by the server's admin, an owner of the team that set it up"
+
+func portRange(port int, admin bool) string {
+	switch {
+	case port < 1 || port > 65535:
+		return "use a port from 1 to 65535"
+	case port < 1024 && !admin:
+		return lowPortsNeed
+	}
+	return ""
+}
+
+func tcpPortProblem(port int, app string, sources []Source, usedByDBs map[int]string, admin bool) string {
+	if problem := portRange(port, admin); problem != "" {
+		return problem
 	}
 	if why, ok := reservedTCPPorts[port]; ok {
 		return fmt.Sprintf("port %d is used by %s", port, why)
@@ -55,7 +68,7 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, map[string]any{"port": src.TCPPort, "containerPort": src.Port})
+		writeJSON(w, map[string]any{"port": src.TCPPort, "containerPort": src.Port, "lowPorts": p.isInstanceAdmin(r)})
 	case http.MethodPut:
 		if !p.isOwner(r) {
 			http.Error(w, "only a team owner can open a public port", http.StatusForbidden)
@@ -73,7 +86,7 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if body.Port != 0 && body.Port != src.TCPPort {
-			if problem := tcpPortProblem(body.Port, app, allSources(), publicDatabasePorts()); problem != "" {
+			if problem := tcpPortProblem(body.Port, app, allSources(), publicDatabasePorts(), p.isInstanceAdmin(r)); problem != "" {
 				http.Error(w, problem, http.StatusBadRequest)
 				return
 			}
@@ -103,9 +116,9 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func udpPortProblem(port int, app string, sources []Source) string {
-	if port < 1024 || port > 65535 {
-		return "use a port from 1024 to 65535"
+func udpPortProblem(port int, app string, sources []Source, admin bool) string {
+	if problem := portRange(port, admin); problem != "" {
+		return problem
 	}
 	for _, s := range sources {
 		if s.UDPPort == port && s.App != app {
@@ -125,7 +138,7 @@ func (p *Panel) handleUDPPort(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, map[string]any{"port": src.UDPPort})
+		writeJSON(w, map[string]any{"port": src.UDPPort, "lowPorts": p.isInstanceAdmin(r)})
 	case http.MethodPut:
 		if !p.isOwner(r) {
 			http.Error(w, "only a team owner can open a public port", http.StatusForbidden)
@@ -143,7 +156,7 @@ func (p *Panel) handleUDPPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if body.Port != 0 && body.Port != src.UDPPort {
-			if problem := udpPortProblem(body.Port, app, allSources()); problem != "" {
+			if problem := udpPortProblem(body.Port, app, allSources(), p.isInstanceAdmin(r)); problem != "" {
 				http.Error(w, problem, http.StatusBadRequest)
 				return
 			}
