@@ -326,8 +326,8 @@ func writeEdgeFile() error {
 		if parent, ok := byApp[s.Parent]; ok && s.Parent != "" {
 			owner = parent
 		}
-		if owner.Private || owner.RateLimit > 0 || s.TCPPort > 0 {
-			rules[s.App] = edge.Rule{Private: owner.Private, RateLimit: owner.RateLimit, TCPPort: s.TCPPort}
+		if owner.Private || owner.RateLimit > 0 || s.TCPPort > 0 || s.UDPPort > 0 {
+			rules[s.App] = edge.Rule{Private: owner.Private, RateLimit: owner.RateLimit, TCPPort: s.TCPPort, UDPPort: s.UDPPort}
 		}
 	}
 	return edge.Save(edgeFile(), rules)

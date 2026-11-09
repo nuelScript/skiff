@@ -126,15 +126,21 @@ func routesFromList(list []apiContainer) []Route {
 		if app == "" || err != nil {
 			continue
 		}
+		udp, _ := strconv.Atoi(c.Labels["skiff.udp"])
+		route := Route{App: app}
+		if len(c.Names) > 0 {
+			route.Container = strings.TrimPrefix(c.Names[0], "/")
+		}
 		for _, p := range c.Ports {
-			if p.PrivatePort == cport && p.PublicPort > 0 && (p.Type == "" || p.Type == "tcp") {
-				name := ""
-				if len(c.Names) > 0 {
-					name = strings.TrimPrefix(c.Names[0], "/")
-				}
-				routes = append(routes, Route{App: app, Container: name, HostPort: p.PublicPort})
-				break
+			switch {
+			case p.PrivatePort == cport && p.PublicPort > 0 && (p.Type == "" || p.Type == "tcp"):
+				route.HostPort = p.PublicPort
+			case udp > 0 && p.PrivatePort == udp && p.PublicPort > 0 && p.Type == "udp":
+				route.UDPHostPort = p.PublicPort
 			}
+		}
+		if route.HostPort > 0 {
+			routes = append(routes, route)
 		}
 	}
 	return routes

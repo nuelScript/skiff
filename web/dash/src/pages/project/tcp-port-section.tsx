@@ -33,8 +33,13 @@ export function TCPPortSection({ app }: { app: string }) {
   const open = async (e: FormEvent) => {
     e.preventDefault()
     const port = Number(value)
-    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-      setError('Use a port from 1024 to 65535.')
+    const lowest = data?.lowPorts ? 1 : 1024
+    if (!Number.isInteger(port) || port < lowest || port > 65535) {
+      setError(
+        port >= 1 && port < 1024
+          ? "Ports under 1024 can only be opened by the server's admin, an owner of the team that set it up."
+          : `Use a port from ${lowest} to 65535.`,
+      )
       return
     }
     if (

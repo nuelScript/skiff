@@ -173,6 +173,8 @@ type Deploy struct {
 	Aliases    []string `toml:"aliases"` // extra names on the network
 	Command    []string `toml:"command"` // replaces the image's default command
 	RunOptions string   `toml:"run_options"`
+	// UDPPort is a UDP port the app listens on; the router can forward the same public port to it.
+	UDPPort int `toml:"udp_port"`
 }
 
 // ValidateHealth checks a health-check path and timeout (seconds, 0 for the default).
@@ -311,6 +313,9 @@ func (c *Config) applyDefaults() {
 }
 
 func (c *Config) validate() error {
+	if c.Deploy.UDPPort < 0 || c.Deploy.UDPPort > 65535 {
+		return fmt.Errorf("[deploy] udp_port must be a port from 1 to 65535")
+	}
 	if c.Name == "" {
 		return fmt.Errorf("skiff.toml is missing required field: name")
 	}
