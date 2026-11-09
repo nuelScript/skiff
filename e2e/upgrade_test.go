@@ -90,7 +90,49 @@ func downloadRelease(t *testing.T, tag, to string) {
 		}
 		last = err.Error()
 	}
-	t.Fatalf("%s: %s, six times", url, last)
+	// The public download link can fail for a while when the API still serves the same file.
+	if err := downloadViaAPI(tag, to); err != nil {
+		t.Fatalf("%s: %s, six times; through the API: %v", url, last, err)
+	}
+}
+
+func downloadViaAPI(tag, to string) error {
+	resp, err := http.Get("https://api.github.com/repos/nuelScript/skiff/releases/tags/" + tag)
+	if err != nil {
+		return err
+	}
+	var rel struct {
+		Assets []struct{ Name, URL string }
+	}
+	err = json.NewDecoder(resp.Body).Decode(&rel)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	name := fmt.Sprintf("skiff-%s-%s", runtime.GOOS, runtime.GOARCH)
+	for _, a := range rel.Assets {
+		if a.Name != name {
+			continue
+		}
+		req, _ := http.NewRequest(http.MethodGet, a.URL, nil)
+		req.Header.Set("Accept", "application/octet-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("asset answered %d", resp.StatusCode)
+		}
+		f, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(f, resp.Body)
+		return err
+	}
+	return fmt.Errorf("no %s in %s", name, tag)
 }
 
 // TestUpgrade runs a server on each earlier minor with real state, swaps in this build the way an update does, and checks everything is still there and still works.

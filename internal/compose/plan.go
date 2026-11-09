@@ -23,18 +23,20 @@ const (
 
 // Item is one thing Skiff would create for a Compose service.
 type Item struct {
-	Service  string
-	Name     string
-	Kind     Kind
-	Image    string
-	Build    *Build
-	Command  []string
-	Env      map[string]string
-	Port     int
-	Public   bool
-	Volumes  []PlanVolume
-	Files    []PlanFile
-	Options  config.RunOptions
+	Service string
+	Name    string
+	Kind    Kind
+	Image   string
+	Build   *Build
+	Command []string
+	Env     map[string]string
+	Port    int
+	Public  bool
+	Volumes []PlanVolume
+	Files   []PlanFile
+	Options config.RunOptions
+	// Wants are machine permissions the file asks for, which the server's admin grants or not.
+	Wants    config.Permissions
 	Replicas int
 	Memory   string
 	CPUs     string
@@ -94,11 +96,7 @@ var plainTCPPorts = map[int]bool{
 	6379: true, 6432: true, 9042: true, 11211: true, 25565: true, 27017: true,
 }
 
-var unsupportedKeys = map[string]string{
-	"privileged":   "needs privileges Skiff doesn't grant",
-	"network_mode": "Skiff manages the network",
-	"devices":      "Skiff doesn't pass devices through",
-}
+var unsupportedKeys = map[string]string{}
 
 // ignoredWhy explains the service keys Skiff leaves out that files use most.
 var ignoredWhy = map[string]string{
@@ -278,6 +276,14 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 		it.Options = s.Options
 		if err := s.Options.Validate(); err != nil {
 			p.Problems = append(p.Problems, name+": "+err.Error())
+		}
+		if !s.Wants.IsZero() {
+			if err := s.Wants.Validate(); err != nil {
+				p.Problems = append(p.Problems, name+": "+err.Error())
+			} else {
+				it.Wants = s.Wants
+				p.Notes = append(p.Notes, fmt.Sprintf("%s: asks for %s, which the server's admin can grant in its settings. Until then it runs without", name, describeWants(s.Wants)))
+			}
 		}
 		for _, m := range s.Volumes {
 			vol := safeName(m.Source)
@@ -564,8 +570,8 @@ func applyDatabase(it *Item, engine string, s Service, p *Plan, readFile func(st
 	} else if it.DBPassword == "" && len(p.Unset) == 0 {
 		p.Notes = append(p.Notes, it.Service+": has no password, so Skiff generates one. Apps that connect with a hardcoded URL need updating")
 	}
-	if !s.Options.IsZero() {
-		p.Notes = append(p.Notes, it.Service+": is a managed database, so Skiff chooses how it starts and ignores settings like user and entrypoint")
+	if !s.Options.IsZero() || !s.Wants.IsZero() {
+		p.Notes = append(p.Notes, it.Service+": is a managed database, so Skiff chooses how it starts and ignores settings like user, entrypoint and cap_add")
 	}
 	if len(s.Ports) > 0 {
 		p.Notes = append(p.Notes, it.Service+": stays private, so its published port is ignored. Turn on public access in the dashboard if you need it")
@@ -651,4 +657,25 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// describeWants names what a service asks for, in one phrase.
+func describeWants(w config.Permissions) string {
+	var parts []string
+	if w.Privileged {
+		parts = append(parts, "privileged mode")
+	}
+	if w.HostNetwork {
+		parts = append(parts, "the server's own network")
+	}
+	if len(w.Capabilities) > 0 {
+		parts = append(parts, "the capabilities "+strings.Join(w.Capabilities, ", "))
+	}
+	if len(w.Devices) > 0 {
+		parts = append(parts, "the devices "+strings.Join(w.Devices, ", "))
+	}
+	if len(w.Sysctls) > 0 {
+		parts = append(parts, "the sysctls "+strings.Join(w.Sysctls, ", "))
+	}
+	return strings.Join(parts, " and ")
 }

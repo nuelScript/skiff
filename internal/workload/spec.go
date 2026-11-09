@@ -98,6 +98,9 @@ type Touch struct {
 	Isolation string `json:"isolation,omitempty"`
 	// Egress is where it may connect.
 	Egress egress.Policy `json:"egress,omitzero"`
+	// Permissions are machine permissions the server's admin granted; Wants what its Compose file asked for.
+	Permissions config.Permissions `json:"permissions,omitzero"`
+	Wants       config.Permissions `json:"wants,omitzero"`
 }
 
 // Origin is where it came from, which decides who may change it.

@@ -338,7 +338,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 
 	settings := docker.Settings{
 		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, Env: runtimeEnv, Network: network, Volumes: mounts,
-		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime, Labels: map[string]string{egress.Label: cfg.Deploy.EgressPolicy().Encode()},
+		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime, Labels: map[string]string{egress.Label: cfg.Deploy.EgressPolicy().Encode()}, Permissions: cfg.Deploy.Permissions,
 	}
 
 	// Release command (e.g. migrations) runs once before the new version goes live; on failure abort — the old version keeps serving.
@@ -380,9 +380,22 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 		held = nil
 	}
 	defer release()
+	// On the server's own network the old version holds the port, so it stops first and comes back if the new one fails.
+	var stoppedOld []string
+	if cfg.Deploy.Permissions.HostNetwork {
+		replicas = 1
+		for _, name := range eng.AppContainers(cfg.Name) {
+			if eng.Stop(name) == nil {
+				stoppedOld = append(stoppedOld, name)
+			}
+		}
+	}
 	rollback := func() {
 		for _, rp := range reps {
 			_ = eng.Remove(rp.Container)
+		}
+		for _, name := range stoppedOld {
+			_ = eng.Start(name)
 		}
 	}
 	// With no router on a remote box, the published port is the only way in.

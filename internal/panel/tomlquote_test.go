@@ -100,3 +100,19 @@ func TestProjectTomlMountsAVolumeAtEveryPath(t *testing.T) {
 		t.Errorf("volumes: %+v", cfg.Volumes)
 	}
 }
+
+func TestProjectTomlCarriesOnlyGrantedPermissions(t *testing.T) {
+	granted := config.Permissions{Capabilities: []string{"NET_ADMIN"}, Devices: []string{"/dev/net/tun"}, Sysctls: []string{"net.ipv4.ip_forward=1"}}
+	src := Source{App: "vpn", Permissions: config.EncodePermissions(granted), WantsPermissions: config.EncodePermissions(config.Permissions{Privileged: true})}
+	path := filepath.Join(t.TempDir(), "skiff.toml")
+	if err := os.WriteFile(path, []byte(projectToml(src, nil, "net", nil)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Deploy.Permissions.Equal(granted) {
+		t.Errorf("a deploy should get exactly what was granted, not what was asked for: %+v", cfg.Deploy.Permissions)
+	}
+}

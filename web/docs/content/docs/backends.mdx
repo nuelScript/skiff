@@ -93,6 +93,18 @@ By default an app can connect anywhere, like any server. Under **Outbound networ
 - **It needs Linux,** with Skiff running as root as the installer sets it up, since it writes the server's firewall rules. Elsewhere, the setting says it isn't available.
 - **On a network with a limited app,** a new container is held back from the internet for a moment after it starts, until the rules know it, so a limited app is never briefly open.
 
+## Machine permissions
+
+Some software needs more of the server than a container gets by default: a VPN needs the `NET_ADMIN` capability and `/dev/net/tun`, a database may want `IPC_LOCK`, and a few tools need privileged mode. Each is off until the server's admin, an owner of the team that set Skiff up, grants it under **Machine permissions** in the project's settings. The change applies on the next deploy and is recorded in Activity.
+
+- **Capabilities,** like `NET_ADMIN` or `SYS_PTRACE`. Ones such as `SYS_ADMIN` reach past the container, and the dashboard warns before granting them.
+- **Devices** under `/dev`, like `/dev/net/tun` or `/dev/fuse`.
+- **Sysctls** that stay inside the app: `net.*`, `kernel.shm*`, `kernel.msg*`, `kernel.sem` and `fs.mqueue.*`.
+- **Privileged mode,** the escape hatch for software like Docker-in-Docker. It gives the app near-full control of the server, so only grant it to software you trust.
+- **The server's own network,** for software that needs to see it, like some VPNs and discovery tools. The app runs one copy and listens on the server's port directly, and a deploy stops the old version before starting the new one, so there's a short gap.
+
+A Compose file that asks for any of these shows what it asked for, with a button to fill it in. An app deployed with `skiff deploy` lists them in `skiff.toml` under `[deploy]` as `cap_add`, `devices`, `sysctls`, `privileged` and `host_network`.
+
 ## Scheduled jobs
 
 A job runs a command from your app's build in a one-off container with the app's environment and limits. It runs on a cron schedule, when its webhook is called, for each new file in a bucket, or any mix of those.

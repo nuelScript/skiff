@@ -22,6 +22,8 @@ type RunOptions struct {
 	ExtraHosts  []string `json:"extraHosts,omitempty"`
 	StopSeconds int      `json:"stopSeconds,omitempty"`
 	StopSignal  string   `json:"stopSignal,omitempty"`
+	// CapDrop removes Linux capabilities, which only ever takes away.
+	CapDrop []string `json:"capDrop,omitempty"`
 }
 
 // IsZero reports whether no option is set.
@@ -72,6 +74,11 @@ func (o RunOptions) Validate() error {
 	if o.StopSignal != "" && !stopSignalPattern.MatchString(o.StopSignal) {
 		return fmt.Errorf("stop_signal has an invalid value")
 	}
+	for _, c := range o.CapDrop {
+		if !capabilityPattern.MatchString(c) {
+			return fmt.Errorf("cap_drop %q isn't a capability name like NET_RAW", c)
+		}
+	}
 	return nil
 }
 
@@ -107,6 +114,9 @@ func (o RunOptions) DockerArgs() []string {
 	}
 	for _, h := range o.ExtraHosts {
 		args = append(args, "--add-host", h)
+	}
+	for _, c := range o.CapDrop {
+		args = append(args, "--cap-drop", c)
 	}
 	return args
 }

@@ -289,6 +289,9 @@ func appChanges(s *stackSource, team string, it compose.Item, src Source, cur cu
 	if src.MountedFiles != want.MountedFiles {
 		details = append(details, "files from the repository")
 	}
+	if src.WantsPermissions != want.WantsPermissions {
+		details = append(details, "asks for different machine permissions")
+	}
 	field("port", src.Port, want.Port)
 	field("memory", src.Memory, want.Memory)
 	field("cpu", src.CPU, want.CPU)
@@ -509,8 +512,8 @@ func (p *Panel) applyStackChanges(s *stackSource, team, token string, vars map[s
 		if old, ok := cur.Apps[it.Service]; ok {
 			want.RateLimit, want.SleepAfter, want.PreviewAuto, want.Release = old.RateLimit, old.SleepAfter, old.PreviewAuto, old.Release
 			want.Autoscale, want.ScaleMin, want.ScaleMax, want.ScaleCPU = old.Autoscale, old.ScaleMin, old.ScaleMax, old.ScaleCPU
-			// Set in the dashboard, not the file.
-			want.TCPPort, want.UDPPort, want.Isolation, want.Egress = old.TCPPort, old.UDPPort, old.Isolation, old.Egress
+			// Set in the dashboard, not the file: public ports, isolation, egress, and what the server's admin granted.
+			want.TCPPort, want.UDPPort, want.Isolation, want.Egress, want.Permissions = old.TCPPort, old.UDPPort, old.Isolation, old.Egress, old.Permissions
 		}
 		if err := putSource(want); err != nil {
 			return err

@@ -131,6 +131,12 @@ func routesFromList(list []apiContainer) []Route {
 		if len(c.Names) > 0 {
 			route.Container = strings.TrimPrefix(c.Names[0], "/")
 		}
+		// On the server's own network, the app's ports are the server's.
+		if c.Labels["skiff.hostnet"] == "1" {
+			route.HostPort, route.UDPHostPort = cport, udp
+			routes = append(routes, route)
+			continue
+		}
 		for _, p := range c.Ports {
 			switch {
 			case p.PrivatePort == cport && p.PublicPort > 0 && (p.Type == "" || p.Type == "tcp"):

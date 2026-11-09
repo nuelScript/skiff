@@ -183,6 +183,8 @@ type Deploy struct {
 	// Egress limits where the app may connect: "private" for the team's own apps and databases only, "list" to add EgressAllow's hosts, or empty for anywhere.
 	Egress      string   `toml:"egress"`
 	EgressAllow []string `toml:"egress_allow"`
+	// Permissions are machine permissions for the app's containers. Deploys from the dashboard write only what the server's admin granted.
+	Permissions
 }
 
 // EgressPolicy is the app's outbound policy, normalized.
@@ -337,6 +339,10 @@ func (c *Config) validate() error {
 	}
 	if c.Deploy.OOMScoreAdj < -1000 || c.Deploy.OOMScoreAdj > 1000 {
 		return fmt.Errorf("[deploy] oom_score_adj must be from -1000 to 1000")
+	}
+	c.Deploy.Permissions = c.Deploy.Permissions.Normalize()
+	if err := c.Deploy.Permissions.Validate(); err != nil {
+		return fmt.Errorf("[deploy] %w", err)
 	}
 	if c.Name == "" {
 		return fmt.Errorf("skiff.toml is missing required field: name")

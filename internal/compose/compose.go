@@ -50,6 +50,8 @@ type Service struct {
 	CPUs        string
 	Healthcheck []string
 	Options     config.RunOptions
+	// Wants are the machine permissions the file asks for. Nothing is granted until the server's admin agrees.
+	Wants config.Permissions
 }
 
 type Build struct {
@@ -124,6 +126,39 @@ type rawService struct {
 	Profiles        []string   `yaml:"profiles"`
 	Secrets         []rawRef   `yaml:"secrets"`
 	Configs         []rawRef   `yaml:"configs"`
+	CapAdd          []string   `yaml:"cap_add"`
+	CapDrop         []string   `yaml:"cap_drop"`
+	Devices         rawDevices `yaml:"devices"`
+	Sysctls         rawHosts   `yaml:"sysctls"`
+	Privileged      bool       `yaml:"privileged"`
+	NetworkMode     string     `yaml:"network_mode"`
+}
+
+// rawDevices reads both forms: "/dev/x:/dev/y:rwm", and {source, target, permissions}.
+type rawDevices []string
+
+func (d *rawDevices) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.SequenceNode {
+		return nil
+	}
+	for _, c := range n.Content {
+		if c.Kind == yaml.ScalarNode {
+			*d = append(*d, c.Value)
+			continue
+		}
+		v := ""
+		if s := mapValue(c, "source"); s != nil {
+			v = s.Value
+		}
+		if t := mapValue(c, "target"); t != nil {
+			v += ":" + t.Value
+		}
+		if p := mapValue(c, "permissions"); p != nil {
+			v += ":" + p.Value
+		}
+		*d = append(*d, v)
+	}
+	return nil
 }
 
 // rawRef is a service's use of a secret or config: a name, or a source with an optional target path.
@@ -158,7 +193,7 @@ var serviceKeys = map[string]bool{
 	"expose": true, "volumes": true, "depends_on": true, "mem_limit": true, "cpus": true, "deploy": true,
 	"healthcheck": true, "<<": true, "entrypoint": true, "user": true, "working_dir": true, "init": true, "read_only": true,
 	"shm_size": true, "tmpfs": true, "ulimits": true, "extra_hosts": true, "stop_grace_period": true, "stop_signal": true, "profiles": true,
-	"secrets": true, "configs": true,
+	"secrets": true, "configs": true, "cap_add": true, "cap_drop": true, "devices": true, "sysctls": true, "privileged": true, "network_mode": true,
 }
 
 // Parse reads a Compose file, filling in ${VAR} references from lookup.
@@ -213,6 +248,17 @@ func ParseWith(data []byte, lookup func(string) (string, bool), read Reader) (*F
 		s.Options = config.RunOptions{
 			Entrypoint: raw.Entrypoint, User: raw.User, WorkingDir: raw.WorkingDir, Init: raw.Init, ReadOnly: raw.ReadOnly,
 			ShmSize: dockerSize(raw.ShmSize), Tmpfs: raw.Tmpfs, Ulimits: raw.Ulimits, ExtraHosts: raw.ExtraHosts, StopSignal: raw.StopSignal,
+		}
+		for _, c := range raw.CapDrop {
+			s.Options.CapDrop = append(s.Options.CapDrop, strings.TrimPrefix(strings.ToUpper(c), "CAP_"))
+		}
+		var sysctls []string
+		for _, kv := range raw.Sysctls {
+			sysctls = append(sysctls, strings.Replace(kv, ":", "=", 1))
+		}
+		s.Wants = config.Permissions{Capabilities: raw.CapAdd, Devices: raw.Devices, Sysctls: sysctls, Privileged: raw.Privileged, HostNetwork: raw.NetworkMode == "host"}.Normalize()
+		if m := raw.NetworkMode; m != "" && m != "host" && m != "bridge" && m != "default" {
+			f.Problems = append(f.Problems, fmt.Sprintf("%s: network_mode %s isn't supported, because Skiff puts a stack's services on one network", name, m))
 		}
 		if raw.StopGracePeriod != "" {
 			d, err := time.ParseDuration(raw.StopGracePeriod)

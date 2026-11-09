@@ -673,6 +673,24 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 			fmt.Fprintf(&b, "egress_allow = %s\n", tomlList(policy.Allow))
 		}
 	}
+	// Only what the server's admin granted; a repository's own skiff.toml never reaches a dashboard deploy.
+	if perms := config.DecodePermissions(src.Permissions); !perms.IsZero() {
+		if len(perms.Capabilities) > 0 {
+			fmt.Fprintf(&b, "cap_add = %s\n", tomlList(perms.Capabilities))
+		}
+		if len(perms.Devices) > 0 {
+			fmt.Fprintf(&b, "devices = %s\n", tomlList(perms.Devices))
+		}
+		if len(perms.Sysctls) > 0 {
+			fmt.Fprintf(&b, "sysctls = %s\n", tomlList(perms.Sysctls))
+		}
+		if perms.Privileged {
+			b.WriteString("privileged = true\n")
+		}
+		if perms.HostNetwork {
+			b.WriteString("host_network = true\n")
+		}
+	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))
 	}

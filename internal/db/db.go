@@ -125,6 +125,8 @@ var migrations = []string{
 	`ALTER TABLE api_tokens ADD COLUMN apps TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN isolation TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN egress TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN permissions TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN wants_permissions TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE jobs ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN catch_up TEXT NOT NULL DEFAULT ''`,
@@ -212,7 +214,9 @@ CREATE TABLE IF NOT EXISTS sources (
   build_target TEXT NOT NULL DEFAULT '',
   udp_port     INTEGER NOT NULL DEFAULT 0,
   isolation    TEXT NOT NULL DEFAULT '',
-  egress       TEXT NOT NULL DEFAULT ''
+  egress       TEXT NOT NULL DEFAULT '',
+  permissions  TEXT NOT NULL DEFAULT '',
+  wants_permissions TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS deploys (
   id         TEXT PRIMARY KEY,

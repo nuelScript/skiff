@@ -83,6 +83,7 @@ command = "node report.js"
 | `udp_port` | none | A UDP port the app listens on, published so the router can forward it. Open it to the internet as a **Public UDP port** in the project's Settings. |
 | `isolation` | standard | `"strong"` runs the app under gVisor's sandbox, for code you don't fully trust. See [isolation](/backends#isolation). |
 | `egress`, `egress_allow` | anywhere | Where the app may connect: `"private"` for the team's own services only, or `"list"` with `egress_allow = ["api.openai.com"]`. See [outbound network](/backends#outbound-network). |
+| `cap_add`, `devices`, `sysctls`, `privileged`, `host_network` | none | Machine permissions, like `cap_add = ["NET_ADMIN"]` and `devices = ["/dev/net/tun"]`. See [machine permissions](/backends#machine-permissions). |
 
 ## [resources]
 
