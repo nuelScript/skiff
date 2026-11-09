@@ -136,7 +136,7 @@ func (p *Panel) handleCLIApprove(w http.ResponseWriter, r *http.Request) {
 		if l.host != "" {
 			name = "cli (" + l.host + ")"
 		}
-		t, err := createToken(team, name, s.userID)
+		t, err := createToken(team, name, s.userID, tokenGrant{})
 		if err != nil {
 			http.Error(w, "couldn't create a token", http.StatusInternalServerError)
 			return
@@ -170,6 +170,10 @@ func (p *Panel) apiCLIDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	team := apiTeam(r)
 	src, ok := getSource(name)
+	if g := apiGrant(r); g.limited() && !g.reaches(Source{App: name}) {
+		apiErr(w, http.StatusForbidden, "this token is limited to other projects")
+		return
+	}
 	switch {
 	case !ok:
 		src = Source{App: name, Team: team, Port: "3000", Origin: originCLI, Replicas: 1, ScaleMin: 1, ScaleMax: 1}

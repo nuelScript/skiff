@@ -168,7 +168,7 @@ func TestRemovedMemberLosesTheTeam(t *testing.T) {
 	_ = putSession("o", owner.ID, team.ID)
 	_ = putSession("m", member.ID, team.ID)
 	p := &Panel{auth: store, domain: "skiff.test"}
-	tok, err := createToken(team.ID, "ci", member.ID)
+	tok, err := createToken(team.ID, "ci", member.ID, tokenGrant{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestRemovedMemberLosesTheTeam(t *testing.T) {
 	if s, _ := getSession("m"); s.teamID != "" {
 		t.Fatalf("session still points at %q", s.teamID)
 	}
-	if _, _, ok := resolveToken(tok.Token); ok {
+	if _, _, _, ok := resolveToken(tok.Token); ok {
 		t.Fatal("removed member's token still works")
 	}
 	if p.isOwner(req(p, "GET", "/", "", "o", nil)) != true {

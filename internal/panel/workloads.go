@@ -97,7 +97,7 @@ func (p *Panel) apiWorkloads(w http.ResponseWriter, r *http.Request) {
 	sources := allSources()
 	slices.SortFunc(sources, func(a, b Source) int { return strings.Compare(a.App, b.App) })
 	for _, s := range sources {
-		if s.Team != apiTeam(r) {
+		if s.Team != apiTeam(r) || !apiGrant(r).reaches(s) {
 			continue
 		}
 		spec := sourceSpec(s)

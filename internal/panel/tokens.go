@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,6 +19,9 @@ type APIToken struct {
 	LastUsed int64  `json:"lastUsed"`
 	// Token is set only in the create response — never persisted or listed.
 	Token string `json:"token,omitempty"`
+	// Scopes and Apps limit what it can do and to which projects; empty means everything.
+	Scopes []string `json:"scopes,omitempty"`
+	Apps   []string `json:"apps,omitempty"`
 }
 
 func hashToken(tok string) string {
@@ -29,12 +33,12 @@ func newAPIToken() string {
 	return "skiff_" + randHex(24)
 }
 
-func createToken(team, name, createdBy string) (APIToken, error) {
+func createToken(team, name, createdBy string, grant tokenGrant) (APIToken, error) {
 	tok := newAPIToken()
-	t := APIToken{ID: randToken()[:12], Name: name, Created: time.Now().Unix()}
+	t := APIToken{ID: randToken()[:12], Name: name, Created: time.Now().Unix(), Scopes: grant.Scopes, Apps: grant.Apps}
 	_, err := sqlDB.Exec(
-		`INSERT INTO api_tokens(id,team,name,token_hash,created,last_used,created_by) VALUES(?,?,?,?,?,0,?)`,
-		t.ID, team, name, hashToken(tok), t.Created, createdBy)
+		`INSERT INTO api_tokens(id,team,name,token_hash,created,last_used,created_by,scopes,apps) VALUES(?,?,?,?,?,0,?,?,?)`,
+		t.ID, team, name, hashToken(tok), t.Created, createdBy, encodeList(grant.Scopes), encodeList(grant.Apps))
 	if err != nil {
 		return APIToken{}, err
 	}
@@ -55,7 +59,7 @@ func tokenReachesDatabases(tok string) bool {
 
 func listTokens(team string) []APIToken {
 	rows, err := sqlDB.Query(
-		`SELECT id,name,created,last_used FROM api_tokens WHERE team=? ORDER BY created DESC`, team)
+		`SELECT id,name,created,last_used,scopes,apps FROM api_tokens WHERE team=? ORDER BY created DESC`, team)
 	if err != nil {
 		return nil
 	}
@@ -63,7 +67,9 @@ func listTokens(team string) []APIToken {
 	out := []APIToken{}
 	for rows.Next() {
 		var t APIToken
-		if rows.Scan(&t.ID, &t.Name, &t.Created, &t.LastUsed) == nil {
+		var scopes, apps string
+		if rows.Scan(&t.ID, &t.Name, &t.Created, &t.LastUsed, &scopes, &apps) == nil {
+			t.Scopes, t.Apps = decodeList(scopes), decodeList(apps)
 			out = append(out, t)
 		}
 	}
@@ -77,19 +83,19 @@ func revokeToken(team, id string) {
 	_, _ = sqlDB.Exec(`DELETE FROM api_tokens WHERE team=? AND id=?`, team, id)
 }
 
-func resolveToken(tok string) (team, name string, ok bool) {
+func resolveToken(tok string) (team, name string, grant tokenGrant, ok bool) {
 	if tok == "" {
-		return "", "", false
+		return "", "", tokenGrant{}, false
 	}
-	var id string
+	var id, scopes, apps string
 	err := sqlDB.QueryRow(
-		`SELECT id,team,name FROM api_tokens WHERE token_hash=?`, hashToken(tok)).
-		Scan(&id, &team, &name)
+		`SELECT id,team,name,scopes,apps FROM api_tokens WHERE token_hash=?`, hashToken(tok)).
+		Scan(&id, &team, &name, &scopes, &apps)
 	if err != nil {
-		return "", "", false
+		return "", "", tokenGrant{}, false
 	}
 	_, _ = sqlDB.Exec(`UPDATE api_tokens SET last_used=? WHERE id=?`, time.Now().Unix(), id)
-	return team, name, true
+	return team, name, tokenGrant{Scopes: decodeList(scopes), Apps: decodeList(apps)}, true
 }
 
 func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +111,8 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name      string
 			Databases bool
+			Scopes    []string
+			Apps      []string
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.Databases && !p.isOwner(r) {
@@ -115,8 +123,13 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = "token"
 		}
+		grant, problem := checkGrant(team, body.Scopes, body.Apps)
+		if problem != "" {
+			http.Error(w, problem, http.StatusBadRequest)
+			return
+		}
 		s, _ := p.session(r)
-		t, err := createToken(team, name, s.userID)
+		t, err := createToken(team, name, s.userID, grant)
 		if err != nil {
 			http.Error(w, "could not create token", http.StatusInternalServerError)
 			return
@@ -140,4 +153,30 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// checkGrant keeps a new token's scopes to known ones and its projects to the team's own.
+func checkGrant(team string, scopes, apps []string) (tokenGrant, string) {
+	var g tokenGrant
+	for _, sc := range scopes {
+		if !slices.Contains(allScopes, sc) {
+			return g, "unknown permission " + sc
+		}
+		if !slices.Contains(g.Scopes, sc) {
+			g.Scopes = append(g.Scopes, sc)
+		}
+	}
+	if len(g.Scopes) == len(allScopes) {
+		g.Scopes = nil
+	}
+	for _, a := range apps {
+		src, ok := getSource(sanitizeName(a))
+		if !ok || src.Team != team || src.Parent != "" {
+			return g, "your team has no project named " + a
+		}
+		if !slices.Contains(g.Apps, src.App) {
+			g.Apps = append(g.Apps, src.App)
+		}
+	}
+	return g, ""
 }

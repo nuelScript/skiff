@@ -2,7 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Plus, Trash2 } from 'lucide-react'
 import { relTime } from '@/lib/format'
-import { tokensService, type ApiToken } from '@/services/api.service'
+import {
+  projectsService,
+  tokensService,
+  SCOPE_WORDS,
+  TOKEN_SCOPES,
+  type ApiToken,
+  type TokenScope,
+} from '@/services/api.service'
 import { queryKeys } from '@/constants/query-keys'
 import { errText } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
@@ -19,20 +26,33 @@ export function TokensSection() {
   })
   const [name, setName] = useState('')
   const [created, setCreated] = useState<ApiToken | null>(null)
+  const [limiting, setLimiting] = useState(false)
+  const [scopes, setScopes] = useState<TokenScope[]>(TOKEN_SCOPES.map((s) => s.value))
+  const [apps, setApps] = useState<string[]>([])
   const { copied, copy } = useCopy(1500)
+  const { data: projects = [] } = useQuery({
+    queryKey: queryKeys.apps,
+    queryFn: () => projectsService.list(),
+    enabled: limiting,
+  })
+
+  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
 
   const create = useMutation({
-    mutationFn: () => tokensService.create(name.trim()),
+    mutationFn: () => tokensService.create(name.trim(), limiting ? scopes : [], limiting ? apps : []),
     onSuccess: (t) => {
       setCreated(t)
       setName('')
+      setLimiting(false)
+      setScopes(TOKEN_SCOPES.map((s) => s.value))
+      setApps([])
       qc.invalidateQueries({ queryKey: queryKeys.tokens })
     },
   })
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (name.trim()) create.mutate()
+    if (name.trim() && (!limiting || scopes.length > 0)) create.mutate()
   }
 
   const revoke = async (t: ApiToken) => {
@@ -87,11 +107,46 @@ export function TokensSection() {
             create.reset()
           }}
         />
-        <Button type="submit" size="sm" loading={create.isPending} disabled={!name.trim()}>
+        <Button type="submit" size="sm" loading={create.isPending} disabled={!name.trim() || (limiting && scopes.length === 0)}>
           <Plus className="h-4 w-4" />
           Create
         </Button>
       </form>
+      {!limiting ? (
+        <button
+          type="button"
+          onClick={() => setLimiting(true)}
+          className="text-muted-foreground hover:text-foreground mt-2 cursor-pointer text-xs underline underline-offset-2"
+        >
+          Limit what it can do, or to some projects
+        </button>
+      ) : (
+        <div className="mt-3 grid gap-4 rounded-lg border border-foreground/8 p-3 sm:grid-cols-2">
+          <fieldset className="grid gap-1.5">
+            <legend className="mb-1 text-xs font-medium">It can</legend>
+            {TOKEN_SCOPES.map((s) => (
+              <label key={s.value} className="flex cursor-pointer items-center gap-2 text-xs">
+                <input type="checkbox" checked={scopes.includes(s.value)} onChange={() => setScopes(toggle(scopes, s.value))} />
+                {s.label}
+              </label>
+            ))}
+            {scopes.length === 0 && <p className="text-xs text-danger">Pick at least one.</p>}
+          </fieldset>
+          <fieldset className="grid content-start gap-1.5">
+            <legend className="mb-1 text-xs font-medium">On</legend>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <input type="checkbox" checked={apps.length === 0} onChange={() => setApps([])} />
+              Every project, including new ones
+            </label>
+            {projects.map((p) => (
+              <label key={p.name} className="flex cursor-pointer items-center gap-2 text-xs">
+                <input type="checkbox" checked={apps.includes(p.name)} onChange={() => setApps(toggle(apps, p.name))} />
+                <span className="truncate font-mono">{p.name}</span>
+              </label>
+            ))}
+          </fieldset>
+        </div>
+      )}
       {create.isError && (
         <p className="mt-2 text-xs text-danger">
           {errText(create.error, 'Could not create token.')}
@@ -108,6 +163,12 @@ export function TokensSection() {
                   created {relTime(t.created)} ·{' '}
                   {t.lastUsed ? `last used ${relTime(t.lastUsed)}` : 'never used'}
                 </p>
+                {!!(t.scopes?.length || t.apps?.length) && (
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {t.scopes?.length ? `can use ${t.scopes.map((s) => SCOPE_WORDS[s]).join(', ')}` : 'can do everything'}
+                    {t.apps?.length ? ` · only ${t.apps.join(', ')}` : ''}
+                  </p>
+                )}
               </div>
               <button
                 type="button"

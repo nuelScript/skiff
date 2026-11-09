@@ -184,7 +184,7 @@ func (p *Panel) apiDatabaseTunnel(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-tick.C:
 			// A revoked token loses its open connections too, and a laptop that went away stops holding one.
-			if t, _, ok := resolveToken(token); !ok || t != team {
+			if t, _, _, ok := resolveToken(token); !ok || t != team {
 				return
 			}
 			pingCtx, stop := context.WithTimeout(ctx, tunnelPingTimeout)
