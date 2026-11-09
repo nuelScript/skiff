@@ -663,6 +663,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 	if score := oomScoreFor(src); score != oomProduction {
 		fmt.Fprintf(&b, "oom_score_adj = %d\n", score)
 	}
+	if src.Isolation == "strong" {
+		b.WriteString("isolation = \"strong\"\n")
+	}
 	if strings.TrimSpace(src.Release) != "" {
 		fmt.Fprintf(&b, "release = %s\n", tomlQuote(src.Release))
 	}

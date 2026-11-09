@@ -315,6 +315,14 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	}
 
 	options := config.DecodeRunOptions(cfg.Deploy.RunOptions)
+	runtime := ""
+	if cfg.Deploy.Isolation == "strong" {
+		if !eng.HasRuntime(docker.SandboxRuntime) {
+			ui.Fail("Strong isolation needs gVisor on the server")
+			return fmt.Errorf("install gVisor's runsc and register it with Docker, or turn strong isolation off; see https://docs.useskiff.xyz/backends#isolation")
+		}
+		runtime = docker.SandboxRuntime
+	}
 	var mounts []docker.Mount
 	for _, v := range cfg.Volumes {
 		name := v.DockerName(cfg.Name)
@@ -329,7 +337,7 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 
 	settings := docker.Settings{
 		Memory: cfg.Resources.Memory, CPU: cfg.Resources.CPU, Env: runtimeEnv, Network: network, Volumes: mounts,
-		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300),
+		Options: options, OOMScore: cmp.Or(cfg.Deploy.OOMScoreAdj, 300), Runtime: runtime,
 	}
 
 	// Release command (e.g. migrations) runs once before the new version goes live; on failure abort — the old version keeps serving.

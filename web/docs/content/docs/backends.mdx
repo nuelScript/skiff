@@ -72,6 +72,19 @@ command = "node report.js"
 
 For these apps, `skiff.toml` decides, so the dashboard, the API and `skiff worker` or `skiff job` can't change them. Running a job now still works. A deploy without a `[[workers]]` section stops the app's workers.
 
+## Isolation
+
+Every app runs in its own container. For code you don't fully trust, such as an agent's or a customer's, **strong isolation** runs it under [gVisor](https://gvisor.dev), which gives it a kernel of its own in user space so it never talks to the server's kernel directly. Choose it under **Isolation** in the project's settings, or as `isolation = "strong"` under `[deploy]` in `skiff.toml`. A one-off run can ask for it too, with `"isolation": "strong"`. Strong isolation is slower at heavy disk and network work, and some software that relies on unusual kernel features won't run under it.
+
+It needs gVisor on the server. Installing it restarts Docker, and every app with it, so pick a quiet moment:
+
+```sh title="on your server"
+curl -fsSL https://gvisor.dev/archive.key | gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" > /etc/apt/sources.list.d/gvisor.list
+apt-get update && apt-get install -y runsc
+runsc install && systemctl restart docker
+```
+
 ## Scheduled jobs
 
 A job runs a command from your app's build in a one-off container with the app's environment and limits. It runs on a cron schedule, when its webhook is called, for each new file in a bucket, or any mix of those.

@@ -177,6 +177,8 @@ type Deploy struct {
 	UDPPort int `toml:"udp_port"`
 	// OOMScoreAdj orders who gives way when memory runs out; the dashboard sets it higher for previews.
 	OOMScoreAdj int `toml:"oom_score_adj"`
+	// Isolation is "strong" to run the app under gVisor's sandbox, for code you don't trust; empty is Docker's usual isolation.
+	Isolation string `toml:"isolation"`
 }
 
 // ValidateHealth checks a health-check path and timeout (seconds, 0 for the default).
@@ -315,6 +317,9 @@ func (c *Config) applyDefaults() {
 }
 
 func (c *Config) validate() error {
+	if c.Deploy.Isolation != "" && c.Deploy.Isolation != "strong" {
+		return fmt.Errorf(`[deploy] isolation is either "strong" or left out`)
+	}
 	if c.Deploy.UDPPort < 0 || c.Deploy.UDPPort > 65535 {
 		return fmt.Errorf("[deploy] udp_port must be a port from 1 to 65535")
 	}
