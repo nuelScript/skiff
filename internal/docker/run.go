@@ -259,8 +259,13 @@ func (e *Engine) RemoveNetwork(name string) error {
 	return nil
 }
 
-func (e *Engine) ConnectNetwork(network, container string) error {
-	out, err := e.command("network", "connect", network, container).CombinedOutput()
+// ConnectNetwork joins a running container to a network, under extra names there when aliases are given.
+func (e *Engine) ConnectNetwork(network, container string, aliases ...string) error {
+	args := []string{"network", "connect"}
+	for _, a := range aliases {
+		args = append(args, "--alias", a)
+	}
+	out, err := e.command(append(args, network, container)...).CombinedOutput()
 	if err != nil {
 		return cmdErr(out, err)
 	}

@@ -18,8 +18,15 @@ func (p *Panel) recoverDatabases() {
 	for _, name := range p.eng.ContainersLabelled("skiff.kind=" + recoveryCopyKind) {
 		_ = p.eng.Remove(name)
 	}
+	var replaced []dbRow
+	defer func() {
+		for _, d := range replaced {
+			p.resyncReplicas(d)
+		}
+	}()
 	for _, d := range allDatabases() {
 		if p.eng.State(d.Container) != "missing" {
+			p.recoverReplicas(d)
 			continue
 		}
 		freshVolume := !p.eng.VolumeExists(d.volume())
@@ -36,8 +43,11 @@ func (p *Panel) recoverDatabases() {
 		}
 		log.Printf("skiff: recreated missing database %s", d.Name)
 		if !freshVolume {
+			p.recoverReplicas(d)
 			continue
 		}
+		// Whatever comes back next is other data than the replicas copied.
+		replaced = append(replaced, d)
 		if fromHistory {
 			log.Printf("skiff: recovered %s from its offsite history", d.Name)
 			recordAudit(d.Team, AuditEntry{Actor: "skiff", Action: "backup.restore", Target: d.Name, Detail: "recovered from offsite history"})

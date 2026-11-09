@@ -284,6 +284,12 @@ CREATE TABLE IF NOT EXISTS databases (
   alias       TEXT NOT NULL DEFAULT '',
   preview_app TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS db_replicas (
+  id        TEXT PRIMARY KEY,
+  db_id     TEXT NOT NULL,
+  container TEXT NOT NULL,
+  created   INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS db_attachments (
   db_id TEXT NOT NULL,
   app   TEXT NOT NULL,

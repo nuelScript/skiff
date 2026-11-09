@@ -417,6 +417,7 @@ func (p *Panel) recoverToTime(d dbRow, at int64) error {
 	if err := p.takePITRBase(d); err != nil {
 		log.Printf("skiff: base backup of %s after recovery failed: %v", d.Name, err)
 	}
+	p.resyncReplicas(d)
 	return nil
 }
 
