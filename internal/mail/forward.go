@@ -45,6 +45,8 @@ type Forwarder struct {
 	Dial     func(ctx context.Context, network, addr string) (net.Conn, error)
 	Port     string
 	Logf     func(format string, args ...any)
+	// Local delivers to a destination that isn't an address, such as an agent's inbox; such destinations are dropped without it.
+	Local func(ctx context.Context, dst, rcpt string, data []byte) error
 }
 
 type Recipient struct {
@@ -103,6 +105,25 @@ func (f *Forwarder) logf(format string, args ...any) {
 func (f *Forwarder) Forward(ctx context.Context, env Envelope) error {
 	var delivered int
 	var failed error
+	if f.Local != nil {
+		seen := map[string]bool{}
+		for _, rc := range env.Recipients {
+			for _, dst := range rc.Destinations {
+				if strings.Contains(dst, "@") || seen[dst] {
+					continue
+				}
+				seen[dst] = true
+				if err := f.Local(ctx, dst, rc.Addr, env.Data); err != nil {
+					f.logf("mail: delivery to %s failed: %v", strings.SplitN(dst, ":", 3)[:2], err)
+					if failed == nil || IsTemporary(err) {
+						failed = err
+					}
+					continue
+				}
+				delivered++
+			}
+		}
+	}
 	for _, j := range f.plan(env, time.Now()) {
 		if err := f.send(ctx, j); err != nil {
 			f.logf("mail: forward to %s failed: %v", strings.Join(j.to, ","), err)

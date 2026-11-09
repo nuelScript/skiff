@@ -6,6 +6,9 @@ export const splitInboxes = (v: string) =>
     .map((s) => s.trim())
     .filter(Boolean)
 
+// isAgentInbox is a forward to an agent's inbox rather than an address.
+export const isAgentInbox = (s: string) => /^agent:[a-z0-9][a-z0-9-]*$/i.test(s)
+
 export const mailForwardSchema = z.object({
   alias: z
     .string()
@@ -29,8 +32,8 @@ export const mailForwardSchema = z.object({
     .refine((v) => splitInboxes(v).length > 0, 'Add at least one inbox')
     .refine((v) => splitInboxes(v).length <= 10, 'Up to 10 inboxes')
     .refine(
-      (v) => splitInboxes(v).every((s) => z.email().safeParse(s).success),
-      'Use valid email addresses, separated by commas',
+      (v) => splitInboxes(v).every((s) => isAgentInbox(s) || z.email().safeParse(s).success),
+      'Use valid email addresses, or agent:name, separated by commas',
     ),
 })
 

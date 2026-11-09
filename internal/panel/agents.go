@@ -214,6 +214,9 @@ func (p *Panel) handleAgentHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source, kind := "webhook", r.Header.Get("X-Skiff-Event")
+	if r.Header.Get("X-Skiff-Source") == "email" {
+		source = "email"
+	}
 	if gh := r.Header.Get("X-GitHub-Event"); gh != "" {
 		if gh == "ping" {
 			writeJSON(w, map[string]string{"ok": "pong"})

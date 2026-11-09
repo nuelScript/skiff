@@ -234,7 +234,7 @@ function DomainCard({
                   key={d}
                   className="text-foreground/80 max-w-full truncate rounded-md border border-foreground/8 bg-foreground/3 px-2 py-0.5 font-mono text-xs"
                 >
-                  {d}
+                  {d.startsWith('agent:') ? `${d.slice(6)}'s inbox` : d}
                 </span>
               ))}
             </div>
@@ -383,7 +383,8 @@ function AddComposer({
         ) : (
           <p className="text-muted-foreground text-xs">
             Use <span className="font-mono">*</span> to catch every address on the domain. Separate
-            several inboxes with commas.
+            several inboxes with commas, and use <span className="font-mono">agent:name</span> to put
+            mail in an agent's inbox.
           </p>
         )}
         <Button size="sm" type="submit" loading={form.formState.isSubmitting}>
