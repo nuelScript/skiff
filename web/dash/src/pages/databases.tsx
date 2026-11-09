@@ -259,7 +259,7 @@ function DatabaseCard({
       className="animate-rise rounded-xl border border-foreground/8 bg-linear-to-b from-foreground/2 to-transparent p-4"
       style={{ animationDelay: delay + 'ms' }}
     >
-      <div className="flex items-center gap-3.5">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-foreground/10 bg-linear-to-br from-foreground/[0.07] to-transparent">
           <Database className="h-4 w-4 text-foreground/55" />
         </span>
