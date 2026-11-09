@@ -68,6 +68,7 @@ var sealedColumns = []struct {
 	{"buckets", []string{"access_key", "secret_key"}},
 	{"users", []string{"totp_secret", "totp_pending"}},
 	{"stacks", []string{"vars"}},
+	{"sources", []string{"build_args", "mounted_files"}},
 }
 
 const (

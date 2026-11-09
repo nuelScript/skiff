@@ -229,6 +229,13 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 			p.Notes = append(p.Notes, name+": builds from source, so image is ignored")
 			it.Image = ""
 		}
+		if s.Build != nil {
+			for _, a := range s.Build.Args {
+				if k, _, _ := strings.Cut(a, "="); secretName.MatchString(k) {
+					p.Notes = append(p.Notes, fmt.Sprintf("%s: build arg %s stays readable in the built image's history. Pass a secret as an environment variable instead", name, k))
+				}
+			}
+		}
 		for _, d := range s.DependsOn {
 			if _, ok := f.Services[d]; !ok {
 				if slices.Contains(f.Profiled, d) {
@@ -393,6 +400,9 @@ func isSystemPath(path string) bool {
 		return path == root || strings.HasPrefix(path, root+"/")
 	})
 }
+
+// secretName matches names that usually hold a secret.
+var secretName = regexp.MustCompile(`(?i)secret|token|passw|api_?key|private_?key|credential`)
 
 var fileLike = regexp.MustCompile(`\.[A-Za-z0-9]{1,8}$`)
 
