@@ -128,7 +128,7 @@ func SelfUpdate(opts SelfUpdateOpts) error {
 	}
 
 	log("→ health-checking :%s", next)
-	if !healthy(next, 60*time.Second) {
+	if !healthy("http://127.0.0.1:"+next, startTimeout, unitRunning("skiff-panel@"+next)) {
 		_, _ = run("systemctl", "stop", "skiff-panel@"+next)
 		restoreBinary(bin)
 		return fail("new panel never became healthy — rolled back, still serving :%s", active)
@@ -250,19 +250,40 @@ func restoreBinary(dst string) {
 	}
 }
 
-func healthy(port string, timeout time.Duration) bool {
+// startTimeout bounds a new panel's first start. Some upgrades do one-off work before the panel listens, like encrypting stored secrets and rewriting the database, and rolling back part way through would leave the old binary on a changed database.
+const startTimeout = 15 * time.Minute
+
+var healthEvery = 2 * time.Second
+
+// healthy waits for the panel at base to answer, for as long as its process keeps running. It gives up as soon as the process exits or restarts.
+func healthy(base string, timeout time.Duration, running func() bool) bool {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 3 * time.Second}
 	for time.Now().Before(deadline) {
-		if resp, err := client.Get("http://127.0.0.1:" + port + "/api/me"); err == nil {
+		if resp, err := client.Get(base + "/api/me"); err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return true
 			}
 		}
-		time.Sleep(2 * time.Second)
+		if !running() {
+			return false
+		}
+		time.Sleep(healthEvery)
 	}
 	return false
+}
+
+// unitRunning reports whether a systemd unit is up and hasn't been restarted since it was started, so a crash between two checks still counts.
+func unitRunning(unit string) func() bool {
+	return func() bool {
+		out, err := run("systemctl", "show", "-p", "ActiveState", "-p", "NRestarts", unit)
+		if err != nil {
+			return false
+		}
+		s := string(out)
+		return strings.Contains(s, "ActiveState=active") && strings.Contains(s, "NRestarts=0\n")
+	}
 }
 
 func run(name string, args ...string) ([]byte, error) {
