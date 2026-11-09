@@ -305,6 +305,10 @@ type Database struct {
 	// VerifiedAt is when a backup last restored cleanly. CheckFailed means a later check didn't.
 	VerifiedAt  int64 `json:"verifiedAt,omitempty"`
 	CheckFailed bool  `json:"checkFailed,omitempty"`
+	// CanReplicate says read replicas can be added. ReadURL reaches whichever replica is up, and attached apps get it as DATABASE_READ_URL.
+	CanReplicate bool      `json:"canReplicate,omitempty"`
+	Replicas     []Replica `json:"replicas,omitempty"`
+	ReadURL      string    `json:"readUrl,omitempty"`
 }
 
 type dbRow struct {
@@ -459,6 +463,11 @@ func (p *Panel) toDatabase(d dbRow) Database {
 		out.Disk = diskOf(folder, listDisks())
 	}
 	out.VerifiedAt, out.CheckFailed = restoreCheckSummary(d.ID)
+	if out.CanReplicate = replicasSupported(d); out.CanReplicate {
+		if out.Replicas = p.replicaViews(d); len(out.Replicas) > 0 {
+			out.ReadURL = p.readURL(d)
+		}
+	}
 	if d.Public && d.PublicPort > 0 {
 		if ip := serverPublicIP(p.domain); ip != "" {
 			out.PublicURL = e.url(ip, d.PublicPort, d.Username, d.Password, d.DBName, e.tls != nil)
@@ -694,6 +703,10 @@ func (p *Panel) removeDatabase(d dbRow) {
 			deleteEnvVar(app, v)
 		}
 	}
+	for _, r := range listReplicas(d.ID) {
+		p.stopReplica(d, r, true)
+	}
+	_, _ = sqlDB.Exec(`DELETE FROM db_replicas WHERE db_id=?`, d.ID)
 	_ = p.eng.Stop(d.Container)
 	_ = p.eng.Remove(d.Container)
 	_ = p.eng.RemoveVolume(d.volume())
@@ -711,7 +724,16 @@ func (p *Panel) attachDatabase(d dbRow, app string) error {
 	if err := upsertEnvVar(app, e.envVar, e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false), false); err != nil {
 		return err
 	}
-	return attachDB(d.ID, app, e.envVar)
+	if err := attachDB(d.ID, app, e.envVar); err != nil {
+		return err
+	}
+	if replicas := listReplicas(d.ID); len(replicas) > 0 {
+		for _, r := range replicas {
+			p.linkReplica(d, r)
+		}
+		return upsertEnvVar(app, replicaEnvVar, p.readURL(d), false)
+	}
+	return nil
 }
 
 // detachDatabase reports whether the app had the database attached.
@@ -722,6 +744,12 @@ func (p *Panel) detachDatabase(d dbRow, src Source) bool {
 	}
 	deleteEnvVar(src.App, v)
 	p.unlinkResource(d.Container, d.network(), appNetwork(src), dbAttachments(d.ID))
+	if replicas := listReplicas(d.ID); len(replicas) > 0 {
+		deleteEnvVar(src.App, replicaEnvVar)
+		for _, r := range replicas {
+			p.unlinkResource(r.Container, d.network(), appNetwork(src), dbAttachments(d.ID))
+		}
+	}
 	return true
 }
 

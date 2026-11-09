@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/docker"
@@ -79,6 +80,19 @@ func (p *Panel) preparePreviewData(ctx context.Context, src Source, logln func(s
 		}
 		if err := p.makePreviewDatabase(ctx, src, parent.PreviewData, source, a.Var, logln); err != nil {
 			return fmt.Errorf("%s: %w", source.Name, err)
+		}
+	}
+	return previewReads(src, parent)
+}
+
+// previewReads points a preview's reads at its own copy, which has no replicas, rather than the read address it inherits from its project.
+func previewReads(src, parent Source) error {
+	if !slices.ContainsFunc(getEnv(parent.App), func(e EnvVar) bool { return e.Key == replicaEnvVar }) {
+		return nil
+	}
+	for _, a := range appDatabaseAttachments(src.App) {
+		if d, ok := getDB(a.ID); ok && d.PreviewApp == src.App && a.Var == dbEngines["postgres"].envVar && d.Engine == "postgres" {
+			return upsertEnvVar(src.App, replicaEnvVar, dbEngines[d.Engine].url(d.Host, d.Port, d.Username, d.Password, d.DBName, false), false)
 		}
 	}
 	return nil

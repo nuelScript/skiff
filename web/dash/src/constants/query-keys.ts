@@ -58,6 +58,7 @@ export const queryKeys = {
   registry: (app: string) => ['registry', app] as const,
   backups: (dbId: string) => ['backups', dbId] as const,
   pitr: (dbId: string) => ['pitr', dbId] as const,
+  replicas: (dbId: string) => ['replicas', dbId] as const,
   deploys: (app: string | null) => ['deploys', app] as const,
   deploysProject: (app: string, filters: object) => ['deploys', app, 'project', filters] as const,
   deployOne: (app: string, id: string) => ['deploys', app, 'one', id] as const,

@@ -111,6 +111,9 @@ func (p *Panel) releaseAttachments(app string) {
 		}
 		detachDB(a.ID, app)
 		p.unlinkResource(d.Container, d.network(), net, dbAttachments(a.ID))
+		for _, r := range listReplicas(d.ID) {
+			p.unlinkResource(r.Container, d.network(), net, dbAttachments(a.ID))
+		}
 	}
 	for _, b := range allBuckets() {
 		if !slices.Contains(bucketAttachments(b.ID), app) {

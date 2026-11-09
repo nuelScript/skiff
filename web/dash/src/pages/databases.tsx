@@ -22,12 +22,18 @@ import {
   Archive,
   Download,
   RotateCcw,
+  Layers,
 } from 'lucide-react'
 import { useApps } from '@/hooks/use-apps'
 import { useDatabases } from '@/hooks/use-databases'
 import { ConsoleTerminal } from '@/components/console-terminal'
 import { UnmanagedDatabases } from '@/components/unmanaged-databases'
-import { databasesService, type Backup, type PitrStatus } from '@/services/api.service'
+import {
+  databasesService,
+  type Backup,
+  type PitrStatus,
+  type ReplicaStatus,
+} from '@/services/api.service'
 import { useConfirm } from '@/providers/confirm-provider'
 import { Button } from '@/components/ui/button'
 import {
@@ -259,11 +265,11 @@ function DatabaseCard({
       className="animate-rise rounded-xl border border-foreground/8 bg-linear-to-b from-foreground/2 to-transparent p-4"
       style={{ animationDelay: delay + 'ms' }}
     >
-      <div className="flex items-center gap-3.5">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-foreground/10 bg-linear-to-br from-foreground/[0.07] to-transparent">
           <Database className="h-4 w-4 text-foreground/55" />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-40 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate font-mono text-sm font-medium">{db.name}</p>
             <span className={'flex items-center gap-1.5 text-[11px] ' + meta.accent}>
@@ -379,6 +385,8 @@ function DatabaseCard({
             </div>
           )}
         </div>
+
+        {db.canReplicate && <ReplicasSection db={db} />}
 
         <div>
           <p className="text-muted-foreground mb-1.5 font-mono text-[10px] tracking-wider uppercase">
@@ -739,6 +747,147 @@ function PitrSection({ db, onRecovered }: { db: Db; onRecovered: () => void }) {
           </div>
         </div>
       ) : null}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+    </div>
+  )
+}
+
+const MAX_REPLICAS = 3
+
+function replicaPhase(s: ReplicaStatus | undefined, state: string) {
+  if (state !== 'running') return { text: 'Stopped', tone: 'text-warning' }
+  switch (s?.phase) {
+    case 'streaming':
+      if (s.lagBytes === 0) return { text: 'Caught up', tone: 'text-success' }
+      return {
+        text: s.lagSeconds >= 1 ? `${Math.round(s.lagSeconds)}s behind` : `${fmtBytes(s.lagBytes)} behind`,
+        tone: s.lagSeconds >= 30 ? 'text-warning' : 'text-success',
+      }
+    case 'catching-up':
+      return { text: 'Catching up…', tone: 'text-muted-foreground' }
+    case 'lost':
+      return { text: 'Fell too far behind. Remove it and add a new one.', tone: 'text-danger' }
+    default:
+      return { text: 'Copying data…', tone: 'text-muted-foreground' }
+  }
+}
+
+function ReplicasSection({ db }: { db: Db }) {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const replicas = db.replicas ?? []
+  const { data: status } = useQuery<ReplicaStatus[]>({
+    queryKey: queryKeys.replicas(db.id),
+    queryFn: () => databasesService.replicaStatus(db.id),
+    enabled: replicas.length > 0,
+    refetchInterval: (q) =>
+      q.state.data?.every((s) => s.phase === 'streaming') ? 15000 : 3000,
+  })
+  const full = replicas.length >= MAX_REPLICAS
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    setError('')
+    setBusy(label)
+    try {
+      await fn()
+      await qc.invalidateQueries({ queryKey: queryKeys.databases })
+      await qc.invalidateQueries({ queryKey: queryKeys.replicas(db.id) })
+    } catch (err) {
+      setError(errText(err, 'Something went wrong.'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const remove = async (id: string) => {
+    const last = replicas.length === 1
+    const ok = await confirm({
+      title: 'Remove this read replica?',
+      description: last
+        ? `It's the last one, so attached apps lose DATABASE_READ_URL. Redeploy them so their reads go back to ${db.name} itself.`
+        : 'Reads through DATABASE_READ_URL carry on at the other replicas.',
+      confirmText: 'Remove',
+      destructive: true,
+    })
+    if (ok) run(id, () => databasesService.removeReplica(db.id, id))
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Layers className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+        <div>
+          <p className="text-xs font-medium">Read replicas</p>
+          <p className="text-muted-foreground text-[11px]">
+            Copies that follow every write, so reads and reports don't slow the database down.
+            Attached apps get <code className="font-mono">DATABASE_READ_URL</code>.
+          </p>
+        </div>
+      </div>
+      {replicas.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {db.readUrl && (
+            <div>
+              <p className="text-muted-foreground mb-1 font-mono text-[10px] tracking-wider uppercase">
+                Read URL
+              </p>
+              <Copyable text={db.readUrl} />
+            </div>
+          )}
+          <ul className="divide-y divide-foreground/5 rounded-md border border-foreground/8">
+            {replicas.map((r) => {
+              const p = replicaPhase(
+                status?.find((s) => s.id === r.id),
+                r.state,
+              )
+              return (
+                <li key={r.id} className="flex items-center gap-3 px-2.5 py-1.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs" title={r.name}>
+                    {r.name.replace(db.host + '-', '')}
+                  </span>
+                  <span className={'shrink-0 text-[11px] ' + p.tone}>{p.text}</span>
+                  <button
+                    onClick={() => remove(r.id)}
+                    disabled={busy === r.id}
+                    aria-label={`Remove replica ${r.name}`}
+                    className="text-muted-foreground shrink-0 cursor-pointer hover:text-danger disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {db.attached.length > 0 && (
+            <p className="text-muted-foreground text-[11px]">
+              Redeploy attached apps to start using DATABASE_READ_URL.
+            </p>
+          )}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-muted-foreground h-7 gap-1.5 border-dashed bg-transparent text-xs"
+          disabled={full || busy === 'add' || db.state !== 'running'}
+          onClick={() => run('add', () => databasesService.addReplica(db.id))}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {busy === 'add' ? 'Adding…' : 'Add replica'}
+        </Button>
+        {full ? (
+          <span className="text-muted-foreground text-[11px]">
+            That's the most a database can have ({MAX_REPLICAS}).
+          </span>
+        ) : db.state !== 'running' ? (
+          <span className="text-muted-foreground text-[11px]">
+            Start the database to add one.
+          </span>
+        ) : null}
+      </div>
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </div>
   )

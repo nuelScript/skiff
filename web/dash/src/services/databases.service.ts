@@ -53,6 +53,23 @@ export type Database = {
   publicUrl?: string
   verifiedAt?: number
   checkFailed?: boolean
+  canReplicate?: boolean
+  replicas?: Replica[]
+  readUrl?: string
+}
+
+export type Replica = {
+  id: string
+  name: string
+  state: string
+  created: number
+}
+
+export type ReplicaStatus = {
+  id: string
+  phase: 'copying' | 'catching-up' | 'streaming' | 'lost' | 'stopped'
+  lagBytes: number
+  lagSeconds: number
 }
 
 export type PitrStatus = {
@@ -96,6 +113,18 @@ class DatabasesService extends BaseService {
     return this.post<Database>('/databases/public', undefined, {
       params: { id, on: on ? '1' : '0' },
     })
+  }
+
+  replicaStatus(id: string) {
+    return this.get<ReplicaStatus[]>('/databases/replicas', { params: { id } })
+  }
+
+  addReplica(id: string) {
+    return this.post<Database>('/databases/replicas', undefined, { params: { id } })
+  }
+
+  removeReplica(id: string, replica: string) {
+    return this.delete<Database>('/databases/replicas', { params: { id, replica } })
   }
 
   detach(id: string, app: string) {

@@ -49,10 +49,27 @@ Public TCP and UDP ports start at 1024. Ports under that are for well-known serv
 
 ## The rest of a backend
 
-- **Databases:** managed Postgres (with pgvector or TimescaleDB if you like), MySQL, MongoDB, Redis and ClickHouse, with the connection URL added for you, all with [daily backups](/backups). ClickHouse's URL, in `CLICKHOUSE_URL`, is its HTTP interface on port 8123, which its clients for Python, JavaScript and Go speak.
+- **Databases:** managed Postgres (with pgvector or TimescaleDB if you like, and [read replicas](#read-replicas)), MySQL, MongoDB, Redis and ClickHouse, with the connection URL added for you, all with [daily backups](/backups). ClickHouse's URL, in `CLICKHOUSE_URL`, is its HTTP interface on port 8123, which its clients for Python, JavaScript and Go speak.
 - **Migrations:** a release command runs before each new version goes live, and a failure stops the deploy.
 - **Background work:** workers and scheduled jobs run from your app's image.
 - **Real-time:** WebSockets and server-sent events work. When a new version goes live, new requests go to it, and the old version keeps running until its open requests finish, for up to 5 minutes. Set `drain_timeout` under `[deploy]` in `skiff.toml` to change that (in seconds, up to 3600, or 0 to stop it straight away). After that, the app gets a stop signal and 30 seconds to exit, so clients holding a connection open longer still need to reconnect.
+
+## Read replicas
+
+A Postgres database Skiff created can have up to three read replicas: copies that follow every write within a moment, for reads, reports and dashboards that shouldn't slow it down. Click **Add replica** on the database under **Databases**. A replica copies the data first, then shows how far behind it is.
+
+Apps attached to the database get `DATABASE_READ_URL` beside `DATABASE_URL` on their next deploy. It's one address for all the replicas, and lookups are spread across the ones running. Replicas refuse writes, so write through `DATABASE_URL` and read through `DATABASE_READ_URL` when it's set:
+
+```js
+const reads = new Pool({ connectionString: process.env.DATABASE_READ_URL ?? process.env.DATABASE_URL })
+```
+
+- A replica can be a moment behind, so read what a request just wrote from `DATABASE_URL`.
+- Previews read from their own copy of the data, never from the project's replicas.
+- The database keeps up to 2 GB of history for a replica that stops reading. Past that, the replica shows it fell too far behind: remove it and add a new one.
+- Returning the database to an earlier time, or recovering it onto a new server, copies each replica again.
+- Replicas run on the same server. They spread the reading, but don't keep the database up if the server goes down.
+- Removing the last replica takes `DATABASE_READ_URL` away. Redeploy attached apps straight after, because until then they still try the read address.
 
 ## Workers and jobs in skiff.toml
 
@@ -230,4 +247,4 @@ If the run crashes, runs out of memory or the server restarts, the retry starts 
 ## What Skiff doesn't do yet
 
 - **UDP port ranges.** A public UDP port is one port. Software that needs a range, like some WebRTC servers, doesn't fit yet.
-- **More than one server.** Replicas and autoscaling work within your server. There's no failover if it goes down, and no database replicas.
+- **More than one server.** Replicas and autoscaling work within your server. There's no failover if it goes down, and database replicas run beside the database they copy.
