@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -224,8 +225,13 @@ func retryWait(attempt int) time.Duration {
 	return d
 }
 
+// runSlots bounds how many job runs go at once across the server, so catching up after downtime doesn't start every job together. A run waits for a slot before it's recorded as running, so its timeout starts when it really starts.
+var runSlots = make(chan struct{}, max(4, runtime.NumCPU()))
+
 // attemptJob runs the job once and records it as a run: the queued run id when there is one, otherwise a new run. input is what started it, such as a webhook's body or a file's key.
 func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, input string) (string, string, error) {
+	runSlots <- struct{}{}
+	defer func() { <-runSlots }()
 	if id == 0 {
 		id = startRun(j, trigger, attempt, runRunning)
 		if input != "" {
