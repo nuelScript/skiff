@@ -70,7 +70,7 @@ export function useUnmanagedDatabases() {
   const qc = useQueryClient()
   const { data: found = [] } = useQuery<UnmanagedDatabase[]>({
     queryKey: queryKeys.databasesUnmanaged,
-    queryFn: () => databasesService.unmanaged(),
+    queryFn: async () => (await databasesService.unmanaged()) ?? [],
     refetchInterval: 30000,
   })
   const adopt = useMutation({

@@ -98,7 +98,7 @@ func dataVolume(engine string, rt docker.ContainerRuntime) string {
 func (p *Panel) unmanagedDatabases() []unmanagedDB {
 	names, err := p.eng.RunningContainers()
 	if err != nil {
-		return nil
+		return []unmanagedDB{}
 	}
 	known := map[string]bool{}
 	for _, d := range allDatabases() {
