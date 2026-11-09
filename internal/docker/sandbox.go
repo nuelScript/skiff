@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"os/exec"
 	"path"
 	"slices"
@@ -206,4 +207,29 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	return b.Buffer.Write(p)
+}
+
+// BrowserImage is the sandbox image for browsing: Microsoft's Playwright image has the browsers and their libraries, and the Python package of the same version is added here once per server.
+const (
+	browserBase       = "mcr.microsoft.com/playwright/python:v1.64.1-noble"
+	browserPlaywright = "1.64.1"
+	BrowserImage      = "skiff-sandbox-browser:" + browserPlaywright
+)
+
+// EnsureBrowserImage builds BrowserImage if this server doesn't have it yet.
+func (e *Engine) EnsureBrowserImage(ctx context.Context) error {
+	if e.ImageExists(BrowserImage) {
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "skiff-browser-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	var out bytes.Buffer
+	dockerfile := "FROM " + browserBase + "\nRUN pip install --no-cache-dir playwright==" + browserPlaywright + "\n"
+	if err := e.BuildFromDockerfile(ctx, BrowserImage, dockerfile, dir, false, BuildOptions{}, &out); err != nil {
+		return fmt.Errorf("couldn't prepare the browser image: %s", lastLine(out.Bytes()))
+	}
+	return nil
 }

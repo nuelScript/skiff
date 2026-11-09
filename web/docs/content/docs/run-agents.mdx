@@ -84,7 +84,7 @@ r = requests.post(base + "/sandboxes", headers=auth, timeout=960,
 png = base64.b64decode(r["files"]["front.png"])
 ```
 
-The first browser sandbox on a server downloads the image, about 2 GB, which can take a few minutes; that wait doesn't count against the sandbox's timeout.
+The first browser sandbox on a server prepares its image from Microsoft's, about 2 GB, which can take a few minutes; that wait doesn't count against the sandbox's timeout.
 
 An agent runs up to three sandboxes at once. The project's **Overview** lists the last few with their output, and **Stop agent** ends any that are running.
 

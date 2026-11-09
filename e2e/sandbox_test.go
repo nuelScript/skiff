@@ -86,8 +86,11 @@ func TestBrowserSandbox(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	t.Cleanup(func() { eng.RemoveSandboxes("e2e-browser") })
+	if err := eng.EnsureBrowserImage(ctx); err != nil {
+		t.Fatal(err)
+	}
 	res, err := eng.Sandbox(ctx, docker.SandboxSpec{
-		App: "e2e-browser", Image: "mcr.microsoft.com/playwright/python:v1.64.1-noble", Memory: "2g", CPU: "1", ShmSize: "1g",
+		App: "e2e-browser", Image: docker.BrowserImage, Memory: "2g", CPU: "1", ShmSize: "1g",
 		Command: "python shot.py",
 		Files: map[string][]byte{"shot.py": []byte(`from playwright.sync_api import sync_playwright
 with sync_playwright() as p:

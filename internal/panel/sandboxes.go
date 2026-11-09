@@ -17,9 +17,7 @@ import (
 
 // A sandbox is a throwaway container an agent asks for to run code it wrote: no network unless asked, no privileges, removed when the command ends.
 const (
-	sandboxDefaultImage = "python:3.12-alpine"
-	// sandboxBrowserImage has Python, Playwright and its browsers ready, for an agent that needs to use the web like a person.
-	sandboxBrowserImage   = "mcr.microsoft.com/playwright/python:v1.64.1-noble"
+	sandboxDefaultImage   = "python:3.12-alpine"
 	sandboxBrowserMemory  = "2g"
 	sandboxBrowserShm     = "1g"
 	sandboxDefaultTimeout = 2 * time.Minute
@@ -63,7 +61,7 @@ func sandboxSpec(app string, req sandboxRequest) (docker.SandboxSpec, time.Durat
 	spec := docker.SandboxSpec{App: app, Image: req.Image, Command: req.Command, Internet: req.Internet,
 		Memory: sandboxMemory, CPU: sandboxCPU, Files: map[string][]byte{}}
 	if req.Browser {
-		spec.Image = cmp.Or(spec.Image, sandboxBrowserImage)
+		spec.Image = cmp.Or(spec.Image, docker.BrowserImage)
 		spec.Memory, spec.ShmSize, spec.Internet = sandboxBrowserMemory, sandboxBrowserShm, true
 	}
 	if spec.Image == "" {
@@ -154,6 +152,16 @@ func (p *Panel) runSandbox(w http.ResponseWriter, r *http.Request, a aiApp) {
 	defer stop()
 
 	started := time.Now()
+	if spec.Image == docker.BrowserImage {
+		// The first browser sandbox on a server builds the image; that wait isn't the sandbox's own time.
+		buildCtx, cancelBuild := context.WithTimeout(r.Context(), 15*time.Minute)
+		err := p.eng.EnsureBrowserImage(buildCtx)
+		cancelBuild()
+		if err != nil {
+			gatewayError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
 	id := recordSandboxStart(a.App, spec, started)
 	res, err := p.eng.Sandbox(ctx, spec)
 	out := sandboxResponse{ID: id, ExitCode: res.ExitCode, Output: res.Output, Truncated: res.Truncated,
