@@ -1,3 +1,4 @@
+import type { MoveState } from '@/services/disks.service'
 import { BaseService } from '@/services/base.service'
 import type { Deploy } from '@/services/deploys.service'
 
@@ -179,6 +180,8 @@ export type Volume = {
   size: number
   attached: boolean
   budget: number
+  disk?: string
+  move?: MoveState
 }
 
 export type PreviewDataMode = '' | 'empty' | 'copy'
@@ -412,8 +415,8 @@ class ProjectsService extends BaseService {
     return this.get<Volumes>('/volumes', { params: { app } })
   }
 
-  addVolume(app: string, name: string, path: string) {
-    return this.post('/volumes', { name, path }, { params: { app } })
+  addVolume(app: string, name: string, path: string, disk = '') {
+    return this.post('/volumes', { name, path, disk }, { params: { app } })
   }
 
   setVolumeBudget(app: string, name: string, budget: number) {

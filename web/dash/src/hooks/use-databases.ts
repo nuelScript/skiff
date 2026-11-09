@@ -23,8 +23,8 @@ export function useDatabases() {
   const reload = useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.databases }), [qc])
 
   const create = useCallback(
-    async (engine: NewDbEngine, name: string) => {
-      await databasesService.create(engine, name)
+    async (engine: NewDbEngine, name: string, disk = '') => {
+      await databasesService.create(engine, name, disk)
       reload()
     },
     [reload],

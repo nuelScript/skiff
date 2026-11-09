@@ -2,6 +2,8 @@ package docker
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -20,9 +22,9 @@ func (e *Engine) EnsureAppVolume(volume, app, name string) error {
 	return err
 }
 
-// EnsureAppVolumeFor is EnsureAppVolume for a container that runs image as user (empty means the image's own user). A new volume is handed to that user, as Docker only does when the image already has the folder, so an image that doesn't run as root can write to it.
-func (e *Engine) EnsureAppVolumeFor(volume, app, name, image, user string) error {
-	created, err := e.ensureAppVolume(volume, app, name)
+// EnsureAppVolumeFor is EnsureAppVolume for a container that runs image as user (empty means the image's own user), creating a new volume in folder when it's set. A new volume is handed to that user, as Docker only does when the image already has the folder, so an image that doesn't run as root can write to it.
+func (e *Engine) EnsureAppVolumeFor(volume, app, name, image, user, folder string) error {
+	created, err := e.ensureAppVolumeIn(volume, app, name, folder)
 	if err != nil || !created {
 		return err
 	}
@@ -33,15 +35,20 @@ func (e *Engine) EnsureAppVolumeFor(volume, app, name, image, user string) error
 }
 
 func (e *Engine) ensureAppVolume(volume, app, name string) (created bool, err error) {
+	return e.ensureAppVolumeIn(volume, app, name, "")
+}
+
+func (e *Engine) ensureAppVolumeIn(volume, app, name, folder string) (created bool, err error) {
 	if e.VolumeExists(volume) {
 		return false, nil
 	}
-	out, err := e.command("volume", "create",
-		"--label", labelVolumeApp+"="+app,
-		"--label", labelVolumeName+"="+name,
-		volume).CombinedOutput()
-	if err != nil {
-		return false, cmdErr(out, err)
+	if folder != "" {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			return false, fmt.Errorf("can't make the volume's folder on its disk: %w", err)
+		}
+	}
+	if err := e.CreateVolume(volume, folder, map[string]string{labelVolumeApp: app, labelVolumeName: name}); err != nil {
+		return false, err
 	}
 	return true, nil
 }

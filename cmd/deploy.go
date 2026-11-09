@@ -327,7 +327,11 @@ func releaseImage(eng *docker.Engine, cfg *config.Config, spec releaseSpec) erro
 	var mounts []docker.Mount
 	for _, v := range cfg.Volumes {
 		name := v.DockerName(cfg.Name)
-		if err := eng.EnsureAppVolumeFor(name, v.Holder(cfg.Name), v.Name, image, options.User); err != nil {
+		folder := ""
+		if v.Disk != "" {
+			folder = config.DiskFolder(v.Disk, name)
+		}
+		if err := eng.EnsureAppVolumeFor(name, v.Holder(cfg.Name), v.Name, image, options.User, folder); err != nil {
 			ui.Fail("Couldn't create volume " + v.Name)
 			return err
 		}

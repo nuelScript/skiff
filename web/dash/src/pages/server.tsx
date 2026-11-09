@@ -5,6 +5,7 @@ import { useReclaimSpace, useServer } from '@/hooks/use-server'
 import { Button } from '@/components/ui/button'
 import { CostSection } from '@/components/cost-section'
 import { ControlPlaneBackup } from '@/components/control-plane-backup'
+import { DisksSection } from '@/components/disks-section'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FeedSkeleton } from '@/components/skeletons'
 import { ErrorState } from '@/components/error-state'
@@ -167,6 +168,8 @@ export default function ServerPage() {
       </div>
 
       <CostSection />
+
+      <DisksSection />
 
       <ControlPlaneBackup />
 

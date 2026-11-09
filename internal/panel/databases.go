@@ -9,8 +9,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/seal"
 )
@@ -235,6 +237,9 @@ type Database struct {
 	Public    bool     `json:"public"`
 	PublicURL string   `json:"publicUrl,omitempty"`
 	Vector    bool     `json:"vector,omitempty"`
+	// Disk is the added disk the database keeps its files on; empty means Docker's own storage.
+	Disk string    `json:"disk,omitempty"`
+	Move moveState `json:"move"`
 	// VerifiedAt is when a backup last restored cleanly. CheckFailed means a later check didn't.
 	VerifiedAt  int64 `json:"verifiedAt,omitempty"`
 	CheckFailed bool  `json:"checkFailed,omitempty"`
@@ -385,6 +390,10 @@ func (p *Panel) toDatabase(d dbRow) Database {
 		Attached: dbAttachments(d.ID),
 		Public:   d.Public,
 		Vector:   d.Image == pgvectorImage,
+		Move:     moveStatus(d.volume()),
+	}
+	if folder := p.eng.VolumeFolder(d.volume()); folder != "" {
+		out.Disk = diskOf(folder, listDisks())
 	}
 	out.VerifiedAt, out.CheckFailed = restoreCheckSummary(d.ID)
 	if d.Public && d.PublicPort > 0 {
@@ -437,6 +446,11 @@ func knownEngine(engine string) bool {
 
 // provisionDB starts a managed database for the team and records it. engine may be "pgvector": Postgres with that extension switched on.
 func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
+	return p.provisionDBOn(team, engine, name, "")
+}
+
+// provisionDBOn is provisionDB with the database's files on an added disk, or in Docker's storage when diskPath is empty.
+func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error) {
 	image := ""
 	if engine == pgvectorChoice {
 		engine, image = "postgres", pgvectorImage
@@ -454,6 +468,15 @@ func (p *Panel) provisionDB(team, engine, name string) (dbRow, error) {
 	net := teamNetwork(team)
 	if err := p.eng.EnsureNetwork(net); err != nil {
 		return dbRow{}, err
+	}
+	if diskPath != "" {
+		folder := config.DiskFolder(diskPath, container+"-data")
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			return dbRow{}, fmt.Errorf("can't make the database's folder on its disk: %w", err)
+		}
+		if err := p.eng.CreateVolume(container+"-data", folder, nil); err != nil {
+			return dbRow{}, err
+		}
 	}
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: container, Image: cmp.Or(image, e.image), Network: net,
@@ -506,7 +529,7 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, out)
 
 	case http.MethodPost:
-		var body struct{ Engine, Name string }
+		var body struct{ Engine, Name, Disk string }
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
@@ -520,7 +543,16 @@ func (p *Panel) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid name", http.StatusBadRequest)
 			return
 		}
-		d, err := p.provisionDB(team, body.Engine, name)
+		diskPath := ""
+		if body.Disk != "" {
+			dk, ok := getDisk(body.Disk)
+			if !ok || withSpace(dk).Missing {
+				http.Error(w, "that disk isn't mounted", http.StatusBadRequest)
+				return
+			}
+			diskPath = dk.Path
+		}
+		d, err := p.provisionDBOn(team, body.Engine, name, diskPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

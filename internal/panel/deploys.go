@@ -740,6 +740,9 @@ func projectToml(src Source, env []EnvVar, network string, volumes []config.Volu
 		if len(v.Also) > 0 {
 			fmt.Fprintf(&b, "also = %s\n", tomlList(v.Also))
 		}
+		if v.Disk != "" {
+			fmt.Fprintf(&b, "disk = %s\n", tomlQuote(v.Disk))
+		}
 	}
 	return b.String()
 }

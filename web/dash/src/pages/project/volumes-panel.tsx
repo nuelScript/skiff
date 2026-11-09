@@ -1,3 +1,5 @@
+import { DiskPlace } from '@/components/disk-place'
+import { disksService } from '@/services/api.service'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -28,6 +30,8 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
   const [adding, setAdding] = useState(false)
   const [backups, setBackups] = useState('')
   const [budgetFor, setBudgetFor] = useState('')
+  const [disk, setDisk] = useState('')
+  const { data: disks } = useQuery({ queryKey: queryKeys.disks, queryFn: () => disksService.list(), staleTime: 60000 })
   const [budgetGB, setBudgetGB] = useState('')
 
   const saveBudget = async (name: string) => {
@@ -56,7 +60,7 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
   const create = form.handleSubmit(async (values) => {
     setServerError('')
     try {
-      await projectsService.addVolume(app, values.name, values.path)
+      await projectsService.addVolume(app, values.name, values.path, disk)
       form.reset()
       setAdding(false)
       reload()
@@ -132,6 +136,24 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
               />
               <FieldError errors={[form.formState.errors.path]} />
             </Field>
+            {(disks?.disks.length ?? 0) > 0 && (
+              <Field>
+                <FieldLabel htmlFor="vol-disk">Keep its files on</FieldLabel>
+                <select
+                  id="vol-disk"
+                  value={disk}
+                  onChange={(e) => setDisk(e.target.value)}
+                  className="h-9 cursor-pointer rounded-md border border-input bg-transparent px-2.5 text-sm"
+                >
+                  <option value="">The server's disk</option>
+                  {disks?.disks.map((d) => (
+                    <option key={d.id} value={d.id} disabled={d.missing}>
+                      {d.name} ({d.path})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </FieldGroup>
           {serverError && <p className="text-xs text-danger">{serverError}</p>}
           <div className="flex items-center justify-end gap-3">
@@ -207,6 +229,17 @@ export function VolumesPanel({ app, onRedeploy }: { app: string; onRedeploy: () 
                   </button>
                 ) : (
                   <span className="shrink-0 text-[11px] text-warning">Not mounted yet</span>
+                )}
+                {data?.kind !== 'preview' && (
+                  <DiskPlace
+                    target={{ app, volume: v.name }}
+                    label={`the ${v.name} volume`}
+                    disk={v.disk}
+                    move={v.move}
+                    canMove={editable}
+                    invalidate={queryKeys.volumes(app)}
+                    downtime={`${app} stops while its files are copied, then deploys again on the moved volume.`}
+                  />
                 )}
                 {data?.kind !== 'preview' && v.attached && (
                   <button

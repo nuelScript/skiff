@@ -138,6 +138,7 @@ var migrations = []string{
 	`ALTER TABLE jobs ADD COLUMN bucket_seen INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE jobs ADD COLUMN bucket_seen_keys TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE ai_apps ADD COLUMN run_budget INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE volumes ADD COLUMN disk TEXT NOT NULL DEFAULT ''`,
 }
 
 const schema = `
@@ -477,6 +478,12 @@ CREATE TABLE IF NOT EXISTS access_tokens (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_access_tokens_app ON access_tokens(app);
+CREATE TABLE IF NOT EXISTS disks (
+  id      TEXT PRIMARY KEY,
+  name    TEXT NOT NULL,
+  path    TEXT NOT NULL UNIQUE,
+  created INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alerts (
   team        TEXT PRIMARY KEY,
   email       TEXT NOT NULL DEFAULT '',
@@ -618,6 +625,7 @@ CREATE TABLE IF NOT EXISTS volumes (
   owner   TEXT NOT NULL DEFAULT '',
   also    TEXT NOT NULL DEFAULT '',
   budget  INTEGER NOT NULL DEFAULT 0,
+  disk    TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (app, name)
 );
 CREATE TABLE IF NOT EXISTS stacks (
