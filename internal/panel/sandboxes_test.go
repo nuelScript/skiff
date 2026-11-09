@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/egress"
 )
 
 func TestSandboxSpecChecksTheRequest(t *testing.T) {
@@ -79,5 +80,21 @@ func TestSandboxPlacesPerAgent(t *testing.T) {
 	sandboxes.Unlock()
 	if ctx.Err() == nil {
 		t.Error("not cancelled")
+	}
+}
+
+func TestSandboxesKeepTheirAgentsOutboundLimits(t *testing.T) {
+	openTestDB(t)
+	putSource(Source{App: "shut", Team: "t1", Egress: egress.Policy{Mode: egress.Private}.Encode()})
+	putSource(Source{App: "open", Team: "t1"})
+	p := &Panel{eng: docker.Local()}
+
+	spec := docker.SandboxSpec{App: "shut", Internet: true}
+	if err := p.sandboxReach(&spec); err == nil {
+		t.Error("an agent kept to the team's services got a sandbox with the internet")
+	}
+	spec = docker.SandboxSpec{App: "shut"}
+	if err := p.sandboxReach(&spec); err != nil {
+		t.Errorf("a sandbox without the internet was refused: %v", err)
 	}
 }

@@ -3,6 +3,8 @@ package docker
 import (
 	"archive/tar"
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -51,5 +53,25 @@ func TestCappedBuffer(t *testing.T) {
 	m, _ := b.Write([]byte("defg"))
 	if b.String() != "abcde" || !b.cut || n != 3 || m != 4 {
 		t.Errorf("%q cut=%v", b.String(), b.cut)
+	}
+}
+
+func TestDiskUsedCountsWhatsWritten(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real"), bytes.Repeat([]byte{1}, 4<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(dir, "sparse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Truncate(10 << 30) // claims 10 GB, uses nothing
+	f.Close()
+	n, ok := diskUsed(dir)
+	if !ok || n < 4<<20 || n > 64<<20 {
+		t.Fatalf("diskUsed = %d %v, want about 4 MB", n, ok)
+	}
+	if _, ok := diskUsed(filepath.Join(dir, "missing")); ok {
+		t.Error("a folder that can't be read was measured")
 	}
 }

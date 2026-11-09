@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -55,6 +56,16 @@ except OSError:
 	res, err = eng.Sandbox(ctx, spec)
 	if err != nil || res.ExitCode != 3 || !strings.Contains(res.Output, "network: on") {
 		t.Errorf("with internet: %v exit %d\n%s", err, res.ExitCode, res.Output)
+	}
+
+	// A sandbox that keeps going past the disk limit is stopped, wherever it writes.
+	for _, where := range []string{"/work", "/tmp"} {
+		spec.Internet = false
+		spec.Command = "dd if=/dev/zero of=" + where + "/big bs=1M count=3072; sleep 20; echo finished"
+		res, err = eng.Sandbox(ctx, spec)
+		if !errors.Is(err, docker.ErrSandboxDisk) || strings.Contains(res.Output, "finished") {
+			t.Errorf("writing 3 GB to %s: %v\n%s", where, err, res.Output)
+		}
 	}
 
 	// Running out of time stops it, and stopping an app's sandboxes leaves none behind.
