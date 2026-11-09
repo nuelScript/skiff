@@ -995,3 +995,20 @@ func TestHostNetworkIsARequest(t *testing.T) {
 		t.Errorf("notes = %v", p.Notes)
 	}
 }
+
+func TestIPv6LoopbackPortStaysPrivate(t *testing.T) {
+	f, err := Parse([]byte("services:\n  web:\n    image: x\n    ports: [\"[::1]:8080:80\", \"[2001:db8::1]:9000:90/udp\"]\n"), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := f.Services["web"].Ports
+	if len(ports) != 2 || ports[0].HostIP != "::1" || ports[0].Published != "8080" || ports[0].Target != 80 || !loopback(ports[0].HostIP) {
+		t.Fatalf("ports: %+v", ports)
+	}
+	if ports[1].HostIP != "2001:db8::1" || ports[1].Target != 90 || ports[1].Protocol != "udp" {
+		t.Fatalf("ports: %+v", ports[1])
+	}
+	if _, err := Parse([]byte("services:\n  web:\n    image: x\n    ports: [\"[::1]80\"]\n"), noEnv); err == nil {
+		t.Error("a bracketed address without a port was accepted")
+	}
+}
