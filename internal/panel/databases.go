@@ -770,7 +770,7 @@ func rejoinNetworks(d dbRow, previous []string) []string {
 
 func (p *Panel) runDatabaseContainer(d dbRow, on bool) (int, error) {
 	e := dbEngines[d.Engine]
-	adopted := d.Image != ""
+	adopted := d.adopted()
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
 	net := d.network()
 	_ = p.eng.EnsureNetwork(net)
@@ -865,5 +865,18 @@ func (p *Panel) handleDBShell(w http.ResponseWriter, r *http.Request) {
 
 // tunesPostgres is whether Skiff sizes a database's Postgres settings: its own Postgres, plain or with pgvector, not one adopted from outside with a setup of its own.
 func tunesPostgres(d dbRow) bool {
-	return d.Engine == "postgres" && (d.Image == "" || d.Image == pgvectorImage || d.Image == timescaleImage)
+	return d.Engine == "postgres" && !d.adopted()
+}
+
+// adopted is whether the database was started outside Skiff and taken over, so it's recreated with its own environment and command. Postgres with pgvector or TimescaleDB also has an image of its own, but Skiff started it.
+func (d dbRow) adopted() bool {
+	if d.Image == "" {
+		return false
+	}
+	for _, f := range postgresFlavors {
+		if d.Image == f.image {
+			return false
+		}
+	}
+	return true
 }

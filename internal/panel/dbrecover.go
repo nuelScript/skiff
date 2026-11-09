@@ -66,7 +66,7 @@ func (p *Panel) recoverDatabases() {
 func (p *Panel) recreateDatabase(d dbRow) error {
 	e := dbEngines[d.Engine]
 	env, cmd := e.container(d.Username, d.Password, d.DBName)
-	if d.Image != "" {
+	if d.adopted() {
 		cmd = nil
 		_ = json.Unmarshal([]byte(d.Cmd), &cmd)
 	}
