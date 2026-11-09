@@ -3,8 +3,8 @@ import { BaseService } from '@/services/base.service'
 
 export type DbEngine = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'clickhouse'
 
-// NewDbEngine is what a database can be created as: pgvector is Postgres with vector search switched on.
-export type NewDbEngine = DbEngine | 'pgvector'
+// NewDbEngine is what a database can be created as: pgvector and timescaledb are Postgres with that extension switched on.
+export type NewDbEngine = DbEngine | 'pgvector' | 'timescaledb'
 
 export type Backup = {
   id: string
@@ -40,6 +40,7 @@ export type Database = {
   name: string
   engine: DbEngine
   vector?: boolean
+  timescale?: boolean
   disk?: string
   move?: MoveState
   host: string
