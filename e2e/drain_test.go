@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,7 +17,7 @@ import (
 	"time"
 )
 
-const drainApp = `import signal, sys, time
+const drainApp = `import base64, hashlib, signal, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -27,6 +28,21 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == "/ws":
+            key = self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+            self.send_response(101)
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", base64.b64encode(hashlib.sha1(key.encode()).digest()).decode())
+            self.end_headers()
+            self.close_connection = True
+            for i in range(int(parse_qs(url.query)["n"][0])):
+                msg = f"{VERSION} {i}".encode()
+                self.wfile.write(bytes([0x81, len(msg)]) + msg)
+                self.wfile.flush()
+                time.sleep(1)
+            self.wfile.write(bytes([0x88, 0]))
+            return
         if url.path != "/stream":
             body = VERSION.encode()
             self.send_response(200)
@@ -151,6 +167,7 @@ func TestDeployLetsStreamsFinish(t *testing.T) {
 	}()
 
 	stream := follow(40)
+	socket := followSocket(t, routerAddr, app+".localhost", 30)
 	deployed := time.Now()
 	deploy("v2")
 	t.Logf("deploy took %s", time.Since(deployed).Round(time.Second))
@@ -160,6 +177,9 @@ func TestDeployLetsStreamsFinish(t *testing.T) {
 		if code, body := answer(); code != 200 || body != "v2" {
 			t.Fatalf("after the deploy: %d %q", code, body)
 		}
+	}
+	if msgs := <-socket; len(msgs) != 30 || msgs[29] != "v1 29" {
+		t.Fatalf("the WebSocket was cut: %d messages, ending %v", len(msgs), msgs[max(0, len(msgs)-1):])
 	}
 	got := <-stream
 	if len(got) != 41 || got[40] != "v1 done" {
@@ -184,4 +204,37 @@ func TestDeployLetsStreamsFinish(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, func() bool { return containers() == 1 })
 	t.Logf("limit ended the stream %s after the deploy", time.Since(began).Round(time.Second))
+}
+
+// followSocket opens a WebSocket through the router and collects its text messages until the server closes it.
+func followSocket(t *testing.T, routerAddr, host string, n int) chan []string {
+	t.Helper()
+	conn, err := net.Dial("tcp", routerAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(conn, "GET /ws?n=%d HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n", n, host)
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("the WebSocket handshake: %v %v", resp, err)
+	}
+	msgs := make(chan []string, 1)
+	go func() {
+		defer conn.Close()
+		var got []string
+		for {
+			var head [2]byte
+			if _, err := io.ReadFull(br, head[:]); err != nil || head[0]&0x0f == 0x8 {
+				break
+			}
+			payload := make([]byte, head[1]&0x7f)
+			if _, err := io.ReadFull(br, payload); err != nil {
+				break
+			}
+			got = append(got, string(payload))
+		}
+		msgs <- got
+	}()
+	return msgs
 }
