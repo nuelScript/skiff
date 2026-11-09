@@ -66,6 +66,26 @@ A sandbox:
 - Stops after two minutes, or the `timeout` you give in seconds, up to fifteen.
 - Hands back up to 16 MB of files, 8 MB each; `skipped` lists any left out. Output is cut at 256 KB.
 
+### A browser
+
+For an agent that has to use a website, set `"browser": true`. The sandbox then starts from Microsoft's Playwright image, with Python, Playwright and Chromium ready, 2 GB of memory and the internet on:
+
+```python title="agent.py"
+script = """
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    page = p.chromium.launch().new_page()
+    page.goto("https://news.ycombinator.com")
+    print(page.title())
+    page.screenshot(path="front.png")
+"""
+r = requests.post(base + "/sandboxes", headers=auth, timeout=960,
+                  json={"browser": True, "command": "python run.py", "files": {"run.py": script}}).json()
+png = base64.b64decode(r["files"]["front.png"])
+```
+
+The first browser sandbox on a server prepares its image from Microsoft's, about 2 GB, which can take a few minutes; that wait doesn't count against the sandbox's timeout.
+
 An agent runs up to three sandboxes at once. The project's **Overview** lists the last few with their output, and **Stop agent** ends any that are running.
 
 ## Approvals

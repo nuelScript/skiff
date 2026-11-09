@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"os/exec"
 	"path"
 	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -23,6 +25,8 @@ const (
 	SandboxMaxFile   = 8 << 20
 	SandboxMaxFiles  = 16 << 20
 	sandboxMaxOutput = 256 << 10
+	// sandboxPullTimeout is how long a sandbox may wait for its image the first time, apart from its own timeout.
+	sandboxPullTimeout = 10 * time.Minute
 )
 
 // SandboxSpec is a throwaway container: files go into its working directory, the command runs, and what's left there comes back.
@@ -34,6 +38,7 @@ type SandboxSpec struct {
 	Internet bool // otherwise it has no network at all
 	Memory   string
 	CPU      string
+	ShmSize  string // shared memory, which browsers need more of than Docker's 64 MB
 }
 
 type SandboxResult struct {
@@ -65,9 +70,21 @@ func (e *Engine) Sandbox(ctx context.Context, spec SandboxSpec) (SandboxResult, 
 	args := []string{"create", "--name", name, "--label", SandboxLabel + "=" + spec.App,
 		"--network", network, "--workdir", sandboxWorkdir,
 		"--memory", spec.Memory, "--cpus", spec.CPU, "--pids-limit", "256",
-		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none",
-		spec.Image, "sh", "-c", spec.Command}
+		"--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--log-driver", "none"}
+	if spec.ShmSize != "" {
+		args = append(args, "--shm-size", spec.ShmSize)
+	}
+	args = append(args, spec.Image, "sh", "-c", spec.Command)
 	defer func() { _ = e.command("rm", "-f", name).Run() }()
+	// A first pull of a large image shouldn't use up the run's own time.
+	if !e.ImageExists(spec.Image) {
+		pullCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxPullTimeout)
+		err := e.Pull(pullCtx, spec.Image, nil, io.Discard)
+		cancel()
+		if err != nil {
+			return SandboxResult{}, fmt.Errorf("couldn't pull %s: %v", spec.Image, err)
+		}
+	}
 	if out, err := e.contextCommand(ctx, args...).CombinedOutput(); err != nil {
 		return SandboxResult{}, fmt.Errorf("couldn't create the sandbox: %s", firstLine(out))
 	}
@@ -190,4 +207,29 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	return b.Buffer.Write(p)
+}
+
+// BrowserImage is the sandbox image for browsing: Microsoft's Playwright image has the browsers and their libraries, and the Python package of the same version is added here once per server.
+const (
+	browserBase       = "mcr.microsoft.com/playwright/python:v1.64.1-noble"
+	browserPlaywright = "1.64.1"
+	BrowserImage      = "skiff-sandbox-browser:" + browserPlaywright
+)
+
+// EnsureBrowserImage builds BrowserImage if this server doesn't have it yet.
+func (e *Engine) EnsureBrowserImage(ctx context.Context) error {
+	if e.ImageExists(BrowserImage) {
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "skiff-browser-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	var out bytes.Buffer
+	dockerfile := "FROM " + browserBase + "\nRUN pip install --no-cache-dir playwright==" + browserPlaywright + "\n"
+	if err := e.BuildFromDockerfile(ctx, BrowserImage, dockerfile, dir, false, BuildOptions{}, &out); err != nil {
+		return fmt.Errorf("couldn't prepare the browser image: %s", lastLine(out.Bytes()))
+	}
+	return nil
 }

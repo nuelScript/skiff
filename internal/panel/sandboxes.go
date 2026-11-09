@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +18,8 @@ import (
 // A sandbox is a throwaway container an agent asks for to run code it wrote: no network unless asked, no privileges, removed when the command ends.
 const (
 	sandboxDefaultImage   = "python:3.12-alpine"
+	sandboxBrowserMemory  = "2g"
+	sandboxBrowserShm     = "1g"
 	sandboxDefaultTimeout = 2 * time.Minute
 	sandboxMaxTimeout     = 15 * time.Minute
 	sandboxMemory         = "512m"
@@ -38,6 +41,7 @@ type sandboxRequest struct {
 	Files       map[string]string `json:"files"`       // text
 	BinaryFiles map[string]string `json:"binaryFiles"` // base64
 	Internet    bool              `json:"internet"`
+	Browser     bool              `json:"browser"` // Playwright and Chromium, with the internet on
 	Timeout     int               `json:"timeout"` // seconds
 }
 
@@ -56,6 +60,10 @@ type sandboxResponse struct {
 func sandboxSpec(app string, req sandboxRequest) (docker.SandboxSpec, time.Duration, error) {
 	spec := docker.SandboxSpec{App: app, Image: req.Image, Command: req.Command, Internet: req.Internet,
 		Memory: sandboxMemory, CPU: sandboxCPU, Files: map[string][]byte{}}
+	if req.Browser {
+		spec.Image = cmp.Or(spec.Image, docker.BrowserImage)
+		spec.Memory, spec.ShmSize, spec.Internet = sandboxBrowserMemory, sandboxBrowserShm, true
+	}
 	if spec.Image == "" {
 		spec.Image = sandboxDefaultImage
 	}
@@ -144,6 +152,16 @@ func (p *Panel) runSandbox(w http.ResponseWriter, r *http.Request, a aiApp) {
 	defer stop()
 
 	started := time.Now()
+	if spec.Image == docker.BrowserImage {
+		// The first browser sandbox on a server builds the image; that wait isn't the sandbox's own time.
+		buildCtx, cancelBuild := context.WithTimeout(r.Context(), 15*time.Minute)
+		err := p.eng.EnsureBrowserImage(buildCtx)
+		cancelBuild()
+		if err != nil {
+			gatewayError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
 	id := recordSandboxStart(a.App, spec, started)
 	res, err := p.eng.Sandbox(ctx, spec)
 	out := sandboxResponse{ID: id, ExitCode: res.ExitCode, Output: res.Output, Truncated: res.Truncated,
