@@ -63,3 +63,36 @@ Your logs leave your server once a drain is on, including anything your apps pri
 ## Drains on a private network
 
 By default, drains can only reach public addresses over HTTPS, so a teammate can't point one at something inside your server's network. If you run your own collector on a private address, set `SKIFF_ALLOW_PRIVATE_ENDPOINTS=1` in the panel's environment. That allows private addresses and plain HTTP for every team on the server, and private addresses for offsite backups too.
+
+## Metrics
+
+Skiff serves your team's apps in Prometheus's text format at `/api/v1/metrics` on your dashboard's address, for Prometheus, Grafana Agent, Datadog, Better Stack or anything else that scrapes it. Create an API token under **Settings → API tokens** and send it as a bearer token:
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: skiff
+    scheme: https
+    metrics_path: /api/v1/metrics
+    authorization:
+      credentials: <your API token>
+    static_configs:
+      - targets: [dash.example.com]
+```
+
+Each app gets:
+
+| Metric | What it is |
+| --- | --- |
+| `skiff_app_up` | 1 when it has a running container |
+| `skiff_app_crashing` | 1 when it keeps exiting and being restarted |
+| `skiff_app_cpu_percent` | CPU use, in percent of one core |
+| `skiff_app_memory_bytes`, `skiff_app_memory_limit_bytes` | Memory in use, and its limit |
+| `skiff_app_restarts_recent` | Restarts in the newest sample |
+| `skiff_app_replicas` | How many copies are meant to run |
+| `skiff_app_requests_5m`, `skiff_app_server_errors_5m` | Requests, and 5xx responses, in the last five minutes |
+| `skiff_app_latency_ms_avg_5m` | Average response time in the last five minutes |
+| `skiff_app_bytes_in_5m`, `skiff_app_bytes_out_5m` | Traffic through the router in the last five minutes |
+| `skiff_volume_bytes` | Size of each of its volumes |
+
+The team that set up the server also gets `skiff_server_memory_bytes`, `skiff_server_disk_bytes` and their totals.
+

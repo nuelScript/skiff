@@ -364,3 +364,22 @@ func (s *resStore) memNow(app string) int64 {
 	}
 	return newest.MemSum / int64(newest.N)
 }
+
+// newest is the app's most recent resource sample.
+func (s *resStore) newest(app string) (resBucket, bool) {
+	if s == nil {
+		return resBucket{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out *resBucket
+	for _, b := range s.apps[app] {
+		if out == nil || b.T > out.T {
+			out = b
+		}
+	}
+	if out == nil || out.N == 0 {
+		return resBucket{}, false
+	}
+	return *out, true
+}
