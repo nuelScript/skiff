@@ -200,7 +200,7 @@ Manage an app's scheduled jobs
 
 ### skiff job add
 
-Add a job that runs on a cron schedule
+Add a job that runs on a schedule, when its webhook is called, or for each new file in a bucket
 
 ```sh
 skiff job add <app> <name> [flags]
@@ -208,11 +208,14 @@ skiff job add <app> <name> [flags]
 
 | Flag | Default | What it does |
 | --- | --- | --- |
+| `--bucket` |  | start the job for each new file in this bucket of your team's |
 | `--catch-up` |  | "skip" drops runs missed while the server was down (default: run once) |
 | `-c`, `--command` |  | what the job runs |
+| `--prefix` |  | only files under this folder of the bucket, like incoming/ |
 | `--retries` | `0` | how many more times a failed run is tried, up to 10 |
 | `-s`, `--schedule` |  | cron schedule in the server's time zone, like "0 3 * * *" |
 | `--timeout` | `0s` | how long a run may take, like 2h (default 30m) |
+| `--webhook` |  | give the job an address that starts it when a signed request arrives |
 
 ### skiff job ls
 

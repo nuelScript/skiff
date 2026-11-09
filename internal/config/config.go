@@ -50,6 +50,11 @@ type Job struct {
 	Retries int `toml:"retries" json:"retries,omitempty"`
 	// CatchUp is "skip" to drop runs missed while the server was down; empty runs a missed job once.
 	CatchUp string `toml:"catch_up" json:"catchUp,omitempty"`
+	// Webhook gives the job an address that starts it; the dashboard shows the address and its signing secret.
+	Webhook bool `toml:"webhook" json:"webhook,omitempty"`
+	// Bucket starts the job for each new file under Prefix in that bucket of the team's.
+	Bucket string `toml:"bucket" json:"bucket,omitempty"`
+	Prefix string `toml:"prefix" json:"prefix,omitempty"`
 }
 
 // TimeoutSeconds is the job's timeout in seconds, 0 for the default. Validation has already checked it parses.
@@ -370,8 +375,14 @@ func ValidateJobs(jobs []Job) error {
 		if strings.TrimSpace(j.Command) == "" {
 			return fmt.Errorf("job %q needs a command", j.Name)
 		}
-		if _, err := cron.ParseStandard(j.Schedule); err != nil {
+		if j.Schedule == "" && !j.Webhook && j.Bucket == "" {
+			return fmt.Errorf("job %q needs a schedule, webhook = true, or a bucket to watch", j.Name)
+		}
+		if _, err := cron.ParseStandard(j.Schedule); j.Schedule != "" && err != nil {
 			return fmt.Errorf("job %q: schedule %q isn't cron syntax like \"0 3 * * *\"", j.Name, j.Schedule)
+		}
+		if j.Prefix != "" && j.Bucket == "" {
+			return fmt.Errorf("job %q: prefix needs a bucket", j.Name)
 		}
 		if j.Timeout != "" {
 			d, err := time.ParseDuration(j.Timeout)

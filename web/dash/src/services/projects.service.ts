@@ -104,15 +104,20 @@ export type Job = {
   retries: number
   catchUp: '' | 'skip'
   running: boolean
+  webhook?: string
+  webhookSecret?: string
+  bucket?: string
+  prefix?: string
+  queued: number
 }
 
 export type JobRun = {
   id: number
-  trigger: 'schedule' | 'catch-up' | 'manual' | 'retry'
+  trigger: 'schedule' | 'catch-up' | 'manual' | 'retry' | 'webhook' | 'bucket'
   attempt: number
   started: number
   finished: number
-  status: 'running' | 'ok' | 'failed' | 'timeout' | 'skipped'
+  status: 'queued' | 'running' | 'ok' | 'failed' | 'timeout' | 'skipped'
   exitCode: number
   output: string
 }
@@ -124,6 +129,9 @@ export type JobSettings = {
   timeout: number
   retries: number
   catchUp: '' | 'skip'
+  webhook: boolean
+  bucket: string
+  prefix: string
 }
 
 export type Worker = {

@@ -104,20 +104,27 @@ func resourceTools(c *apiClient) []mcp.Tool {
 		},
 		list("list_jobs", "A project's scheduled jobs: id, schedule, command, timeout, retries, when each last ran and whether it worked.", "/jobs"),
 		{
-			Name: "add_job", Description: "Add a scheduled job to a project. The schedule is cron syntax in the server's time zone.",
+			Name: "add_job", Description: "Add a job to a project. It runs on a schedule (cron syntax, in the server's time zone), when its webhook is called, for each new file in a bucket, or any mix; give at least one.",
 			InputSchema: schema(map[string]any{
 				"name": nameProp, "job": prop("job name"),
 				"schedule": prop("cron schedule, like \"0 3 * * *\""), "command": prop("what it runs"),
 				"timeout": map[string]any{"type": "integer", "description": "seconds a run may take, 60 to 86400 (default 1800)"},
 				"retries": map[string]any{"type": "integer", "description": "how many more times a failed run is tried, 0 to 10 (default 0)"},
 				"catchUp": map[string]any{"type": "string", "enum": []string{"", "skip"}, "description": "\"skip\" drops runs missed while the server was down; empty runs a missed job once"},
-			}, "name", "job", "schedule", "command"),
+				"webhook": map[string]any{"type": "boolean", "description": "give the job an address that starts it when a request signed with its secret arrives"},
+				"bucket":  prop("start the job for each new file in this bucket of the team's"),
+				"prefix":  prop("only files under this folder of the bucket, like incoming/"),
+			}, "name", "job", "command"),
 			Run: func(args map[string]any) (string, error) {
 				n, err := app(args)
 				if err != nil {
 					return "", err
 				}
-				body := map[string]any{"name": str(args, "job"), "schedule": str(args, "schedule"), "command": str(args, "command"), "catchUp": str(args, "catchUp")}
+				body := map[string]any{"name": str(args, "job"), "schedule": str(args, "schedule"), "command": str(args, "command"), "catchUp": str(args, "catchUp"),
+					"bucket": str(args, "bucket"), "prefix": str(args, "prefix")}
+				if w, ok := args["webhook"].(bool); ok {
+					body["webhook"] = w
+				}
 				for _, k := range []string{"timeout", "retries"} {
 					if f, ok := args[k].(float64); ok {
 						body[k] = int(f)

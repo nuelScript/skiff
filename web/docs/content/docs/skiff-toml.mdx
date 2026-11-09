@@ -128,5 +128,10 @@ Commands from the app's build that run on a schedule. The dashboard runs them, s
 | `timeout` | How long a run may take, from `1m` to `24h`. Default `30m`. A run past it is stopped. |
 | `retries` | How many more times a failed run is tried, up to 10. Default `0`. |
 | `catch_up` | `"skip"` drops runs missed while Skiff wasn't running. Left out, a missed job runs once when Skiff is back. |
+| `webhook` | `true` gives the job an address that starts it when a signed request arrives. The dashboard shows the address and its secret. |
+| `bucket` | One of your team's buckets. Each new file in it starts a run. |
+| `prefix` | Only new files under this folder of the bucket, like `incoming/`. |
+
+A job needs at least one of `schedule`, `webhook` or `bucket`.
 
 For an app deployed this way, `skiff.toml` decides its workers and jobs, so the dashboard and the API can't change them. Running a job now still works.

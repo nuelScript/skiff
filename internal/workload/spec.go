@@ -54,9 +54,13 @@ type Run struct {
 type When struct {
 	Schedule string `json:"schedule,omitempty"`
 	// Timeout is how many seconds a job's run may take, 0 for the default; Retries is how many more times a failed run is tried; CatchUp is "skip" to drop missed runs.
-	Timeout    int    `json:"timeout,omitempty"`
-	Retries    int    `json:"retries,omitempty"`
-	CatchUp    string `json:"catchUp,omitempty"`
+	Timeout int    `json:"timeout,omitempty"`
+	Retries int    `json:"retries,omitempty"`
+	CatchUp string `json:"catchUp,omitempty"`
+	// Webhook, Bucket and Prefix are what else starts a job: a signed request, or a new file under the prefix.
+	Webhook    bool   `json:"webhook,omitempty"`
+	Bucket     string `json:"bucket,omitempty"`
+	Prefix     string `json:"prefix,omitempty"`
 	Replicas   int    `json:"replicas,omitempty"`
 	Autoscale  bool   `json:"autoscale,omitempty"`
 	ScaleMin   int    `json:"scaleMin,omitempty"`

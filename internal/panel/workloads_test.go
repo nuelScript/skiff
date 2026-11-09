@@ -59,6 +59,8 @@ func TestSpecKeepsWorkersAndJobs(t *testing.T) {
 	filled(t, &j, nil)
 	want := j
 	want.LastRun, want.LastOk = 0, 0 // what happened isn't part of what was asked for
+	want.Seen, want.SeenKeys = 0, "" // nor is how far a bucket watch has read
+	want.HookSecret = ""             // a secret stays out of what the API shows; the spec says only that there is a webhook
 	if got := specJob(jobSpec(j)); got != want {
 		t.Errorf("job: got %+v, want %+v", got, want)
 	}

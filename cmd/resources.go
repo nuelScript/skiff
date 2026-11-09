@@ -270,6 +270,25 @@ type remoteJob struct {
 	LastRun  int64  `json:"lastRun"`
 	LastOk   bool   `json:"lastOk"`
 	Running  bool   `json:"running"`
+	Webhook  string `json:"webhook"`
+	Secret   string `json:"webhookSecret"`
+	Bucket   string `json:"bucket"`
+	Prefix   string `json:"prefix"`
+}
+
+// when says what starts the job, for the job list.
+func (j remoteJob) when() string {
+	var parts []string
+	if j.Schedule != "" {
+		parts = append(parts, j.Schedule)
+	}
+	if j.Webhook != "" {
+		parts = append(parts, "webhook")
+	}
+	if j.Bucket != "" {
+		parts = append(parts, "new files in "+j.Bucket+"/"+j.Prefix)
+	}
+	return strings.Join(parts, ", ")
 }
 
 type remoteJobRun struct {
@@ -324,31 +343,41 @@ func newJobCmd() *cobra.Command {
 			}
 			rows := [][]string{}
 			for _, j := range list {
-				rows = append(rows, []string{j.Name, j.Schedule, j.lastResult(), j.Command})
+				rows = append(rows, []string{j.Name, j.when(), j.lastResult(), j.Command})
 			}
-			return table("NAME\tSCHEDULE\tLAST RUN\tCOMMAND", rows)
+			return table("NAME\tRUNS\tLAST RUN\tCOMMAND", rows)
 		},
 	})
-	var schedule, command, catchUp string
+	var schedule, command, catchUp, bucket, prefix string
 	var timeout time.Duration
 	var retries int
+	var webhook bool
 	add := &cobra.Command{
-		Use: "add <app> <name>", Short: "Add a job that runs on a cron schedule", Args: cobra.ExactArgs(2),
+		Use: "add <app> <name>", Short: "Add a job that runs on a schedule, when its webhook is called, or for each new file in a bucket", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]any{"name": args[1], "schedule": schedule, "command": command, "timeout": int(timeout / time.Second), "retries": retries, "catchUp": catchUp}
-			if err := remoteDo(http.MethodPost, "/apps/"+url.PathEscape(args[0])+"/jobs", body, nil); err != nil {
+			body := map[string]any{"name": args[1], "schedule": schedule, "command": command, "timeout": int(timeout / time.Second), "retries": retries, "catchUp": catchUp,
+				"webhook": webhook, "bucket": bucket, "prefix": prefix}
+			var job remoteJob
+			if err := remoteDo(http.MethodPost, "/apps/"+url.PathEscape(args[0])+"/jobs", body, &job); err != nil {
 				return err
 			}
 			ui.Done("Added " + args[1] + " to " + args[0])
+			if job.Webhook != "" {
+				ui.Field("webhook", job.Webhook)
+				ui.Field("secret", job.Secret)
+				ui.Note("Sign each request's body with HMAC-SHA256 and send it as X-Skiff-Signature: sha256=<hex>. GitHub's X-Hub-Signature-256 works too.")
+			}
 			return nil
 		},
 	}
 	add.Flags().StringVarP(&schedule, "schedule", "s", "", "cron schedule in the server's time zone, like \"0 3 * * *\"")
+	add.Flags().BoolVar(&webhook, "webhook", false, "give the job an address that starts it when a signed request arrives")
+	add.Flags().StringVar(&bucket, "bucket", "", "start the job for each new file in this bucket of your team's")
+	add.Flags().StringVar(&prefix, "prefix", "", "only files under this folder of the bucket, like incoming/")
 	add.Flags().StringVarP(&command, "command", "c", "", "what the job runs")
 	add.Flags().DurationVar(&timeout, "timeout", 0, "how long a run may take, like 2h (default 30m)")
 	add.Flags().IntVar(&retries, "retries", 0, "how many more times a failed run is tried, up to 10")
 	add.Flags().StringVar(&catchUp, "catch-up", "", "\"skip\" drops runs missed while the server was down (default: run once)")
-	_ = add.MarkFlagRequired("schedule")
 	_ = add.MarkFlagRequired("command")
 	job.AddCommand(add)
 	job.AddCommand(&cobra.Command{

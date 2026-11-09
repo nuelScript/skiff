@@ -111,9 +111,16 @@ func retryWait(attempt int) time.Duration {
 	return d
 }
 
-// attemptJob runs the job once and records it as a run.
-func (p *Panel) attemptJob(j jobRow, trigger string, attempt int) (string, string, error) {
-	id := startRun(j, trigger, attempt, runRunning)
+// attemptJob runs the job once and records it as a run: the queued run id when there is one, otherwise a new run. input is what started it, such as a webhook's body or a file's key.
+func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, input string) (string, string, error) {
+	if id == 0 {
+		id = startRun(j, trigger, attempt, runRunning)
+		if input != "" {
+			_, _ = sqlDB.Exec(`UPDATE job_runs SET input=? WHERE id=?`, input, id)
+		}
+	} else {
+		_, _ = sqlDB.Exec(`UPDATE job_runs SET status=?, started=? WHERE id=?`, runRunning, time.Now().Unix(), id)
+	}
 	src, ok := getSource(j.App)
 	if !ok {
 		finishRun(id, runFailed, 0, "the app no longer exists")
@@ -127,7 +134,9 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int) (string, strin
 	timeout := jobTimeout(j)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	out, err := p.eng.RunOnce(ctx, image, j.Command, p.appSettings(src))
+	settings := p.appSettings(src)
+	settings.Env = withTriggerEnv(settings.Env, j, trigger, input)
+	out, err := p.eng.RunOnce(ctx, image, j.Command, settings)
 	status, code := runOK, 0
 	switch {
 	case ctx.Err() == context.DeadlineExceeded:
@@ -145,16 +154,16 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int) (string, strin
 	return out, status, err
 }
 
-// execJob runs a job on its schedule, retrying as it asks, and tells the team when it starts failing and when it recovers.
-func (p *Panel) execJob(j jobRow, trigger string) {
+// execJob runs a job, retrying as it asks, and tells the team when it starts failing and when it recovers. id is a queued run to use for the first attempt, or 0.
+func (p *Panel) execJob(j jobRow, trigger string, id int64, input string) {
 	var status string
 	var err error
 	for attempt := 1; ; attempt++ {
 		t := trigger
 		if attempt > 1 {
-			t = triggerRetry
+			t, id = triggerRetry, 0
 		}
-		_, status, err = p.attemptJob(j, t, attempt)
+		_, status, err = p.attemptJob(j, t, attempt, id, input)
 		if err == nil || attempt > j.Retries {
 			break
 		}

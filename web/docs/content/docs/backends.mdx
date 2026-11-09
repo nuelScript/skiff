@@ -70,7 +70,7 @@ For these apps, `skiff.toml` decides, so the dashboard, the API and `skiff worke
 
 ## Scheduled jobs
 
-A job runs a command from your app's build on a cron schedule, in a one-off container with the app's environment and limits.
+A job runs a command from your app's build in a one-off container with the app's environment and limits. It runs on a cron schedule, when its webhook is called, for each new file in a bucket, or any mix of those.
 
 - **Every run is kept:** what started it, how it ended, its exit code, how long it took and the end of its output. The last 50 runs are under the job's history on **Jobs & workers**, and in `skiff job runs`.
 - **A timeout per job,** 30 minutes unless you set one, up to 24 hours. A run past it is stopped.
@@ -78,6 +78,22 @@ A job runs a command from your app's build on a cron schedule, in a one-off cont
 - **No overlap:** if a run is still going when the next one is due, the next is skipped, and the history says so.
 - **After downtime,** a job that missed its time runs once when Skiff is back, unless you set it to skip missed runs.
 - **Alerts:** your alert channels hear when a job starts failing, after its retries, and when it works again.
+
+### Webhooks
+
+A job with a webhook gets an address and a secret, shown on its row. Send a POST with the body signed by HMAC-SHA256 of the secret, as `X-Skiff-Signature: sha256=<hex>`. GitHub's `X-Hub-Signature-256` header works too, so a GitHub webhook with the same secret can start the job, and its ping doesn't. The run gets the body, up to 64 KB, in `SKIFF_WEBHOOK_BODY`.
+
+```sh title="shell"
+body='{"ref":"main"}'
+sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SECRET" | cut -d' ' -f2)
+curl -X POST "$WEBHOOK" -H "X-Skiff-Signature: sha256=$sig" -d "$body"
+```
+
+### New files in a bucket
+
+A job can watch one of your team's buckets, or a folder in it. Each new file starts a run with the bucket in `SKIFF_BUCKET` and the file's key in `SKIFF_OBJECT_KEY`. Files already there when the job is added are left alone. Skiff looks every 30 seconds, at up to 5,000 files under the folder, and starts up to 20 runs per look.
+
+Runs from webhooks and buckets wait their turn: a job runs one at a time, up to 50 can wait, and waiting runs survive a restart.
 
 ## One-off runs
 
