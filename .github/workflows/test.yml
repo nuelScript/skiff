@@ -64,8 +64,10 @@ jobs:
             run: "^Test(GitDeployLifecycle|TomlWorkersAndJobs|GitHubAction|DeployLetsStreamsFinish)"
           - name: stacks
             run: "^Test(Stack|ComposeStack|PreviewData)"
+          - name: agents
+            run: "^TestAgentFrameworks"
           - name: rest
-            skip: "^Test(Drill|Upgrade|CorruptHistory|PointInTimeRecovery|RestoreReturnsToBackup|HistorySurvivesServerLoss|DBConnect|DisasterRecovery|VolumeBackupFromBucket|GitDeployLifecycle|TomlWorkersAndJobs|GitHubAction|DeployLetsStreamsFinish|Stack|ComposeStack|PreviewData)"
+            skip: "^Test(AgentFrameworks|Drill|Upgrade|CorruptHistory|PointInTimeRecovery|RestoreReturnsToBackup|HistorySurvivesServerLoss|DBConnect|DisasterRecovery|VolumeBackupFromBucket|GitDeployLifecycle|TomlWorkersAndJobs|GitHubAction|DeployLetsStreamsFinish|Stack|ComposeStack|PreviewData)"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
