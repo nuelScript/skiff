@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,7 @@ import { JobWebhook } from './job-webhook'
 import { AgentRuns } from './agent-runs'
 import { AgentApprovals } from './agent-approvals'
 
-const sourceLabel: Record<string, string> = { webhook: 'Webhook', github: 'GitHub', schedule: 'Schedule' }
+const sourceLabel: Record<string, string> = { webhook: 'Webhook', github: 'GitHub', schedule: 'Schedule', email: 'Email' }
 
 // AgentPanel shows an agent's state, its inbox and how work reaches it, with one button that stops everything it does.
 export function AgentPanel({ app }: { app: string }) {
@@ -99,6 +100,14 @@ export function AgentPanel({ app }: { app: string }) {
 <>Each request becomes one event, and a GitHub event arrives with its type.</>
             }
           />
+          <p className="text-muted-foreground text-xs">
+            By email: on the{' '}
+            <Link to="/email" className="cursor-pointer underline underline-offset-2">
+              Email page
+            </Link>
+            , forward an address to <code className="font-mono text-foreground">agent:{app}</code>, and each message
+            arrives with its sender, subject and text.
+          </p>
           <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
             <label htmlFor="agent-schedule" className="text-muted-foreground text-xs">
               On a schedule

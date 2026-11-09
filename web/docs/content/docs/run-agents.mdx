@@ -23,6 +23,7 @@ Work reaches the agent as events in its inbox, so it never needs an open port. T
 - **Webhook**: a signed `POST` to the address shown becomes one event, with the request body. Sign the body with HMAC-SHA256 of the secret, sent as `X-Skiff-Signature: sha256=…`.
 - **GitHub**: add a webhook in your repository's settings with the same address and secret. Each GitHub event arrives with its type, like `issues` or `pull_request`.
 - **Schedule**: a cron schedule like `*/15 * * * *` adds an event each time it comes round. If Skiff was down through several, the agent gets one event, not a burst.
+- **Email**: on the **Email** page, forward an address to `agent:<project>` (like `support@example.com` → `agent:helpdesk`). Each message arrives as an `email` event whose body is JSON with `from`, `to`, `subject`, `date`, `messageId` and `text`: the plain-text part, or the HTML when there's none, up to 40 KB. Attachments aren't included. See [email forwarding](/email-forwarding) for setting up the domain.
 
 The agent asks for its next event and says when it has finished:
 

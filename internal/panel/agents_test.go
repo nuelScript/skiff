@@ -172,3 +172,28 @@ func TestAgentScheduleTicksOnce(t *testing.T) {
 		t.Errorf("after a gap: %+v", events)
 	}
 }
+
+func TestAgentMailDestinations(t *testing.T) {
+	openTestDB(t)
+	newTestAgent(t, "bot")
+	ag, _ := getAgent("bot")
+	got := routerDestinations([]string{"me@example.com", "agent:bot", "agent:gone"})
+	if len(got) != 2 || got[0] != "me@example.com" || got[1] != "agent:bot:"+ag.hookSecret {
+		t.Errorf("router destinations: %v", got)
+	}
+
+	// The router's delivery arrives as an email event.
+	body := `{"from":"ada@example.com","subject":"hi","text":"hello"}`
+	mac := hmac.New(sha256.New, []byte(ag.hookSecret))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/hooks/agents/bot", strings.NewReader(body))
+	r.SetPathValue("app", "bot")
+	r.Header.Set("X-Skiff-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-Skiff-Source", "email")
+	r.Header.Set("X-Skiff-Event", "email")
+	w := httptest.NewRecorder()
+	(&Panel{}).handleAgentHook(w, r)
+	if events := recentAgentEvents("bot", 5); w.Code != http.StatusAccepted || len(events) != 1 || events[0].Source != "email" {
+		t.Errorf("%d %+v", w.Code, events)
+	}
+}

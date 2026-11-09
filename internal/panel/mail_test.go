@@ -65,6 +65,27 @@ func TestMailForwardsValidateAndMirrorToRouter(t *testing.T) {
 			t.Errorf("%s: want %d, got %d %s", name, tc.want, w.Code, w.Body.String())
 		}
 	}
+	// An agent of the team can receive mail; the router's copy carries its webhook secret.
+	for _, a := range []Source{{App: "bot", Team: teamA.ID, Port: "3000"}, {App: "theirs", Team: teamB.ID, Port: "3000"}} {
+		applyAgentPreset(&a)
+		_ = putSource(a)
+		if err := setupAgent(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for body, want := range map[string]int{
+		`{"domain":"acme.com","alias":"bot","destinations":["agent:Bot"]}`:     http.StatusOK,
+		`{"domain":"acme.com","alias":"nope","destinations":["agent:ghost"]}`:  http.StatusBadRequest,
+		`{"domain":"acme.com","alias":"nope","destinations":["agent:theirs"]}`: http.StatusBadRequest,
+	} {
+		if w := mailRequest(p, "POST", "/api/mail", body, "a"); w.Code != want {
+			t.Errorf("%s: want %d, got %d %s", body, want, w.Code, w.Body.String())
+		}
+	}
+	bot, _ := getAgent("bot")
+	if rules, _ := mail.LoadRules(mailFilePath()); len(rules["acme.com"]["bot"]) != 1 || rules["acme.com"]["bot"][0] != "agent:bot:"+bot.hookSecret {
+		t.Errorf("router rules for the agent: %v", rules["acme.com"]["bot"])
+	}
 	if w := mailRequest(p, "POST", "/api/mail", `{"domain":"skiff.test","alias":"*","destinations":["admin@corp.dev"]}`, "a"); w.Code != http.StatusOK {
 		t.Fatalf("owner catch-all on the instance domain: %d %s", w.Code, w.Body.String())
 	}
@@ -95,8 +116,9 @@ func TestMailForwardsValidateAndMirrorToRouter(t *testing.T) {
 	}
 
 	id := got[0].ID
+	before := len(teamForwards(teamA.ID))
 	mailRequest(p, "DELETE", "/api/mail?id="+id, "", "b")
-	if len(teamForwards(teamA.ID)) != 2 {
+	if len(teamForwards(teamA.ID)) != before {
 		t.Fatal("another team deleted a forward it doesn't own")
 	}
 	mailRequest(p, "DELETE", "/api/mail?id="+id, "", "a")

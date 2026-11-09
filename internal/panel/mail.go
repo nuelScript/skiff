@@ -76,6 +76,13 @@ func writeMailFile() {
 	if rows.Err() != nil {
 		return
 	}
+	rows.Close()
+	// Agents are looked up once the forwards are read: the database has one connection, so a query inside the loop would wait on itself.
+	for _, aliases := range m {
+		for alias, dsts := range aliases {
+			aliases[alias] = routerDestinations(dsts)
+		}
+	}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return
@@ -253,6 +260,14 @@ func (p *Panel) handleMail(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			dst, ok := normalizeDestination(d)
+			if agent, isAgent := strings.CutPrefix(strings.ToLower(strings.TrimSpace(d)), agentMailPrefix); isAgent {
+				a, found := getAgent(sanitizeName(agent))
+				if !found || a.Team != team {
+					http.Error(w, "your team has no agent named "+agent, http.StatusBadRequest)
+					return
+				}
+				dst, ok = agentMailPrefix+a.App, true
+			}
 			if !ok {
 				http.Error(w, "“"+strings.TrimSpace(d)+"” isn't a valid email address", http.StatusBadRequest)
 				return
@@ -419,4 +434,22 @@ func spfAuthorizes(txts []string, serverIP string, mxHere bool) bool {
 		}
 	}
 	return false
+}
+
+// agentMailPrefix marks a forward that delivers to an agent's inbox rather than to an address.
+const agentMailPrefix = "agent:"
+
+// routerDestinations gives the router what it needs to deliver to an agent: the agent and its webhook secret, which it signs the delivery with. The file is the router's alone, beside the database.
+func routerDestinations(dsts []string) []string {
+	out := make([]string, 0, len(dsts))
+	for _, d := range dsts {
+		if app, ok := strings.CutPrefix(d, agentMailPrefix); ok {
+			if a, found := getAgent(app); found {
+				out = append(out, agentMailPrefix+a.App+":"+a.hookSecret)
+			}
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }

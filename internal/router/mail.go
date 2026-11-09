@@ -49,6 +49,7 @@ func (rt *Router) startMail(certs func(*tls.ClientHelloInfo) (*tls.Certificate, 
 				SRS:      mail.SRS{Key: key},
 				Relay:    mail.RelayFromEnv(),
 				Logf:     log.Printf,
+				Local:    rt.deliverToAgent,
 			},
 		}
 		if certs != nil {
