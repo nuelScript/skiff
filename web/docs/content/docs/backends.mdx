@@ -148,7 +148,14 @@ curl -X POST "$WEBHOOK" -H "X-Skiff-Signature: sha256=$sig" -d "$body"
 
 ### New files in a bucket
 
-A job can watch one of your team's buckets, or a folder in it. Each new file starts a run with the bucket in `SKIFF_BUCKET` and the file's key in `SKIFF_OBJECT_KEY`. Files already there when the job is added are left alone. Skiff looks every 30 seconds, at up to 5,000 files under the folder, and starts up to 20 runs per look.
+A job can watch one of your team's buckets, or a folder in it. Each new file starts a run with the bucket in `SKIFF_BUCKET` and the file's key in `SKIFF_OBJECT_KEY`. A file written again starts another run.
+
+- Files already there when the job is added are left alone.
+- Skiff looks every 30 seconds, at up to 50,000 files under the folder, and starts up to 20 runs per look.
+- A large upload that finishes after newer files is still picked up, up to an hour later.
+- If the bucket can't be read, or the folder holds more files than Skiff looks at, the team gets an alert.
+
+Write a job's own output outside the folder it watches, or each file it writes starts another run.
 
 Runs from webhooks and buckets wait their turn: a job runs one at a time, up to 50 can wait, and waiting runs survive a restart.
 

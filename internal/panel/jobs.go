@@ -48,7 +48,7 @@ type jobRow struct {
 	CatchUp                                string
 	// HookSecret signs webhook calls; empty means the job has no webhook. Stored sealed.
 	HookSecret string
-	// Bucket and Prefix watch a bucket. Seen is the newest file time already handled, and SeenKeys the files at that time, as JSON.
+	// Bucket and Prefix watch a bucket. Seen is the newest file time already handled, and SeenKeys the files handled within bucketLookback of it, as JSON of key to time.
 	Bucket, Prefix string
 	Seen           int64
 	SeenKeys       string

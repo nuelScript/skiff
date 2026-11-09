@@ -85,13 +85,41 @@ func TestWebhookQueuesASignedRequest(t *testing.T) {
 
 func TestNewFilesInABucket(t *testing.T) {
 	files := []bucketFile{{"in/c", 30}, {"in/a", 10}, {"in/b", 20}, {"in/b2", 20}, {"in/d", 30}}
-	got := newFiles(files, 20, []string{"in/b"})
+	got := newFiles(files, 20, map[string]int64{"in/a": 10, "in/b": 20})
 	var keys []string
 	for _, f := range got {
 		keys = append(keys, f.key)
 	}
 	if strings.Join(keys, ",") != "in/b2,in/c,in/d" {
 		t.Errorf("new files = %v", keys)
+	}
+}
+
+// A large upload is dated from when it began, so it can show up after newer files were handled; it still starts a run, once.
+func TestALateUploadStillStartsARun(t *testing.T) {
+	now := int64(1_800_000_000)
+	handled := map[string]int64{"in/small": now}
+	late := []bucketFile{{"in/small", now}, {"in/big", now - 600}, {"in/ancient", now - 2*bucketLookback}}
+	got := newFiles(late, now, handled)
+	if len(got) != 1 || got[0].key != "in/big" {
+		t.Fatalf("new files = %+v", got)
+	}
+	handled["in/big"] = now - 600
+	if got := newFiles(late, now, handled); len(got) != 0 {
+		t.Errorf("handled twice: %+v", got)
+	}
+	if got := newFiles([]bucketFile{{"in/small", now + 5}}, now, handled); len(got) != 1 {
+		t.Errorf("a file written again should run again: %+v", got)
+	}
+}
+
+func TestHandledFilesReadsTheOldList(t *testing.T) {
+	got := handledFiles(jobRow{Seen: 50, SeenKeys: `["in/a","in/b"]`})
+	if got["in/a"] != 50 || got["in/b"] != 50 || len(got) != 2 {
+		t.Errorf("old list read as %v", got)
+	}
+	if got := handledFiles(jobRow{Seen: 50, SeenKeys: `{"in/c":40}`}); got["in/c"] != 40 {
+		t.Errorf("new form read as %v", got)
 	}
 }
 

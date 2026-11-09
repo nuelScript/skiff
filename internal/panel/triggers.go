@@ -7,11 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"maps"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -26,8 +29,10 @@ const (
 	// webhookBodyLimit keeps a webhook's body small enough to hand to the run as an environment variable.
 	webhookBodyLimit = 64 << 10
 	// bucketWatchLimit is how many files under a prefix a watch reads each pass, and bucketBatch how many new ones it starts at once.
-	bucketWatchLimit = 5000
+	bucketWatchLimit = 50_000
 	bucketBatch      = 20
+	// bucketLookback is how far before the newest file handled a watch still looks. A large upload is dated from when it began, so it can land after files that started later.
+	bucketLookback = int64(time.Hour / time.Second)
 )
 
 // queueWake nudges the dispatcher when a run is queued, so it starts without waiting for its next pass.
@@ -230,20 +235,21 @@ func (p *Panel) bucketTriggerLoop() {
 	}
 }
 
-// watchBucket queues a run for each file newer than the job last saw. The first pass only notes what's already there.
+// watchBucket queues a run for each file it hasn't handled. The first pass only notes what's already there.
 func (p *Panel) watchBucket(j jobRow) {
 	b, ok := teamBucket(j.Team, j.Bucket)
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	c := p.bucketClient(b)
 	var files []bucketFile
 	token := ""
-	for len(files) < bucketWatchLimit {
+	for {
 		page, err := c.ListAll(ctx, j.Prefix, token, 1000)
 		if err != nil {
+			bucketTrouble(j, "can't read bucket "+j.Bucket+": "+err.Error())
 			return
 		}
 		for _, o := range page.Objects {
@@ -254,22 +260,31 @@ func (p *Panel) watchBucket(j jobRow) {
 		if token = page.NextToken; token == "" {
 			break
 		}
+		if len(files) >= bucketWatchLimit {
+			bucketTrouble(j, fmt.Sprintf("watches a folder of %s with more than %d files, so files past the first %d by name aren't seen. Point it at a smaller folder.", j.Bucket, bucketWatchLimit, bucketWatchLimit))
+			break
+		}
 	}
-	var seenKeys []string
-	_ = json.Unmarshal([]byte(j.SeenKeys), &seenKeys)
+	if len(files) < bucketWatchLimit {
+		bucketTrouble(j, "")
+	}
+	handled := handledFiles(j)
 	if j.Seen == 0 {
 		latest := time.Now().Unix()
 		for _, f := range files {
 			latest = max(latest, f.when)
 		}
-		saveBucketSeen(j.ID, latest, nil)
+		for _, f := range files {
+			handled[f.key] = f.when
+		}
+		saveBucketSeen(j.ID, latest, handled)
 		return
 	}
-	fresh := newFiles(files, j.Seen, seenKeys)
+	fresh := newFiles(files, j.Seen, handled)
 	if len(fresh) == 0 {
 		return
 	}
-	seen, keys := j.Seen, seenKeys
+	seen := j.Seen
 	for i, f := range fresh {
 		if i == bucketBatch {
 			break
@@ -277,12 +292,9 @@ func (p *Panel) watchBucket(j jobRow) {
 		if _, err := enqueueRun(j, triggerBucket, f.key); err != nil {
 			break
 		}
-		if f.when != seen {
-			seen, keys = f.when, nil
-		}
-		keys = append(keys, f.key)
+		seen, handled[f.key] = max(seen, f.when), f.when
 	}
-	saveBucketSeen(j.ID, seen, keys)
+	saveBucketSeen(j.ID, seen, handled)
 }
 
 type bucketFile struct {
@@ -290,11 +302,11 @@ type bucketFile struct {
 	when int64
 }
 
-// newFiles is what arrived after the last file handled, oldest first. Listings give times to the second, so files from that same second are told apart by key.
-func newFiles(files []bucketFile, seen int64, seenKeys []string) []bucketFile {
+// newFiles is what hasn't been handled, oldest first: a file within bucketLookback of the newest handled one, not handled at its current time.
+func newFiles(files []bucketFile, seen int64, handled map[string]int64) []bucketFile {
 	var fresh []bucketFile
 	for _, f := range files {
-		if f.when > seen || f.when == seen && !slices.Contains(seenKeys, f.key) {
+		if f.when > seen-bucketLookback && handled[f.key] < f.when {
 			fresh = append(fresh, f)
 		}
 	}
@@ -302,10 +314,44 @@ func newFiles(files []bucketFile, seen int64, seenKeys []string) []bucketFile {
 	return fresh
 }
 
-func saveBucketSeen(job string, seen int64, keys []string) {
-	raw, _ := json.Marshal(keys)
-	if keys == nil {
-		raw = nil
+// handledFiles are the files a watch handled within bucketLookback, by key and time. Before, only the keys at the newest time were kept, as a list.
+func handledFiles(j jobRow) map[string]int64 {
+	handled := map[string]int64{}
+	if json.Unmarshal([]byte(j.SeenKeys), &handled) != nil {
+		var keys []string
+		_ = json.Unmarshal([]byte(j.SeenKeys), &keys)
+		for _, k := range keys {
+			handled[k] = j.Seen
+		}
 	}
+	return handled
+}
+
+func saveBucketSeen(job string, seen int64, handled map[string]int64) {
+	maps.DeleteFunc(handled, func(_ string, when int64) bool { return when <= seen-bucketLookback })
+	raw, _ := json.Marshal(handled)
 	_, _ = sqlDB.Exec(`UPDATE jobs SET bucket_seen=?, bucket_seen_keys=? WHERE id=?`, seen, string(raw), job)
+}
+
+var bucketProblems = struct {
+	sync.Mutex
+	m map[string]string
+}{m: map[string]string{}}
+
+// bucketTrouble alerts the team once when a job's watch stops working, and forgets it when it works again.
+func bucketTrouble(j jobRow, problem string) {
+	bucketProblems.Lock()
+	was := bucketProblems.m[j.ID]
+	if problem == "" {
+		delete(bucketProblems.m, j.ID)
+	} else {
+		bucketProblems.m[j.ID] = problem
+	}
+	bucketProblems.Unlock()
+	if problem == "" || problem == was {
+		return
+	}
+	log.Printf("skiff: job %s on %s %s", j.Name, j.App, problem)
+	go dispatchAlert(alertEvent{Team: j.Team, Kind: "job.failed", App: j.App,
+		Title: fmt.Sprintf("Job %s on %s isn't seeing new files", j.Name, j.App), Detail: "It " + problem})
 }
