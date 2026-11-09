@@ -53,13 +53,17 @@ export function PermissionsSection({ app, onRedeploy }: { app: string; onRedeplo
       hostNetwork,
       newPrivileges,
     }
-    const strong = next.privileged || next.hostNetwork || next.capabilities?.some((c) => data.strong.includes(c.toUpperCase().replace(/^CAP_/, '')))
+    const strong =
+      next.privileged ||
+      next.hostNetwork ||
+      !!next.devices?.length ||
+      next.capabilities?.some((c) => data.strong.includes(c.toUpperCase().replace(/^CAP_/, '')))
     if (
       !isEmpty(next) &&
       !(await confirm({
         title: strong ? `Give ${app} near-full control of the server?` : `Grant ${app} these permissions?`,
         description: strong
-          ? "Privileged mode, the server's own network and capabilities like SYS_ADMIN let a container reach past its own walls, so anyone who controls this app could control the server. Only grant them to software you trust."
+          ? "Privileged mode, the server's own network, its devices and capabilities like SYS_ADMIN let a container reach past its own walls, so anyone who controls this app could control the server. Only grant them to software you trust."
           : 'Each permission weakens the wall between this app and the server a little. They apply on the next deploy.',
         confirmText: 'Grant',
         destructive: true,

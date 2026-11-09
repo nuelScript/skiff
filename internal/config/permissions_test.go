@@ -13,8 +13,8 @@ func TestPermissions(t *testing.T) {
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if p.Strong() {
-		t.Error("NET_ADMIN isn't one of the strong ones")
+	if !p.Strong() {
+		t.Error("a device makes the grant strong")
 	}
 	if got := p.DockerArgs(); !slices.Equal(got, []string{"--cap-add", "NET_ADMIN", "--device", "/dev/net/tun", "--sysctl", "net.core.somaxconn=1024"}) {
 		t.Errorf("args = %v", got)
