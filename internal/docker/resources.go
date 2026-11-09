@@ -126,11 +126,40 @@ func (e *Engine) PullImage(image string) error {
 	return nil
 }
 
-// RunOnce runs a throwaway container executing a shell command (sh -c), for release commands (migrations) and scheduled jobs, with the same settings as the app it belongs to.
+// runOutputKeep is how much of a run's output RunOnce keeps: the end, where a failure shows. A run that prints for a week would otherwise fill the panel's memory.
+const runOutputKeep = 1 << 20
+
+// RunOnce runs a throwaway container executing a shell command (sh -c), for release commands (migrations) and scheduled jobs, with the same settings as the app it belongs to. It returns the end of the output.
 func (e *Engine) RunOnce(ctx context.Context, image, cmd string, s Settings) (string, error) {
-	var out bytes.Buffer
-	err := e.RunStream(ctx, image, cmd, s, &out)
+	out := &tailBuffer{max: runOutputKeep}
+	err := e.RunStream(ctx, image, cmd, s, out)
 	return out.String(), err
+}
+
+// tailBuffer keeps the last max bytes written to it.
+type tailBuffer struct {
+	buf []byte
+	max int
+	cut bool
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > 2*t.max {
+		t.buf = append(t.buf[:0], t.buf[len(t.buf)-t.max:]...)
+		t.cut = true
+	}
+	return len(p), nil
+}
+
+func (t *tailBuffer) String() string {
+	if len(t.buf) > t.max {
+		return "…" + string(t.buf[len(t.buf)-t.max:])
+	}
+	if t.cut {
+		return "…" + string(t.buf)
+	}
+	return string(t.buf)
 }
 
 // RunStream runs cmd in a throwaway container, writing its output to w as it comes.

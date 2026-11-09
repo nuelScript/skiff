@@ -85,3 +85,25 @@ func TestJobLimits(t *testing.T) {
 		t.Errorf("waits: %v %v %v", retryWait(1), retryWait(2), retryWait(10))
 	}
 }
+
+// A long run outlasting many later ones keeps its row, so it can still finish into the history.
+func TestPruningSparesLiveRuns(t *testing.T) {
+	openTestDB(t)
+	j := jobRow{ID: "busy", App: "a", Team: "t", Name: "busy", Command: "true", Created: 1}
+	if err := putJob(j); err != nil {
+		t.Fatal(err)
+	}
+	long := startRun(j, triggerManual, 1, runRunning)
+	waiting := startRun(j, triggerManual, 1, runQueued)
+	for range keepJobRuns + 5 {
+		id := startRun(j, triggerManual, 1, runRunning)
+		finishRun(id, runOK, 0, "")
+	}
+	for _, id := range []int64{long, waiting} {
+		var n int
+		_ = sqlDB.QueryRow(`SELECT COUNT(*) FROM job_runs WHERE id=?`, id).Scan(&n)
+		if n != 1 {
+			t.Errorf("run %d was pruned while it was still live", id)
+		}
+	}
+}
