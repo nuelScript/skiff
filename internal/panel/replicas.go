@@ -264,12 +264,12 @@ func (p *Panel) addReplica(d dbRow) (replicaRow, error) {
 	}
 	r := replicaRow{ID: randToken()[:8], DBID: d.ID, Created: time.Now().Unix()}
 	r.Container = d.Container + "-replica-" + r.ID
-	if err := p.startReplica(d, r); err != nil {
-		p.stopReplica(d, r, true)
+	// Listed before it starts, so the watcher that waits for it to be ready finds it.
+	if _, err := sqlDB.Exec(`INSERT INTO db_replicas(id,db_id,container,created) VALUES(?,?,?,?)`, r.ID, r.DBID, r.Container, r.Created); err != nil {
 		return replicaRow{}, err
 	}
-	if _, err := sqlDB.Exec(`INSERT INTO db_replicas(id,db_id,container,created) VALUES(?,?,?,?)`, r.ID, r.DBID, r.Container, r.Created); err != nil {
-		p.stopReplica(d, r, true)
+	if err := p.startReplica(d, r); err != nil {
+		p.removeReplica(d, r)
 		return replicaRow{}, err
 	}
 	return r, nil

@@ -67,9 +67,11 @@ func TestReadReplicas(t *testing.T) {
 		t.Fatalf("after adding a replica: %+v", db)
 	}
 	first := db.Replicas[0]
-	// A replica still copying isn't under the read name yet, so no client is sent to one that would refuse it.
+	// A replica still copying isn't under the read name, so no client is sent to one that would refuse it. A small copy is ready within seconds, so the name may already be there, but never before the replica accepts connections.
 	if out, err := exec.Command("docker", "exec", ctr, "getent", "hosts", ctr+"-read").CombinedOutput(); err == nil {
-		t.Errorf("the read name answered while the replica was copying: %s", out)
+		if exec.Command("docker", "exec", first.Name, "pg_isready", "-q", "-h", "127.0.0.1").Run() != nil {
+			t.Errorf("the read name answered while the replica was copying: %s", out)
+		}
 	}
 	streaming := func(n int) bool {
 		var st []struct{ ID, Phase string }
