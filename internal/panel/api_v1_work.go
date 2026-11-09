@@ -84,8 +84,14 @@ func (p *Panel) apiJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := []Job{}
+	// The secret signs webhooks that start the job, so it's for tokens that may run jobs, not ones that only read.
+	canRun := apiGrant(r).can(scopeWork)
 	for _, j := range listJobRows(app) {
-		out = append(out, toJob(j))
+		job := toJob(j)
+		if !canRun {
+			job.WebhookSecret = ""
+		}
+		out = append(out, job)
 	}
 	apiJSON(w, http.StatusOK, out)
 }

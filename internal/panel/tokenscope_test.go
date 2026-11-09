@@ -65,6 +65,12 @@ func TestTokenLimits(t *testing.T) {
 	if msg := scopeRefusal(tokenGrant{Apps: []string{"web"}}, "POST /api/v1/databases"); !strings.Contains(msg, "limited to some projects") {
 		t.Errorf("a team-wide route with a limited token: %q", msg)
 	}
+	// Attaching hands the app the database's password, so a limited token can't attach one it was never given.
+	for _, route := range []string{"PUT /api/v1/databases/{name}/apps/{app}", "DELETE /api/v1/buckets/{name}/apps/{app}"} {
+		if msg := scopeRefusal(tokenGrant{Apps: []string{"web"}}, route); !strings.Contains(msg, "limited to some projects") {
+			t.Errorf("%s with a limited token: %q", route, msg)
+		}
+	}
 	if msg := scopeRefusal(tokenGrant{}, "DELETE /api/v1/buckets/{name}"); msg != "" {
 		t.Errorf("an old token can do everything: %q", msg)
 	}
