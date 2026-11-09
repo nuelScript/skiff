@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/config"
 )
 
 func (e *Engine) HostPort(name string, containerPort int) (int, error) {
@@ -177,6 +179,9 @@ type ContainerRuntime struct {
 	Mounts   []Mount
 	Labels   map[string]string
 	Running  bool
+	// Runtime is the OCI runtime it was started with, such as runsc, and Permissions what it was granted beyond the defaults.
+	Runtime     string
+	Permissions config.Permissions
 }
 
 // Runtime reads how a container was started: image, environment, command, networks and volumes.
@@ -196,7 +201,14 @@ func parseRuntime(out []byte) (ContainerRuntime, error) {
 			Cmd    []string
 			Labels map[string]string
 		}
-		State           struct{ Running bool }
+		State      struct{ Running bool }
+		HostConfig struct {
+			Runtime, NetworkMode string
+			Privileged           bool
+			CapAdd, SecurityOpt  []string
+			Devices              []struct{ PathOnHost, PathInContainer string }
+			Sysctls              map[string]string
+		}
 		Mounts          []struct{ Type, Name, Destination string }
 		NetworkSettings struct {
 			Networks map[string]struct{ IPAddress string }
@@ -228,6 +240,34 @@ func parseRuntime(out []byte) (ContainerRuntime, error) {
 			rt.Mounts = append(rt.Mounts, Mount{Name: m.Name, Destination: m.Destination})
 		}
 	}
+	h := c.HostConfig
+	if h.Runtime != "runc" {
+		rt.Runtime = h.Runtime
+	}
+	perm := config.Permissions{Privileged: h.Privileged, HostNetwork: h.NetworkMode == "host", NewPrivileges: true}
+	for _, c := range h.CapAdd {
+		perm.Capabilities = append(perm.Capabilities, strings.TrimPrefix(c, "CAP_"))
+	}
+	for _, d := range h.Devices {
+		if d.PathInContainer == "" || d.PathInContainer == d.PathOnHost {
+			perm.Devices = append(perm.Devices, d.PathOnHost)
+		} else {
+			perm.Devices = append(perm.Devices, d.PathOnHost+":"+d.PathInContainer)
+		}
+	}
+	for k, v := range h.Sysctls {
+		perm.Sysctls = append(perm.Sysctls, k+"="+v)
+	}
+	sort.Strings(perm.Sysctls)
+	for _, o := range h.SecurityOpt {
+		if o == "no-new-privileges" || o == "no-new-privileges:true" || o == "no-new-privileges=true" {
+			perm.NewPrivileges = false
+		}
+	}
+	if perm.Privileged {
+		perm.NewPrivileges = false
+	}
+	rt.Permissions = perm
 	return rt, nil
 }
 
