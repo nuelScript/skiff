@@ -36,7 +36,9 @@ type recipe struct {
 	Env     map[string]string `json:"-" toml:"env"`
 	// Command replaces the image's own command, for images that serve several roles.
 	Command []string `json:"-" toml:"command"`
-	DBVar   string   `json:"-" toml:"database_var"` // the env var that holds the database connection, to record the attachment
+	// AccessToken puts a key in front of the app from the start, for an API with no login of its own. The key is in ACCESS_TOKEN under the app's Environment.
+	AccessToken bool   `json:"accessToken,omitempty" toml:"access_token"`
+	DBVar       string `json:"-" toml:"database_var"` // the env var that holds the database connection, to record the attachment
 }
 
 //go:embed catalog/*.toml
@@ -194,7 +196,17 @@ func (p *Panel) installRecipe(rec recipe, name, team string) (string, error) {
 		undo()
 		return "", err
 	}
-	if err := setEnv(name, renderRecipeEnv(rec.Env, "https://"+name+"."+p.domain, db, randToken)); err != nil {
+	env := renderRecipeEnv(rec.Env, "https://"+name+"."+p.domain, db, randToken)
+	if rec.AccessToken {
+		tok, err := createAccessToken(name, "installed with the app", time.Now())
+		if err != nil {
+			undo()
+			return "", err
+		}
+		env = append(env, EnvVar{Key: "ACCESS_TOKEN", Value: tok.Token})
+		_ = writeEdgeFile()
+	}
+	if err := setEnv(name, env); err != nil {
 		undo()
 		return "", err
 	}
