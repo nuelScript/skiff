@@ -1,0 +1,16 @@
+name = "vLLM"
+category = "AI"
+blurb = "Fast model serving on an NVIDIA GPU, with an OpenAI-compatible API behind a key. Starts with a small Qwen model; serve any model from Hugging Face instead."
+image = "vllm/vllm-openai:v0.32.0"
+port = 8000
+memory = "16 GB"
+timeout = 1800
+access_token = true
+gpus = 1
+needs_gpu = true
+command = ["Qwen/Qwen3-0.6B", "--max-model-len", "8192"]
+setup = "The first start downloads the image and the model, which can take a while. Call the API at this app's address followed by /v1, with the key in ACCESS_TOKEN under Environment as the API key. To serve another model, change the Start command in Settings to its Hugging Face name and redeploy; for a gated model, add HF_TOKEN under Environment."
+
+[[volumes]]
+name = "models"
+path = "/root/.cache/huggingface"

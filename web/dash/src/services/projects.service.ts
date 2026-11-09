@@ -72,6 +72,7 @@ export type ProjectDetail = {
   healthTimeout: number
   defaultHealthTimeout: number
   image?: string
+  command?: string[]
   maxReplicas: number
   setupNote?: string
   private: boolean
@@ -107,6 +108,8 @@ export type CatalogApp = {
   memory: string
   database?: string
   setup: string
+  gpus?: number
+  needsGpu?: boolean
 }
 
 export type AccessToken = { id: string; name: string; created: number; token?: string }
@@ -264,6 +267,7 @@ export type ProjectSettings = {
   healthPath: string
   healthTimeout: number
   image?: string
+  command?: string[]
   memory: string
   cpu: string
   gpus: number

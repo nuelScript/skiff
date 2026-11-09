@@ -31,6 +31,12 @@ func TestCatalogRecipesAreValid(t *testing.T) {
 		if err := config.ValidateHealth("", r.Timeout); err != nil {
 			t.Errorf("%s: %v", r.ID, err)
 		}
+		if r.GPUs < 0 || r.GPUs > config.MaxGPUs || r.NeedsGPU && r.GPUs == 0 {
+			t.Errorf("%s: gpus must be 1-%d, and set when it needs a GPU", r.ID, config.MaxGPUs)
+		}
+		if checkCommand(r.Command) != "" {
+			t.Errorf("%s: %s", r.ID, checkCommand(r.Command))
+		}
 		if r.Port == 0 || r.Setup == "" || r.Blurb == "" || r.Memory == "" {
 			t.Errorf("%s: missing port, setup note, blurb or memory", r.ID)
 		}

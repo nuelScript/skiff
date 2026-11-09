@@ -14,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 // recipe is a one-click app: an image with what it needs to run, from a file in catalog/. Env values may use {{secret}}, {{url}}, {{host}} and, with a database, {{db.url}}, {{db.host}}, {{db.port}}, {{db.user}}, {{db.password}} and {{db.name}}.
@@ -39,6 +40,27 @@ type recipe struct {
 	// AccessToken puts a key in front of the app from the start, for an API with no login of its own. The key is in ACCESS_TOKEN under the app's Environment.
 	AccessToken bool   `json:"accessToken,omitempty" toml:"access_token"`
 	DBVar       string `json:"-" toml:"database_var"` // the env var that holds the database connection, to record the attachment
+	// GPUs is how many GPUs it gets when the server has them free; NeedsGPU refuses to install without them.
+	GPUs     int  `json:"gpus,omitempty" toml:"gpus"`
+	NeedsGPU bool `json:"needsGpu,omitempty" toml:"needs_gpu"`
+}
+
+// recipeGPUs is how many GPUs an install gets: the recipe's count when the server has them free, none otherwise, or a reason it can't install when it needs them.
+func (p *Panel) recipeGPUs(rec recipe, name string) (int, string) {
+	if rec.GPUs == 0 {
+		return 0, ""
+	}
+	err := p.eng.CanUseGPUs()
+	if err == nil {
+		_, err = docker.PickGPUs(name, rec.GPUs, p.eng.GPUs(), p.eng.GPUsInUse())
+	}
+	switch {
+	case err == nil:
+		return rec.GPUs, ""
+	case rec.NeedsGPU:
+		return 0, rec.Name + " needs an NVIDIA GPU: " + err.Error()
+	}
+	return 0, ""
 }
 
 //go:embed catalog/*.toml
@@ -146,7 +168,12 @@ func (p *Panel) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		if envStage.heldByOther(name, team, time.Now()) {
 			_ = setEnv(name, nil)
 		}
-		id, err := p.installRecipe(rec, name, team)
+		gpus, problem := p.recipeGPUs(rec, name)
+		if problem != "" {
+			http.Error(w, problem, http.StatusBadRequest)
+			return
+		}
+		id, err := p.installRecipe(rec, name, team, gpus)
 		if err != nil {
 			http.Error(w, "couldn't install "+rec.Name+": "+err.Error(), http.StatusInternalServerError)
 			return
@@ -160,7 +187,7 @@ func (p *Panel) handleCatalog(w http.ResponseWriter, r *http.Request) {
 }
 
 // installRecipe creates the project and whatever it needs, then starts its first deploy. Nothing is left behind if a step before the deploy fails.
-func (p *Panel) installRecipe(rec recipe, name, team string) (string, error) {
+func (p *Panel) installRecipe(rec recipe, name, team string, gpus int) (string, error) {
 	db := map[string]string{}
 	var row dbRow
 	if rec.Database != "" {
@@ -186,7 +213,7 @@ func (p *Panel) installRecipe(rec recipe, name, team string) (string, error) {
 	}
 	src := Source{
 		App: name, Team: team, Image: rec.Image, Port: strconv.Itoa(rec.Port),
-		HealthTimeout: rec.Timeout, Catalog: rec.ID,
+		HealthTimeout: rec.Timeout, Catalog: rec.ID, GPUs: gpus,
 	}
 	if len(rec.Command) > 0 {
 		b, _ := json.Marshal(rec.Command)

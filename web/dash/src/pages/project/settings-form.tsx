@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { joinArgs, splitArgs } from '@/lib/args'
 import { errText } from '@/lib/errors'
 import { useConfirm } from '@/providers/confirm-provider'
 import { projectsService } from '@/services/api.service'
@@ -54,6 +55,7 @@ export function SettingsForm({
   healthTimeout,
   defaultHealthTimeout = 30,
   image = '',
+  command = [],
   maxReplicas = 10,
   memory = '',
   cpu = '',
@@ -81,6 +83,7 @@ export function SettingsForm({
   healthTimeout: number
   defaultHealthTimeout?: number
   image?: string
+  command?: string[]
   maxReplicas?: number
   memory?: string
   cpu?: string
@@ -110,6 +113,7 @@ export function SettingsForm({
       healthPath: healthPath || '',
       healthTimeout: healthTimeout || 0,
       image,
+      command: joinArgs(command),
       memory: memory || '',
       cpu: cpu || '',
       gpus,
@@ -133,7 +137,8 @@ export function SettingsForm({
   const save = handleSubmit(async (data) => {
     setSaveError('')
     try {
-      await projectsService.update(name, data)
+      const { command: line, ...rest } = data
+      await projectsService.update(name, { ...rest, command: fromImage ? (splitArgs(line) ?? []) : undefined })
       form.reset(data)
       setSaved(true)
       onSaved()
@@ -159,6 +164,22 @@ export function SettingsForm({
                 {...register('image')}
               />
               <FieldError errors={[formState.errors.image]} />
+            </Field>
+          )}
+          {fromImage && (
+            <Field data-invalid={!!formState.errors.command} className="sm:col-span-2 xl:col-span-3">
+              <FieldLabel htmlFor="s-command">Start command</FieldLabel>
+              <Input
+                id="s-command"
+                placeholder="The image's own"
+                className="font-mono"
+                aria-invalid={!!formState.errors.command}
+                {...register('command')}
+              />
+              <FieldDescription>
+                Replaces the image's command; its entrypoint stays. Quote an argument that has spaces.
+              </FieldDescription>
+              <FieldError errors={[formState.errors.command]} />
             </Field>
           )}
           {!cli && !fromImage && (
