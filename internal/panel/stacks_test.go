@@ -171,36 +171,53 @@ func TestStackVarsAreSealed(t *testing.T) {
 }
 
 func TestTCPPortProblem(t *testing.T) {
-	sources := []Source{{App: "a", TCPPort: 6000}, {App: "b"}}
+	sources := []Source{{App: "a", Team: "t1", TCPPort: 6000}, {App: "b", Team: "t1"}}
 	dbs := map[int]string{7000: "orders"}
 	for port, want := range map[int]string{
 		80: "server's admin", 22: "server's admin", 70000: "use a port", 7070: "dashboard",
 		6000: "already used by a", 7000: "database orders", 6001: "",
 	} {
-		got := tcpPortProblem(port, "b", sources, dbs, false)
+		got := tcpPortProblem(port, "b", "t1", sources, dbs, false)
 		if (want == "") != (got == "") || !strings.Contains(got, want) {
 			t.Errorf("%d: %q, want %q", port, got, want)
 		}
 	}
-	if got := tcpPortProblem(6000, "a", sources, dbs, false); got != "" {
+	if got := tcpPortProblem(6000, "a", "t1", sources, dbs, false); got != "" {
 		t.Errorf("an app keeps its own port: %q", got)
 	}
 }
 
+func TestPortProblemHidesOtherTeams(t *testing.T) {
+	sources := []Source{{App: "secret-app", Team: "t2", TCPPort: 6000, UDPPort: 6100}}
+	dbs := map[int]string{7000: ""}
+	for _, got := range []string{
+		tcpPortProblem(6000, "b", "t1", sources, dbs, false),
+		tcpPortProblem(7000, "b", "t1", sources, dbs, false),
+		udpPortProblem(6100, "b", "t1", sources, false),
+	} {
+		if !strings.Contains(got, "in use on this server") || strings.Contains(got, "secret") {
+			t.Errorf("%q", got)
+		}
+	}
+	if got := udpPortProblem(6100, "b", "t2", sources, false); !strings.Contains(got, "secret-app") {
+		t.Errorf("own team's holder is named: %q", got)
+	}
+}
+
 func TestLowPortsNeedTheServersAdmin(t *testing.T) {
-	if got := tcpPortProblem(53, "a", nil, nil, false); got != lowPortsNeed {
+	if got := tcpPortProblem(53, "a", "t1", nil, nil, false); got != lowPortsNeed {
 		t.Errorf("a team owner opening 53: %q", got)
 	}
-	if got := tcpPortProblem(53, "a", nil, nil, true); got != "" {
+	if got := tcpPortProblem(53, "a", "t1", nil, nil, true); got != "" {
 		t.Errorf("the server's admin opening 53: %q", got)
 	}
-	if got := tcpPortProblem(22, "a", nil, nil, true); got == "" {
+	if got := tcpPortProblem(22, "a", "t1", nil, nil, true); got == "" {
 		t.Error("SSH's port stays reserved, even for the admin")
 	}
-	if got := udpPortProblem(53, "a", nil, true); got != "" {
+	if got := udpPortProblem(53, "a", "t1", nil, true); got != "" {
 		t.Errorf("UDP 53 for a DNS server: %q", got)
 	}
-	if got := udpPortProblem(0, "a", nil, true); got == "" {
+	if got := udpPortProblem(0, "a", "t1", nil, true); got == "" {
 		t.Error("port 0 should be refused")
 	}
 }
