@@ -542,7 +542,7 @@ func (p *Panel) volumeBackupLoop() {
 					if v.Owner != "" || now-lastVolumeBackupAt(src.App, v.Name) < 24*3600 {
 						continue
 					}
-					if p.volumeSizes()[config.VolumeName(src.App, v.Name)] == 0 {
+					if p.volumeSize(config.VolumeName(src.App, v.Name)) == 0 {
 						continue
 					}
 					if _, err := p.runVolumeBackup(src, v.Name, "scheduled"); err != nil {

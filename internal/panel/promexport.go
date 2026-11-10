@@ -46,7 +46,6 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	apps, _ := registry.Load()
 	traffic := readMetricsFile()
-	sizes := p.volumeSizes()
 
 	up := &promMetric{name: "skiff_app_up", help: "1 when the app has a running container."}
 	crashing := &promMetric{name: "skiff_app_crashing", help: "1 when the app keeps exiting and being restarted."}
@@ -101,7 +100,7 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 		bytesIn.add(l, float64(bi))
 		bytesOut.add(l, float64(bo))
 		for _, v := range listVolumes(src.App) {
-			volume.add(fmt.Sprintf(`app="%s",volume="%s"`, promLabel(src.App), promLabel(v.Name)), float64(sizes[config.VolumeName(src.App, v.Name)]))
+			volume.add(fmt.Sprintf(`app="%s",volume="%s"`, promLabel(src.App), promLabel(v.Name)), float64(p.volumeSize(config.VolumeName(src.App, v.Name))))
 		}
 	}
 
