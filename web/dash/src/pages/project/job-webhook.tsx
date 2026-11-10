@@ -25,9 +25,10 @@ export function JobWebhook({ url, secret, after }: { url: string; secret: string
         }
       />
       <p className="text-muted-foreground leading-relaxed">
-        POST to it with the body signed by HMAC-SHA256 of this secret, sent as{' '}
-        <code className="font-mono">X-Skiff-Signature: sha256=…</code>. A GitHub webhook with this secret works
-        as it is.{' '}
+        POST to it with the current Unix time in <code className="font-mono">X-Skiff-Timestamp</code>, and{' '}
+        <code className="font-mono">time.body</code> signed by HMAC-SHA256 of this secret in{' '}
+        <code className="font-mono">X-Skiff-Signature: sha256=…</code>. Each request is taken once, within five
+        minutes of its time. A GitHub webhook with this secret works as it is.{' '}
         {after ?? (
           <>
             The run gets the body in <code className="font-mono">SKIFF_WEBHOOK_BODY</code>.

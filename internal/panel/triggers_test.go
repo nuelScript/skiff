@@ -4,10 +4,15 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/nuelScript/skiff/internal/hooksig"
 )
 
 func sign(secret, body string) string {
@@ -32,27 +37,49 @@ func TestWebhookQueuesASignedRequest(t *testing.T) {
 	}
 
 	p := &Panel{}
-	send := func(header, sig, body string) int {
+	post := func(h http.Header, body string) int {
 		req := httptest.NewRequest(http.MethodPost, "/api/hooks/jobs/"+j.ID, strings.NewReader(body))
 		req.SetPathValue("id", j.ID)
-		if header != "" {
-			req.Header.Set(header, sig)
-		}
+		maps.Copy(req.Header, h)
 		w := httptest.NewRecorder()
 		p.handleJobHook(w, req)
 		return w.Code
 	}
-	if code := send("X-Skiff-Signature", sign("wrong", `{"a":1}`), `{"a":1}`); code != http.StatusUnauthorized {
+	signed := func(secret, body string) http.Header {
+		h := http.Header{}
+		hooksig.Set(h, secret, []byte(body))
+		return h
+	}
+	send := func(secret, body string) int { return post(signed(secret, body), body) }
+	if code := send("wrong", `{"a":1}`); code != http.StatusUnauthorized {
 		t.Errorf("a wrong signature: %d", code)
 	}
-	if code := send("", "", `{"a":1}`); code != http.StatusUnauthorized {
+	if code := post(nil, `{"a":1}`); code != http.StatusUnauthorized {
 		t.Errorf("no signature: %d", code)
 	}
-	if code := send("X-Skiff-Signature", sign("s3cret", `{"a":1}`), `{"a":1}`); code != http.StatusAccepted {
+	first := signed("s3cret", `{"a":1}`)
+	if code := post(first, `{"a":1}`); code != http.StatusAccepted {
 		t.Errorf("a signed request: %d", code)
 	}
-	if code := send("X-Hub-Signature-256", sign("s3cret", `{"b":2}`), `{"b":2}`); code != http.StatusAccepted {
+	if code := post(first, `{"a":1}`); code != http.StatusOK {
+		t.Errorf("the same request again should be taken as received and not run: %d", code)
+	}
+	old := http.Header{}
+	ts := time.Now().Add(-10 * time.Minute).Unix()
+	old.Set(hooksig.TimestampHeader, strconv.FormatInt(ts, 10))
+	old.Set(hooksig.SignatureHeader, hooksig.Sign("s3cret", ts, []byte(`{"c":3}`)))
+	if code := post(old, `{"c":3}`); code != http.StatusUnauthorized {
+		t.Errorf("a request signed ten minutes ago: %d", code)
+	}
+	if code := post(http.Header{"X-Skiff-Signature": {sign("s3cret", `{"c":3}`)}}, `{"c":3}`); code != http.StatusUnauthorized {
+		t.Errorf("a signature of the body alone, without a time: %d", code)
+	}
+	gh := http.Header{"X-Hub-Signature-256": {sign("s3cret", `{"b":2}`)}, "X-Github-Delivery": {"d-1"}}
+	if code := post(gh, `{"b":2}`); code != http.StatusAccepted {
 		t.Errorf("GitHub's header: %d", code)
+	}
+	if code := post(gh, `{"b":2}`); code != http.StatusOK {
+		t.Errorf("the same GitHub delivery again: %d", code)
 	}
 	runs := listRuns(j.ID, 10)
 	if len(runs) != 2 || runs[0].Status != runQueued || runs[1].Trigger != triggerWebhook {
@@ -67,10 +94,10 @@ func TestWebhookQueuesASignedRequest(t *testing.T) {
 	for range maxQueuedRuns {
 		_, _ = enqueueRun(j, triggerWebhook, "")
 	}
-	if code := send("X-Skiff-Signature", sign("s3cret", "x"), "x"); code != http.StatusTooManyRequests {
+	if code := send("s3cret", "x"); code != http.StatusTooManyRequests {
 		t.Errorf("a full queue: %d", code)
 	}
-	if code := send("X-Skiff-Signature", sign("s3cret", strings.Repeat("x", webhookBodyLimit+1)), strings.Repeat("x", webhookBodyLimit+1)); code != http.StatusRequestEntityTooLarge {
+	if code := send("s3cret", strings.Repeat("x", webhookBodyLimit+1)); code != http.StatusRequestEntityTooLarge {
 		t.Errorf("a body over the limit: %d", code)
 	}
 	putJob(jobRow{ID: "plain", App: "a", Team: "t", Name: "plain", Schedule: "* * * * *", Command: "true"})

@@ -3,9 +3,6 @@
 package e2e
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/hooksig"
 )
 
 // TestAgentFrameworks runs agents built on real frameworks as Skiff agents: each takes an event from its inbox, asks a model through the AI gateway, and finishes the event. The model is a fake that answers like OpenAI.
@@ -89,10 +88,8 @@ func TestAgentFrameworks(t *testing.T) {
 			}
 			before := calls.Load()
 			body := "Say hello in two words."
-			mac := hmac.New(sha256.New, []byte(agent.WebhookSecret))
-			mac.Write([]byte(body))
 			req, _ := http.NewRequest(http.MethodPost, base+"/api/hooks/agents/"+app, strings.NewReader(body))
-			req.Header.Set("X-Skiff-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+			hooksig.Set(req.Header, agent.WebhookSecret, []byte(body))
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil || resp.StatusCode != http.StatusAccepted {
 				t.Fatalf("webhook: %v %v", err, resp)

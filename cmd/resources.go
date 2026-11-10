@@ -365,7 +365,7 @@ func newJobCmd() *cobra.Command {
 			if job.Webhook != "" {
 				ui.Field("webhook", job.Webhook)
 				ui.Field("secret", job.Secret)
-				ui.Note("Sign each request's body with HMAC-SHA256 and send it as X-Skiff-Signature: sha256=<hex>. GitHub's X-Hub-Signature-256 works too.")
+				ui.Note("Send the Unix time as X-Skiff-Timestamp, and HMAC-SHA256 of \"<time>.<body>\" as X-Skiff-Signature: sha256=<hex>. A request works once, within five minutes. GitHub's X-Hub-Signature-256 works too.")
 			}
 			return nil
 		},

@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/hooksig"
 	"github.com/robfig/cron/v3"
 )
 
@@ -165,20 +167,73 @@ func (p *Panel) dispatchQueued() {
 	}
 }
 
-// signedBy checks a webhook's signature: an HMAC-SHA256 of the body as "sha256=<hex>", in Skiff's header or GitHub's.
-func signedBy(r *http.Request, body []byte, secret string) bool {
-	sig := r.Header.Get("X-Skiff-Signature")
-	if sig == "" {
-		sig = r.Header.Get("X-Hub-Signature-256")
+// errReplayed is a correctly signed request that already arrived; it's answered as received and not acted on again.
+var errReplayed = errors.New("already received")
+
+// checkHook verifies a webhook. Skiff's signature covers the time it was sent, so it's accepted within a few minutes and once. GitHub's covers only the body, so each of its deliveries is accepted once by its ID.
+func checkHook(r *http.Request, body []byte, secret string) error {
+	if secret == "" {
+		return hooksig.ErrMismatch
 	}
-	got, ok := strings.CutPrefix(sig, "sha256=")
-	if !ok || secret == "" {
-		return false
+	scope := sha256.Sum256([]byte(secret))
+	key := hex.EncodeToString(scope[:8]) + ":"
+	if r.Header.Get(hooksig.SignatureHeader) != "" {
+		if err := hooksig.Check(r.Header, secret, body, time.Now()); err != nil {
+			return err
+		}
+		if !firstDelivery(key+r.Header.Get(hooksig.SignatureHeader), 2*hooksig.MaxAge) {
+			return errReplayed
+		}
+		return nil
 	}
+	got, ok := strings.CutPrefix(r.Header.Get("X-Hub-Signature-256"), "sha256=")
 	want := hmac.New(sha256.New, []byte(secret))
 	want.Write(body)
 	raw, err := hex.DecodeString(got)
-	return err == nil && hmac.Equal(raw, want.Sum(nil))
+	if !ok || err != nil || !hmac.Equal(raw, want.Sum(nil)) {
+		return hooksig.ErrMismatch
+	}
+	if id := r.Header.Get("X-GitHub-Delivery"); id != "" && !firstDelivery(key+"gh:"+id, 24*time.Hour) {
+		return errReplayed
+	}
+	return nil
+}
+
+// hookAnswer replies to a webhook that checkHook turned away, and reports whether it did.
+func hookAnswer(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, errReplayed):
+		writeJSON(w, map[string]string{"ok": err.Error()})
+	default:
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+	}
+	return true
+}
+
+var deliveries = struct {
+	sync.Mutex
+	until map[string]time.Time
+}{until: map[string]time.Time{}}
+
+// firstDelivery remembers key for keep, and reports whether it's new. A restart forgets them, which reopens at most the few minutes a signature lasts.
+func firstDelivery(key string, keep time.Duration) bool {
+	deliveries.Lock()
+	defer deliveries.Unlock()
+	now := time.Now()
+	if len(deliveries.until) > 50_000 {
+		for k, t := range deliveries.until {
+			if now.After(t) {
+				delete(deliveries.until, k)
+			}
+		}
+	}
+	if t, ok := deliveries.until[key]; ok && now.Before(t) {
+		return false
+	}
+	deliveries.until[key] = now.Add(keep)
+	return true
 }
 
 // handleJobHook queues a job when a correctly signed request arrives. It answers before the job runs.
@@ -193,8 +248,7 @@ func (p *Panel) handleJobHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the body is over 64 KB", http.StatusRequestEntityTooLarge)
 		return
 	}
-	if !signedBy(r, body, j.HookSecret) {
-		http.Error(w, "the signature doesn't match", http.StatusUnauthorized)
+	if hookAnswer(w, checkHook(r, body, j.HookSecret)) {
 		return
 	}
 	// GitHub checks a new webhook with a ping, which shouldn't run the job.

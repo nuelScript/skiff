@@ -138,12 +138,22 @@ A job runs a command from your app's build in a one-off container with the app's
 
 ### Webhooks
 
-A job with a webhook gets an address and a secret, shown on its row. Send a POST with the body signed by HMAC-SHA256 of the secret, as `X-Skiff-Signature: sha256=<hex>`. GitHub's `X-Hub-Signature-256` header works too, so a GitHub webhook with the same secret can start the job, and its ping doesn't. The run gets the body, up to 64 KB, in `SKIFF_WEBHOOK_BODY`.
+A job with a webhook gets an address and a secret, shown on its row. Send a POST with:
+
+- the current Unix time in `X-Skiff-Timestamp`;
+- HMAC-SHA256 of `<time>.<body>` with the secret, as `X-Skiff-Signature: sha256=<hex>`.
+
+A request is taken once, and only within five minutes of its time, so a copy of it can't start the job again. Sending the same one twice answers `200` without a second run.
+
+GitHub's `X-Hub-Signature-256` header works too, so a GitHub webhook with the same secret can start the job, and its ping doesn't. Each GitHub delivery is taken once.
+
+The run gets the body, up to 64 KB, in `SKIFF_WEBHOOK_BODY`.
 
 ```sh title="shell"
 body='{"ref":"main"}'
-sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SECRET" | cut -d' ' -f2)
-curl -X POST "$WEBHOOK" -H "X-Skiff-Signature: sha256=$sig" -d "$body"
+ts=$(date +%s)
+sig=$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$SECRET" | cut -d' ' -f2)
+curl -X POST "$WEBHOOK" -H "X-Skiff-Timestamp: $ts" -H "X-Skiff-Signature: sha256=$sig" -d "$body"
 ```
 
 ### New files in a bucket

@@ -2,16 +2,16 @@ package router
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
+
+	"github.com/nuelScript/skiff/internal/hooksig"
 )
 
 const multipartMail = "From: =?UTF-8?Q?Ad=C3=A1?= <ada@example.com>\r\n" +
@@ -39,9 +39,7 @@ func TestDeliverToAgentSignsTheEvent(t *testing.T) {
 	var path, source string
 	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		mac := hmac.New(sha256.New, []byte("s3cret"))
-		mac.Write(body)
-		sigOK = r.Header.Get("X-Skiff-Signature") == "sha256="+hex.EncodeToString(mac.Sum(nil))
+		sigOK = hooksig.Check(r.Header, "s3cret", body, time.Now()) == nil
 		path, source = r.URL.Path, r.Header.Get("X-Skiff-Source")
 		_ = json.Unmarshal(body, &got)
 		w.WriteHeader(http.StatusAccepted)

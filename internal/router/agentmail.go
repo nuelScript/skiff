@@ -3,9 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/hooksig"
 	skiffmail "github.com/nuelScript/skiff/internal/mail"
 )
 
@@ -134,13 +132,11 @@ func (rt *Router) deliverToAgent(ctx context.Context, dst, rcpt string, data []b
 		return &skiffmail.Error{Temporary: true, Msg: "the panel isn't reachable"}
 	}
 	body := encodeEmail(summarizeEmail(rcpt, data))
-	mac := hmac.New(sha256.New, []byte(parts[2]))
-	mac.Write(body)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+strings.TrimPrefix(up, "http://")+"/api/hooks/agents/"+parts[1], bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Skiff-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	hooksig.Set(req.Header, parts[2], body)
 	req.Header.Set("X-Skiff-Source", "email")
 	req.Header.Set("X-Skiff-Event", "email")
 	resp, err := http.DefaultClient.Do(req)
