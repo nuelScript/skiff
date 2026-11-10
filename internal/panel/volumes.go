@@ -191,15 +191,22 @@ func (p *Panel) mountedVolumes(app string) []config.Volume {
 	return out
 }
 
-// appMounts is the volume set for containers the panel starts itself (scale-ups, workers, jobs), so they see the same files as the app.
+// appMounts is the volume set for containers the panel starts itself (scale-ups, workers, jobs), so they see the same files as the app: every path a volume is mounted at, and a volume that doesn't exist yet made on its disk, as a deploy makes it.
 func (p *Panel) appMounts(src Source) []docker.Mount {
 	var out []docker.Mount
+	user := config.DecodeRunOptions(src.RunOptions).User
 	for _, v := range p.volumeDefs(src) {
 		name := v.DockerName(src.App)
-		if p.eng.EnsureAppVolume(name, v.Holder(src.App), v.Name) != nil {
+		folder := ""
+		if v.Disk != "" {
+			folder = config.DiskFolder(v.Disk, name)
+		}
+		if p.eng.EnsureAppVolumeFor(name, v.Holder(src.App), v.Name, "skiff-"+src.App+":latest", user, folder) != nil {
 			continue
 		}
-		out = append(out, docker.Mount{Name: name, Destination: v.Path})
+		for _, path := range v.Paths() {
+			out = append(out, docker.Mount{Name: name, Destination: path})
+		}
 	}
 	return out
 }
