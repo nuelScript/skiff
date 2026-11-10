@@ -20,6 +20,8 @@ const (
 	traceKeep      = 7 * 24 * time.Hour
 	traceMaxSpans  = 20000 // per app
 	traceMaxAttrs  = 8 << 10
+	traceMaxName   = 256
+	traceMaxText   = 2 << 10
 	traceListLimit = 30
 	otlpPath       = "otlp/v1/traces"
 )
@@ -81,7 +83,13 @@ func storeSpans(app string, spans []otlp.Span, now time.Time) error {
 		if len(s.TraceID) != 32 || len(s.SpanID) != 16 {
 			continue
 		}
+		// A clock running ahead, or a made-up date, would keep a span past every cut-off.
+		if limit := now.UnixNano(); s.Start > limit {
+			s.End, s.Start = limit+max(s.End-s.Start, 0), limit
+		}
+		s.Name, s.StatusMessage = clip(s.Name, traceMaxName), clip(s.StatusMessage, traceMaxText)
 		model, tool, in, out := spanFacts(s.Attrs)
+		model, tool = clip(model, traceMaxName), clip(tool, traceMaxName)
 		attrs, _ := json.Marshal(s.Attrs)
 		if len(attrs) > traceMaxAttrs {
 			attrs = []byte(`{"skiff.note":"attributes over 8 KB were left out"}`)
@@ -101,6 +109,22 @@ func storeSpans(app string, spans []otlp.Span, now time.Time) error {
 	pruneSpans(app, now)
 	return nil
 }
+
+// clip cuts s to at most n bytes without splitting a character.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
+}
+
+// The gateway records every model call made through it. When an app's own span for that call arrived too, the gateway's span sits beneath it, and only the gateway's tokens count. shadowed lists those app spans, by trace.
+const shadowed = `WITH RECURSIVE shadowed(trace_id, span_id) AS (
+	SELECT trace_id, parent_id FROM spans WHERE app=? AND source='gateway' AND parent_id<>''
+	UNION SELECT s.trace_id, s.parent_id FROM shadowed JOIN spans s ON s.app=? AND s.trace_id=shadowed.trace_id AND s.span_id=shadowed.span_id AND s.parent_id<>'')
+`
+
+const countedSpan = `NOT EXISTS (SELECT 1 FROM shadowed WHERE shadowed.trace_id=spans.trace_id AND shadowed.span_id=spans.span_id)`
 
 func pruneSpans(app string, now time.Time) {
 	_, _ = sqlDB.Exec(`DELETE FROM spans WHERE app=? AND start_ns<?`, app, now.Add(-traceKeep).UnixNano())
@@ -206,8 +230,9 @@ type spanView struct {
 }
 
 func listTraces(app string, limit int, prices []aiPrice) []traceSummary {
-	rows, err := sqlDB.Query(`SELECT trace_id, MIN(start_ns), MAX(end_ns), COUNT(*), SUM(status=2), SUM(input_tokens), SUM(output_tokens),
-		SUM(model<>'' OR source='gateway'), SUM(tool<>'') FROM spans WHERE app=? GROUP BY trace_id ORDER BY MIN(start_ns) DESC LIMIT ?`, app, limit)
+	rows, err := sqlDB.Query(shadowed+`SELECT trace_id, MIN(start_ns), MAX(end_ns), COUNT(*), SUM(status=2),
+		SUM(CASE WHEN `+countedSpan+` THEN input_tokens ELSE 0 END), SUM(CASE WHEN `+countedSpan+` THEN output_tokens ELSE 0 END),
+		SUM(model<>'' OR source='gateway'), SUM(tool<>'') FROM spans WHERE app=? GROUP BY trace_id ORDER BY MIN(start_ns) DESC LIMIT ?`, app, app, app, limit)
 	if err != nil {
 		return nil
 	}
@@ -236,7 +261,7 @@ func traceCost(app, trace string, prices []aiPrice) (*float64, bool) {
 	if len(prices) == 0 {
 		return nil, false
 	}
-	rows, err := sqlDB.Query(`SELECT model, SUM(input_tokens), SUM(output_tokens) FROM spans WHERE app=? AND trace_id=? AND model<>'' GROUP BY model`, app, trace)
+	rows, err := sqlDB.Query(shadowed+`SELECT model, SUM(input_tokens), SUM(output_tokens) FROM spans WHERE app=? AND trace_id=? AND model<>'' AND `+countedSpan+` GROUP BY model`, app, app, app, trace)
 	if err != nil {
 		return nil, false
 	}
