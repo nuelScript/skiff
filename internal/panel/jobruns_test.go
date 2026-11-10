@@ -60,6 +60,8 @@ func TestJobRunHistoryIsKeptShort(t *testing.T) {
 	}
 
 	running := startRun(j, triggerSchedule, 1, runRunning)
+	dockerWait = 0
+	t.Cleanup(func() { dockerWait = 5 * time.Minute })
 	(&Panel{eng: docker.Local()}).adoptRunsAfterRestart()
 	if r := listRuns(j.ID, 1)[0]; r.ID != running || r.Status != runFailed || !strings.Contains(r.Output, "restarted") {
 		t.Errorf("a run cut off by a restart: %+v", r)

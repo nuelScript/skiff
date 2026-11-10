@@ -167,13 +167,18 @@ func (e *Engine) RunStream(ctx context.Context, image, cmd string, s Settings, w
 	var id [6]byte
 	_, _ = rand.Read(id[:])
 	name := "skiff-run-" + hex.EncodeToString(id[:])
-	args := append([]string{"run", "--rm", "--name", name}, e.settingsArgs(s)...)
-	args = append(args, image, "sh", "-c", cmd)
+	// A job's run stays after it exits until it's been collected, so one that ends while Skiff is down still has its result when Skiff comes back.
+	kept := s.Labels[JobRunLabel] != ""
+	args := []string{"run", "--name", name}
+	if !kept {
+		args = append(args, "--rm")
+	}
+	args = append(append(args, e.settingsArgs(s)...), image, "sh", "-c", cmd)
 	c := e.contextCommand(ctx, args...)
 	c.Stdout, c.Stderr = w, w
 	err := c.Run()
 	// Cancelling only stops the docker client, so the container is removed here or it would keep running.
-	if ctx.Err() != nil {
+	if kept || ctx.Err() != nil {
 		_ = e.command("rm", "-f", name).Run()
 	}
 	return err
@@ -182,10 +187,10 @@ func (e *Engine) RunStream(ctx context.Context, image, cmd string, s Settings, w
 // JobRunLabel carries a job run's id on its containers, so a restarted Skiff can find a run still going.
 const JobRunLabel = "skiff.job-run"
 
-// LabelledRuns maps each value of label to the running containers that carry it.
+// LabelledRuns maps each value of label to the containers that carry it, running or finished but not yet collected.
 func (e *Engine) LabelledRuns(label string) map[string][]string {
 	runs := map[string][]string{}
-	out, err := e.command("ps", "--filter", "label="+label, "--format", `{{.Label "`+label+`"}} {{.Names}}`).Output()
+	out, err := e.command("ps", "-a", "--filter", "label="+label, "--format", `{{.Label "`+label+`"}} {{.Names}}`).Output()
 	if err != nil {
 		return runs
 	}
@@ -197,8 +202,9 @@ func (e *Engine) LabelledRuns(label string) map[string][]string {
 	return runs
 }
 
-// Follow writes a running container's output, from its start, until it exits, and returns its exit code. Cancelling removes the container.
+// Follow writes a container's output, from its start, until it exits, and returns its exit code. A container that already exited gives its result straight away. The container is removed afterwards.
 func (e *Engine) Follow(ctx context.Context, name string, w io.Writer) (int, error) {
+	defer func() { _ = e.command("rm", "-f", name).Run() }()
 	code := make(chan string, 1)
 	go func() {
 		out, _ := e.contextCommand(ctx, "wait", name).Output()
@@ -209,7 +215,6 @@ func (e *Engine) Follow(ctx context.Context, name string, w io.Writer) (int, err
 	_ = c.Run()
 	got := <-code
 	if ctx.Err() != nil {
-		_ = e.command("rm", "-f", name).Run()
 		return 0, ctx.Err()
 	}
 	n, err := strconv.Atoi(got)

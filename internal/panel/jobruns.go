@@ -104,6 +104,9 @@ type orphanRun struct {
 }
 
 // adoptRunsAfterRestart picks up runs that were going when Skiff stopped. A run whose container is still going is followed to its end; the rest are tried again if they have retries left, so a long run resumes from the checkpoints it saved.
+// dockerWait is how long taking over runs waits for Docker to answer after a restart.
+var dockerWait = 5 * time.Minute
+
 func (p *Panel) adoptRunsAfterRestart() {
 	rows, err := sqlDB.Query(`SELECT id, job, attempt, started, trigger, input FROM job_runs WHERE status=?`, runRunning)
 	if err != nil {
@@ -119,6 +122,10 @@ func (p *Panel) adoptRunsAfterRestart() {
 	rows.Close()
 	if len(runs) == 0 {
 		return
+	}
+	// Until Docker answers, every run would look gone and be retried while it's still going.
+	for deadline := time.Now().Add(dockerWait); p.eng.Available() != nil && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Second)
 	}
 	live := p.eng.LabelledRuns(docker.JobRunLabel)
 	for _, r := range runs {
