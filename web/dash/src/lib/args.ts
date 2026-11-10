@@ -8,7 +8,8 @@ export function splitArgs(line: string): string[] | null {
     const c = line[i]
     if (quote) {
       if (c === quote) quote = ''
-      else if (c === '\\' && quote === '"' && i + 1 < line.length) cur += line[++i]
+      // Inside double quotes a backslash only escapes what the shell would: $ ` " \ and keeps itself otherwise.
+      else if (c === '\\' && quote === '"' && i + 1 < line.length && '$`"\\'.includes(line[i + 1])) cur += line[++i]
       else cur += c
     } else if (c === '"' || c === "'") {
       quote = c

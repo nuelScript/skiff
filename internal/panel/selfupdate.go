@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/db"
 	"github.com/nuelScript/skiff/internal/github"
 )
@@ -311,8 +312,8 @@ func tailLine(b []byte) string {
 	return last
 }
 
-// selfUpdateWait bounds how long a finished panel build holds back for app deploys; a merge often starts both, and restarting would cut the app's build short.
-const selfUpdateWait = 15 * time.Minute
+// selfUpdateWait bounds how long a finished panel build holds back for app deploys; a merge often starts both, and restarting would cut the app's build short. It covers the longest deploy, a model that takes the full health wait to load.
+const selfUpdateWait = deployDeadline + config.MaxHealthTimeout*time.Second
 
 func waitForDeploys(limit, every time.Duration, log func(string, ...any)) {
 	deadline := time.Now().Add(limit)

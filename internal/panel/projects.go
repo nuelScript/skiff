@@ -292,11 +292,7 @@ func (p *Panel) handleProject(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, problem, http.StatusBadRequest)
 					return
 				}
-				src.Command = ""
-				if len(*body.Command) > 0 {
-					b, _ := json.Marshal(*body.Command)
-					src.Command = string(b)
-				}
+				src.Command = storedCommand(src, *body.Command)
 			}
 		} else {
 			src.Branch = strings.TrimSpace(body.Branch)
@@ -680,4 +676,16 @@ func (p *Panel) handleSharedEnv(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// storedCommand is how a start command is kept. Cleared, a one-click app goes back to its recipe's command, which a model server needs to serve anything.
+func storedCommand(src Source, command []string) string {
+	if r, ok := catalogRecipe(src.Catalog); ok && len(command) == 0 {
+		command = r.Command
+	}
+	if len(command) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(command)
+	return string(b)
 }
