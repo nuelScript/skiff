@@ -841,6 +841,12 @@ func (p *Panel) runDatabaseContainer(d dbRow, on bool) (int, error) {
 			_ = p.eng.ConnectNetwork(n, d.Container)
 		}
 	}
+	// Joining a network can move a published port to another one, so it's read once the networks are settled.
+	if on && port > 0 {
+		if settled, err := p.eng.HostPort(d.Container, spec.Port); err == nil {
+			port = settled
+		}
+	}
 	_, err = sqlDB.Exec(`UPDATE databases SET public = ?, public_port = ? WHERE id = ?`, b2i(on), port, d.ID)
 	return port, err
 }
