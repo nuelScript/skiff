@@ -1,10 +1,13 @@
 package panel
 
 import (
-	"github.com/nuelScript/skiff/internal/docker"
+	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nuelScript/skiff/internal/docker"
 )
 
 func TestJobSchedulingRules(t *testing.T) {
@@ -62,7 +65,7 @@ func TestJobRunHistoryIsKeptShort(t *testing.T) {
 		t.Errorf("a run cut off by a restart: %+v", r)
 	}
 
-	deleteAppJobs("a")
+	(&Panel{eng: docker.Local()}).deleteAppJobs("a")
 	if n := len(listRuns(j.ID, 1000)); n != 0 {
 		t.Errorf("deleting the app left %d runs", n)
 	}
@@ -105,5 +108,27 @@ func TestPruningSparesLiveRuns(t *testing.T) {
 		if n != 1 {
 			t.Errorf("run %d was pruned while it was still live", id)
 		}
+	}
+}
+
+// Deleting a job stops its run there and then, instead of letting it go on to its timeout.
+func TestDeletingAJobStopsItsRun(t *testing.T) {
+	if exec.Command("docker", "info").Run() != nil {
+		t.Skip("docker not available")
+	}
+	openTestDB(t)
+	j := jobRow{ID: "doomed", App: "a", Team: "t", Name: "doomed", Command: "sleep 60", Created: 1}
+	if err := putJob(j); err != nil {
+		t.Fatal(err)
+	}
+	id := startRun(j, triggerManual, 1, runRunning)
+	name := "skiff-test-run-" + randToken()[:8]
+	if out, err := exec.Command("docker", "run", "-d", "--name", name, "--label", docker.JobRunLabel+"="+strconv.FormatInt(id, 10), docker.VolumeTool, "sleep", "60").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() })
+	(&Panel{eng: docker.Local()}).deleteJob(j.ID)
+	if exec.Command("docker", "inspect", name).Run() == nil {
+		t.Error("the run's container is still there")
 	}
 }

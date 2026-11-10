@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -109,6 +110,12 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 		defer cancel()
 		settings := p.appSettings(src)
 		settings.OOMScore = max(settings.OOMScore, oomOneOff)
+		// Labelled like a job's run, so a restart finds it and stops it rather than leaving it going with no timeout.
+		settings.Labels = maps.Clone(settings.Labels)
+		if settings.Labels == nil {
+			settings.Labels = map[string]string{}
+		}
+		settings.Labels[docker.JobRunLabel] = strconv.FormatInt(id, 10)
 		if strong {
 			settings.Runtime = docker.SandboxRuntime
 		}

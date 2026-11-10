@@ -598,7 +598,7 @@ func (p *Panel) removeApp(name string) {
 		_ = p.eng.Remove(c)
 	}
 	_, _ = sqlDB.Exec(`DELETE FROM workers WHERE app=?`, name)
-	deleteAppJobs(name)
+	p.deleteAppJobs(name)
 	p.removePreviewDatabases(name)
 	if deleteAppDomains(name) {
 		writeDomainsFile()

@@ -285,7 +285,7 @@ func (p *Panel) handleJobs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, tomlOwned, http.StatusBadRequest)
 			return
 		}
-		deleteJob(j.ID)
+		p.deleteJob(j.ID)
 		p.audit(r, "job.delete", j.App, j.Name)
 		w.WriteHeader(http.StatusNoContent)
 
@@ -354,7 +354,8 @@ func checkJobLimits(timeout, retries int, catchUp string) string {
 	return ""
 }
 
-func deleteJob(id string) {
+func (p *Panel) deleteJob(id string) {
+	p.stopRuns(`job=?`, id)
 	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job=?`, id)
 	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, id)
 }

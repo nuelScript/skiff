@@ -214,7 +214,7 @@ func workLocked(app string) bool {
 }
 
 // syncTomlWork copies the workers and jobs a CLI app's skiff.toml lists, read off its running container, so the dashboard shows them and the jobs run on schedule. An app deployed by an older CLI has no such labels and keeps what it has.
-func syncTomlWork(src Source, labels map[string]string) {
+func (p *Panel) syncTomlWork(src Source, labels map[string]string) {
 	if raw, ok := labels["skiff.workers"]; ok {
 		var want []config.Worker
 		if json.Unmarshal([]byte(raw), &want) == nil {
@@ -224,7 +224,7 @@ func syncTomlWork(src Source, labels map[string]string) {
 	if raw, ok := labels["skiff.jobs"]; ok {
 		var want []config.Job
 		if json.Unmarshal([]byte(raw), &want) == nil {
-			setTomlJobs(src, want)
+			p.setTomlJobs(src, want)
 		}
 	}
 }
@@ -245,7 +245,7 @@ func setTomlWorkers(src Source, want []config.Worker) {
 }
 
 // setTomlJobs keeps each job's id, and so when it last ran, while its schedule or command changes.
-func setTomlJobs(src Source, want []config.Job) {
+func (p *Panel) setTomlJobs(src Source, want []config.Job) {
 	have := map[string]jobRow{}
 	for _, j := range listJobRows(src.App) {
 		have[j.Name] = j
@@ -269,7 +269,7 @@ func setTomlJobs(src Source, want []config.Job) {
 		_ = putJob(row)
 	}
 	for _, j := range have {
-		deleteJob(j.ID)
+		p.deleteJob(j.ID)
 	}
 }
 
