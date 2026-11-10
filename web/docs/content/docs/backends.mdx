@@ -198,7 +198,7 @@ The output prints as it comes, and `skiff run` exits with the command's exit cod
 
 ## From the terminal
 
-After `skiff login`, the CLI manages the same things as the dashboard. Attached databases and buckets reach an app on its next deploy.
+After `skiff login`, the CLI manages the same things as the dashboard. Attached databases and buckets reach an app on its next deploy. An app gets one database per variable, so attaching a second Postgres database to it is refused until the first is detached.
 
 ```sh title="shell"
 skiff db create orders --engine postgres

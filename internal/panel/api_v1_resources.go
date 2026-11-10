@@ -93,7 +93,7 @@ func (p *Panel) apiAttachDatabase(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPut:
 		if err := p.attachDatabase(d, src.App); err != nil {
-			apiErr(w, http.StatusInternalServerError, err.Error())
+			apiErr(w, attachStatus(err), err.Error())
 			return
 		}
 		recordAudit(apiTeam(r), AuditEntry{Actor: apiActor(r), Action: "database.attach", Target: d.Name, Detail: src.App + " via api"})

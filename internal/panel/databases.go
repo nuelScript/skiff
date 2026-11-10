@@ -682,7 +682,7 @@ func (p *Panel) handleDatabaseAttach(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		if err := p.attachDatabase(d, app); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), attachStatus(err))
 			return
 		}
 		p.audit(r, "database.attach", d.Name, app)
@@ -716,12 +716,29 @@ func (p *Panel) removeDatabase(d dbRow) {
 	deleteDBRow(d.ID)
 }
 
-// attachDatabase puts the database on the app's network and gives the app its connection variable for the next deploy.
+// varInUseError means the app already gets another database's address in the same variable.
+type varInUseError struct{ msg string }
+
+func (e varInUseError) Error() string { return e.msg }
+
+// attachStatus is the HTTP status for an attach that failed with err.
+func attachStatus(err error) int {
+	if errors.As(err, new(varInUseError)) {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
+}
+
+// attachDatabase puts the database on the app's network and gives the app its connection variable for the next deploy. An app gets one database per variable: a second would overwrite the first's address, and detaching either would remove it.
 func (p *Panel) attachDatabase(d dbRow, app string) error {
+	e := dbEngines[d.Engine]
+	var other string
+	if sqlDB.QueryRow(`SELECT d.name FROM db_attachments a JOIN databases d ON d.id = a.db_id WHERE a.app=? AND a.var=? AND a.db_id<>?`, app, e.envVar, d.ID).Scan(&other) == nil {
+		return varInUseError{fmt.Sprintf("%s already gets %s in %s. Detach it first", app, other, e.envVar)}
+	}
 	if err := p.linkResource(d.Container, d.network(), app); err != nil {
 		return err
 	}
-	e := dbEngines[d.Engine]
 	if err := upsertEnvVar(app, e.envVar, e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false), false); err != nil {
 		return err
 	}
