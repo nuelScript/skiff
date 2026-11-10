@@ -292,11 +292,17 @@ func BuildPlan(stack string, f *File, readFile func(string) ([]byte, error), rep
 				p.Notes = append(p.Notes, fmt.Sprintf("%s: asks for %s, which the server's admin can grant in its settings. Until then it runs without", name, describeWants(s.Wants)))
 			}
 		}
+		sources := map[string]string{}
 		for _, m := range s.Volumes {
-			vol := safeName(m.Source)
+			vol, source := safeName(m.Source), m.Source
 			if vol == "" {
-				vol = safeName(m.Target)
+				vol, source = safeName(m.Target), m.Target
 			}
+			if first, ok := sources[vol]; ok && first != source {
+				p.Problems = append(p.Problems, fmt.Sprintf("%s: volumes %s and %s would both be named %s; rename one of them", name, first, source, vol))
+				continue
+			}
+			sources[vol] = source
 			if i := slices.IndexFunc(it.Volumes, func(v PlanVolume) bool { return v.Name == vol }); i >= 0 {
 				it.Volumes[i].Also = append(it.Volumes[i].Also, m.Target)
 				continue
