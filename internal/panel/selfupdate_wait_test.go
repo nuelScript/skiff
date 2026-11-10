@@ -33,3 +33,19 @@ func TestSelfUpdateWaitsForRunningDeploys(t *testing.T) {
 		t.Fatalf("a stuck deploy must not hold the update for ever, waited %s", waited)
 	}
 }
+
+func TestSelfUpdateWaitsForDiskMoves(t *testing.T) {
+	openTestDB(t)
+	if !startMove("skiff-wait-test-data", "/mnt/disk") {
+		t.Fatal("move didn't start")
+	}
+	start := time.Now()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		endMove("skiff-wait-test-data", nil)
+	}()
+	waitForDeploys(10*time.Second, 20*time.Millisecond, func(string, ...any) {})
+	if waited := time.Since(start); waited < 150*time.Millisecond || waited > 5*time.Second {
+		t.Fatalf("should return once the move ends, waited %s", waited)
+	}
+}
