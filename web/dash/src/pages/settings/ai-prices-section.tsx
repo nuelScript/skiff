@@ -46,7 +46,7 @@ export function AIPricesSection({ isOwner }: { isOwner: boolean }) {
   return (
     <Section
       title="Model prices"
-      description="What your models cost, in dollars per million tokens, from your provider's pricing page. Agents' runs then show what they cost. A name also covers the versions that start with it, so gpt-4o-mini prices gpt-4o-mini-2024-07-18."
+      description="What your models cost, in dollars per million tokens, from your provider's pricing page. Agents' runs then show what they cost. A name also covers its dated versions, so gpt-4o-mini prices gpt-4o-mini-2024-07-18, but gpt-4 does not price gpt-4o."
     >
       {prices.length > 0 && (
         <ul className="mb-4 divide-y divide-foreground/6 overflow-hidden rounded-lg border border-foreground/8 text-sm">
