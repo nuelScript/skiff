@@ -21,17 +21,18 @@ const (
 	maxTeamRuns = 3
 	// liveOutputLimit is how much output a run keeps in memory for people following it.
 	liveOutputLimit = 4 << 20
+	liveOutputSlack = 256 << 10
 	keepOneOffRuns  = 100
 	triggerAPI      = "api"
 )
 
-// liveRun is a one-off run in progress, with its output so far for anyone following it.
+// liveRun is a one-off run in progress, with its output so far for anyone following it. Offsets count every byte written; once the output passes liveOutputLimit the oldest bytes are dropped and base says how many.
 type liveRun struct {
 	team   string
 	app    string
 	mu     sync.Mutex
 	out    []byte
-	cut    bool
+	base   int
 	done   chan struct{}
 	cancel context.CancelFunc
 }
@@ -39,25 +40,44 @@ type liveRun struct {
 func (l *liveRun) Write(b []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.out)+len(b) > liveOutputLimit {
-		if !l.cut {
-			l.out = append(l.out, "\n[output past 4 MB isn't kept]\n"...)
-			l.cut = true
-		}
-		return len(b), nil
-	}
 	l.out = append(l.out, b...)
+	if len(l.out) > liveOutputLimit+liveOutputSlack {
+		drop := len(l.out) - liveOutputLimit
+		l.out = append([]byte(nil), l.out[drop:]...)
+		l.base += drop
+	}
 	return len(b), nil
 }
 
-// from returns the output after offset.
-func (l *liveRun) from(offset int) []byte {
+// from returns the output after offset and the offset to continue from. A reader that fell behind the kept tail skips ahead to it.
+func (l *liveRun) from(offset int) ([]byte, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if offset >= len(l.out) {
-		return nil
+	end := l.base + len(l.out)
+	if offset >= end {
+		return nil, offset
 	}
-	return append([]byte(nil), l.out[offset:]...)
+	return append([]byte(nil), l.out[max(offset-l.base, 0):]...), end
+}
+
+// tail is the kept end of the output, marked when the start was dropped.
+func (l *liveRun) tail() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.base > 0 {
+		return "[earlier output isn't kept]\n" + string(l.out)
+	}
+	return string(l.out)
+}
+
+// finished says whether the run is over, so it no longer holds a slot.
+func (l *liveRun) finished() bool {
+	select {
+	case <-l.done:
+		return true
+	default:
+		return false
+	}
 }
 
 var (
@@ -68,7 +88,7 @@ var (
 func teamRunCount(team string) int {
 	n := 0
 	for _, l := range liveRuns {
-		if l.team == team {
+		if l.team == team && !l.finished() {
 			n++
 		}
 	}
@@ -107,7 +127,21 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 		src.App, src.App, keepOneOffRuns)
 
 	go guard("run:"+strconv.FormatInt(id, 10), func() {
+		finished := false
 		defer cancel()
+		defer func() {
+			if !finished {
+				_, _ = fmt.Fprintln(live, "\nThe run failed inside Skiff.")
+				finishRun(id, runFailed, 0, live.tail())
+			}
+			close(live.done)
+			// Someone following can still read everything for a minute; after that the stored end of the output serves.
+			time.AfterFunc(time.Minute, func() {
+				liveMu.Lock()
+				delete(liveRuns, id)
+				liveMu.Unlock()
+			})
+		}()
 		settings := p.appSettings(src)
 		settings.OOMScore = max(settings.OOMScore, oomOneOff)
 		// Labelled like a job's run, so a restart finds it and stops it rather than leaving it going with no timeout.
@@ -135,14 +169,8 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 				code = exit.ExitCode()
 			}
 		}
-		finishRun(id, status, code, string(live.from(0)))
-		close(live.done)
-		// Someone following can still read everything for a minute; after that the stored end of the output serves.
-		time.AfterFunc(time.Minute, func() {
-			liveMu.Lock()
-			delete(liveRuns, id)
-			liveMu.Unlock()
-		})
+		finishRun(id, status, code, live.tail())
+		finished = true
 	})
 	return id, nil
 }
@@ -268,14 +296,14 @@ func (p *Panel) apiRunLogs(w http.ResponseWriter, r *http.Request) {
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		if b := live.from(offset); len(b) > 0 {
-			offset += len(b)
+		if b, next := live.from(offset); len(b) > 0 {
+			offset = next
 			_, _ = w.Write(b)
 			fl.Flush()
 		}
 		select {
 		case <-live.done:
-			if b := live.from(offset); len(b) > 0 {
+			if b, _ := live.from(offset); len(b) > 0 {
 				_, _ = w.Write(b)
 			}
 			return
