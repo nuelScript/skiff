@@ -637,13 +637,27 @@ func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error
 		d.Image, d.Volume = image, container+"-data"
 	}
 	if extension != "" {
-		go p.enableExtension(d, extension)
+		go p.enableExtension(d)
 	}
 	return d, putDB(d)
 }
 
-// enableExtension switches the extension on once the new database accepts connections, so apps can use it straight away.
-func (p *Panel) enableExtension(d dbRow, extension string) {
+// flavorExtension is the extension a database started from one of the postgres flavors' images has switched on, or "" for any other database.
+func flavorExtension(image string) string {
+	for _, f := range postgresFlavors {
+		if f.image == image {
+			return f.extension
+		}
+	}
+	return ""
+}
+
+// enableExtension switches the database's extension on once it accepts connections, so apps can use it straight away. It runs again at start-up for every such database, so a restart soon after creating one doesn't lose it.
+func (p *Panel) enableExtension(d dbRow) {
+	extension := flavorExtension(d.Image)
+	if extension == "" {
+		return
+	}
 	for range 60 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := p.eng.Exec(ctx, d.Container, []string{"psql", "-U", d.Username, "-d", d.DBName, "-v", "ON_ERROR_STOP=1", "-c", "CREATE EXTENSION IF NOT EXISTS " + extension}, nil, io.Discard)
