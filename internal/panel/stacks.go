@@ -202,9 +202,19 @@ func loadStack(ctx context.Context, req stackRequest, team string, updating bool
 		if b, err := readLimited(within(filepath.Join(out.dir, ".env"))); err == nil {
 			repoEnv = compose.ParseEnvFile(b)
 		}
-		read = func(p string) ([]byte, error) { return readLimited(within(filepath.Join(out.dir, p))) }
+		read = func(p string) ([]byte, error) {
+			rel, ok := repoRel(out.dir, p)
+			if !ok {
+				return nil, errors.New(p + " is outside the repository")
+			}
+			return readLimited(within(rel))
+		}
 		repoPath = func(p string) compose.PathKind {
-			switch info, err := os.Stat(within(filepath.Join(out.dir, p))); {
+			rel, ok := repoRel(out.dir, p)
+			if !ok {
+				return compose.PathMissing
+			}
+			switch info, err := os.Stat(within(rel)); {
 			case err != nil:
 				return compose.PathMissing
 			case info.IsDir():
@@ -269,7 +279,7 @@ func checkStack(s *stackSource, team string, updating bool) {
 			p.Problems = append(p.Problems, it.Service+": builds from source, so this stack needs a repository rather than a pasted file")
 		}
 		if it.Build != nil {
-			if rel := filepath.Clean(filepath.Join(s.dir, it.Build.Context)); strings.HasPrefix(rel, "..") {
+			if _, ok := repoRel(s.dir, it.Build.Context); !ok {
 				p.Problems = append(p.Problems, it.Service+": its build folder is outside the repository")
 			}
 			if df := it.Build.Dockerfile; df != "" && (filepath.IsAbs(df) || slices.Contains(strings.Split(filepath.ToSlash(df), "/"), "..")) {
@@ -783,4 +793,10 @@ func (p *Panel) handleStacks(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// repoRel is p, taken from the Compose file's folder dir, as a path from the top of the repository. It's false when p climbs out of the repository, which joining it to dir would hide.
+func repoRel(dir, p string) (string, bool) {
+	rel := filepath.Clean(filepath.Join(strings.TrimPrefix(dir, "/"), p))
+	return rel, rel != ".." && !strings.HasPrefix(rel, "../")
 }
