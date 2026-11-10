@@ -32,8 +32,11 @@ func listVolumes(app string) []config.Volume {
 		}
 	}
 	rows.Close()
-	// The disk's folder is looked up once the rows are read: the database has one connection.
+	// The disk's folder is looked up once the rows are read: the database has one connection. A borrowed volume is on its holder's disk, so a borrower deploying first makes it there.
 	for i, id := range disks {
+		if out[i].Owner != "" {
+			_ = sqlDB.QueryRow(`SELECT disk FROM volumes WHERE app=? AND name=?`, out[i].Owner, out[i].Name).Scan(&id)
+		}
 		if id != "" {
 			out[i].Disk = diskPathFor(id)
 		}
