@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
@@ -893,9 +894,19 @@ func (d dbRow) adopted() bool {
 		return false
 	}
 	for _, f := range postgresFlavors {
-		if d.Image == f.image {
+		// Skiff keeps no command for one it made, and an older release may have made it with an older tag.
+		if d.Image == f.image || d.Cmd == "" && imageRepo(d.Image) == imageRepo(f.image) {
 			return false
 		}
 	}
 	return true
+}
+
+// imageRepo is an image without its tag or digest.
+func imageRepo(image string) string {
+	image, _, _ = strings.Cut(image, "@")
+	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
+		return image[:i]
+	}
+	return image
 }
