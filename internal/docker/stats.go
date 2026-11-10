@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -117,17 +118,26 @@ func parseSize(s string) int64 {
 	}
 	unit := strings.ToLower(strings.TrimSpace(s[i:]))
 	mult := 1.0
+	// Docker writes kB and MB in thousands, as in docker system df, and KiB and MiB in 1024s, as in docker stats.
 	switch {
-	case strings.HasPrefix(unit, "ki"), unit == "kb", unit == "k":
+	case strings.HasPrefix(unit, "ki"), unit == "k":
 		mult = 1 << 10
-	case strings.HasPrefix(unit, "mi"), unit == "mb", unit == "m":
+	case strings.HasPrefix(unit, "mi"), unit == "m":
 		mult = 1 << 20
-	case strings.HasPrefix(unit, "gi"), unit == "gb", unit == "g":
+	case strings.HasPrefix(unit, "gi"), unit == "g":
 		mult = 1 << 30
-	case strings.HasPrefix(unit, "ti"), unit == "tb", unit == "t":
+	case strings.HasPrefix(unit, "ti"), unit == "t":
 		mult = 1 << 40
+	case unit == "kb":
+		mult = 1e3
+	case unit == "mb":
+		mult = 1e6
+	case unit == "gb":
+		mult = 1e9
+	case unit == "tb":
+		mult = 1e12
 	}
-	return int64(num * mult)
+	return int64(math.Round(num * mult))
 }
 
 // WorkerContainerKeys maps each running worker container to its app.
