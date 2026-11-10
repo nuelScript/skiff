@@ -44,7 +44,7 @@ func (e *Engine) RunDatabase(s DBRunSpec) (int, error) {
 	args = append(args, e.limitArgs()...)
 	args = append(args, "--memory", e.memoryOr(s.Memory))
 	if s.TunePostgres {
-		flags, shm := PostgresTuning(e.memoryBytes(s.Memory))
+		flags, shm := PostgresTuning(tuningMemory(s.Memory, e.memoryBytes(s.Memory)))
 		if shm > 0 {
 			args = append(args, "--shm-size", strconv.FormatInt(shm, 10))
 		}

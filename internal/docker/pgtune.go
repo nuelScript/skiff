@@ -6,6 +6,17 @@ import (
 	"strings"
 )
 
+// sharedDatabases is how many Postgres servers one without a memory limit of its own expects to share the server with: a primary, its replicas, previews' copies and restore checks all run at once, and each sized for the whole server would together ask for more than it has.
+const sharedDatabases = 4
+
+// tuningMemory is what a Postgres container is tuned for: its own limit when it has one, otherwise its share of the server's cap.
+func tuningMemory(own string, limit int64) int64 {
+	if own != "" || limit <= 0 {
+		return limit
+	}
+	return max(limit/sharedDatabases, 512<<20)
+}
+
 // PostgresTuning sizes Postgres's memory settings to what its container may use, instead of the defaults that assume a tiny machine. The values follow common practice for a server Postgres shares with other things.
 func PostgresTuning(limit int64) (flags []string, shm int64) {
 	if limit <= 0 {
