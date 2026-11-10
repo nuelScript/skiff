@@ -78,13 +78,12 @@ func (p *Panel) checkVolumeBudgets() {
 		}
 	}
 	rows.Close()
-	sizes := p.volumeSizes()
 	volumesOver.Lock()
 	defer volumesOver.Unlock()
 	for _, b := range list {
 		key := b.app + "/" + b.name
 		// A borrowed volume is its holder's, under the holder's name.
-		size := sizes[config.VolumeName(cmp.Or(b.owner, b.app), b.name)]
+		size := p.volumeSize(config.VolumeName(cmp.Or(b.owner, b.app), b.name))
 		switch {
 		case size > b.budget && !volumesOver.alerted[key]:
 			volumesOver.alerted[key] = true

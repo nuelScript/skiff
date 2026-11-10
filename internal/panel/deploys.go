@@ -176,7 +176,7 @@ func (p *Panel) runDeploy(src Source, authURL, commit, message, trigger, id stri
 		})
 	}
 
-	if warning, refusal := fitCheck(src, diskUsage(), procMem(), resStats.memNow(src.App)); refusal != "" {
+	if warning, refusal := fitCheck(src, p.dockerDiskUsage(), procMem(), resStats.memNow(src.App)); refusal != "" {
 		finish("✗ " + refusal)
 		return
 	} else if warning != "" {

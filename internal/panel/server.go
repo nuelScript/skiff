@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -127,9 +128,25 @@ func meminfoBytes(line string) int64 {
 	return kb * 1024
 }
 
-func diskUsage() resourceUsage {
+func diskUsage() resourceUsage { return diskUsageAt("/") }
+
+// dockerDiskUsage is the disk Docker keeps its images, builds and volumes on, which may not be the one / is on. When Docker's folder isn't on this machine, as with Docker Desktop, it's /.
+func (p *Panel) dockerDiskUsage() resourceUsage {
+	dockerDir.Do(func() { dockerDir.path = p.eng.StorageDir() })
+	if d := diskUsageAt(dockerDir.path); dockerDir.path != "" && d.Total > 0 {
+		return d
+	}
+	return diskUsage()
+}
+
+var dockerDir struct {
+	sync.Once
+	path string
+}
+
+func diskUsageAt(path string) resourceUsage {
 	var st syscall.Statfs_t
-	if err := syscall.Statfs("/", &st); err != nil {
+	if err := syscall.Statfs(path, &st); err != nil {
 		return resourceUsage{}
 	}
 	bsize := int64(st.Bsize)
