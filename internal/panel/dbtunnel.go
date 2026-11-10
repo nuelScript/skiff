@@ -94,7 +94,7 @@ func apiDatabase(w http.ResponseWriter, r *http.Request) (dbRow, bool) {
 	case 1:
 		return found[0], true
 	}
-	apiErr(w, http.StatusConflict, "more than one database is named "+name+", so rename one in the dashboard")
+	apiErr(w, http.StatusConflict, "more than one database is named "+name+", so delete the one you no longer need in the dashboard")
 	return dbRow{}, false
 }
 
