@@ -20,6 +20,7 @@ import (
 
 	"github.com/nuelScript/skiff/internal/builder"
 	"github.com/nuelScript/skiff/internal/config"
+	"github.com/nuelScript/skiff/internal/db"
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/drain"
 	"github.com/nuelScript/skiff/internal/egress"
@@ -62,6 +63,13 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 	}
 	if nameOverride != "" {
 		cfg.Name = nameOverride
+	}
+
+	if cfg.RemoteHost() == "" {
+		if err := checkVolumeDisks(cfg.Volumes); err != nil {
+			ui.Fail("Couldn't use the volume's disk")
+			return err
+		}
 	}
 
 	eng := docker.For(cfg.RemoteHost())
@@ -183,6 +191,34 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 }
 
 // dockerfileInside reports whether a dockerfile path stays within the build folder.
+// checkVolumeDisks refuses a skiff.toml volume on a disk the panel hasn't registered. It only reads the panel's database when a volume names a disk.
+func checkVolumeDisks(vols []config.Volume) error {
+	if !slices.ContainsFunc(vols, func(v config.Volume) bool { return v.Disk != "" }) {
+		return nil
+	}
+	database, err := db.Open()
+	if err != nil {
+		return fmt.Errorf("couldn't read the server's disks: %w", err)
+	}
+	defer database.Close()
+	rows, err := database.Query(`SELECT path FROM disks`)
+	if err != nil {
+		return fmt.Errorf("couldn't read the server's disks: %w", err)
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil {
+			paths = append(paths, p)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("couldn't read the server's disks: %w", err)
+	}
+	return config.CheckDisks(vols, paths)
+}
+
 func dockerfileInside(p string) bool {
 	if filepath.IsAbs(p) {
 		return false
