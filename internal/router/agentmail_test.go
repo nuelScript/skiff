@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 const multipartMail = "From: =?UTF-8?Q?Ad=C3=A1?= <ada@example.com>\r\n" +
@@ -55,5 +56,21 @@ func TestDeliverToAgentSignsTheEvent(t *testing.T) {
 	}
 	if err := rt.deliverToAgent(context.Background(), "agent:bot", "x@y", nil); err == nil {
 		t.Error("a destination without a secret was used")
+	}
+}
+
+// Text that JSON spells out at six times its size, and an endless subject, still fit the agent's inbox instead of bouncing for good.
+func TestAgentEmailFitsTheInbox(t *testing.T) {
+	raw := "From: a@example.com\r\nSubject: " + strings.Repeat("s", 100_000) + "\r\n\r\n" + strings.Repeat("\x01é", 30_000)
+	body := encodeEmail(summarizeEmail("bot@agents.example.com", []byte(raw)))
+	if len(body) > agentMailEvent {
+		t.Fatalf("event is %d bytes", len(body))
+	}
+	var e agentEmail
+	if err := json.Unmarshal(body, &e); err != nil {
+		t.Fatal(err)
+	}
+	if !e.Truncated || len(e.Subject) > agentMailHeader || !utf8.ValidString(e.Text) || e.Text == "" {
+		t.Errorf("subject %d bytes, text %d bytes, truncated %v", len(e.Subject), len(e.Text), e.Truncated)
 	}
 }

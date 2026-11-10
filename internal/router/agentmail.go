@@ -23,6 +23,12 @@ import (
 // agentMailText is how much of a message's text an agent's event carries, within the webhook's 64 KB.
 const agentMailText = 40 << 10
 
+// agentMailHeader bounds each header kept, and agentMailEvent the whole event, under the 64 KB an agent's inbox takes.
+const (
+	agentMailHeader = 1 << 10
+	agentMailEvent  = 60 << 10
+)
+
 // agentEmail is what an agent gets for a message: who, what, and the readable text, not the raw message with its attachments.
 type agentEmail struct {
 	From      string `json:"from"`
@@ -86,10 +92,35 @@ func plainText(contentType string, body io.Reader) string {
 }
 
 func capText(e agentEmail) agentEmail {
+	e.From, e.Subject, e.Date, e.MessageID = clipText(e.From, agentMailHeader), clipText(e.Subject, agentMailHeader), clipText(e.Date, agentMailHeader), clipText(e.MessageID, agentMailHeader)
 	if len(e.Text) > agentMailText {
-		e.Text, e.Truncated = e.Text[:agentMailText], true
+		e.Text, e.Truncated = clipText(e.Text, agentMailText), true
 	}
 	return e
+}
+
+// clipText cuts s to at most n bytes, never inside a character, so it doesn't turn into replacement characters in JSON.
+func clipText(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
+}
+
+// encodeEmail writes the event, shortening the text until it fits the agent's inbox. JSON can make text several times longer, as it spells out control characters, so the size is checked after encoding.
+func encodeEmail(e agentEmail) []byte {
+	for {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(e)
+		over := buf.Len() - agentMailEvent
+		if over <= 0 || e.Text == "" {
+			return buf.Bytes()
+		}
+		// Each byte of text took about buf.Len()/len(e.Text) bytes once encoded, so cut in that proportion, plus one so it always shrinks.
+		e.Text, e.Truncated = clipText(e.Text, max(len(e.Text)-over*len(e.Text)/buf.Len()-1, 0)), true
+	}
 }
 
 // deliverToAgent posts a message to the agent's webhook on the panel, signed with the agent's secret, as an email event.
@@ -102,11 +133,7 @@ func (rt *Router) deliverToAgent(ctx context.Context, dst, rcpt string, data []b
 	if up == "" {
 		return &skiffmail.Error{Temporary: true, Msg: "the panel isn't reachable"}
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(summarizeEmail(rcpt, data))
-	body := buf.Bytes()
+	body := encodeEmail(summarizeEmail(rcpt, data))
 	mac := hmac.New(sha256.New, []byte(parts[2]))
 	mac.Write(body)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
