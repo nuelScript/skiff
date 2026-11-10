@@ -1044,3 +1044,21 @@ services:
 		}
 	}
 }
+
+func TestEmptyEntrypointClearsTheImages(t *testing.T) {
+	f, err := Parse([]byte("services:\n  a:\n    image: x\n    entrypoint: []\n    command: run\n"), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := item(t, BuildPlan("s", f, noFiles, nil), "a").Options
+	if !opts.NoEntrypoint {
+		t.Fatalf("an empty entrypoint should be kept as a reset: %+v", opts)
+	}
+	args := opts.DockerArgs()
+	if len(args) != 2 || args[0] != "--entrypoint" || args[1] != "" {
+		t.Errorf("docker args: %q", args)
+	}
+	if got := (config.RunOptions{Entrypoint: []string{"sh", "-c"}}).DockerArgs(); len(got) != 2 || got[1] != "sh" {
+		t.Errorf("a set entrypoint: %q", got)
+	}
+}
