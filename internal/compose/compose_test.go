@@ -1062,3 +1062,22 @@ func TestEmptyEntrypointClearsTheImages(t *testing.T) {
 		t.Errorf("a set entrypoint: %q", got)
 	}
 }
+
+func TestVolumeNamesThatCollideAreRefused(t *testing.T) {
+	f, err := Parse([]byte("services:\n  a:\n    image: x\n    volumes:\n      - my_data:/one\n      - my-data:/two\nvolumes:\n  my_data:\n  my-data:\n"), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := BuildPlan("s", f, noFiles, nil)
+	if len(p.Problems) != 1 || !strings.Contains(p.Problems[0], "my_data") || !strings.Contains(p.Problems[0], "my-data") {
+		t.Errorf("problems: %v", p.Problems)
+	}
+
+	f, err = Parse([]byte("services:\n  a:\n    image: x\n    volumes:\n      - my_data:/one\n      - my_data:/two\nvolumes:\n  my_data:\n"), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := BuildPlan("s", f, noFiles, nil); len(p.Problems) != 0 {
+		t.Errorf("one volume at two paths: %v", p.Problems)
+	}
+}
