@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"cmp"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
+	"github.com/nuelScript/skiff/internal/egress"
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
@@ -130,34 +132,50 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 	if len(gpus) > 0 {
 		labels[docker.LabelGPUsApp] = src.App
 	}
+	runtime, perms := runtimeFor(src.Isolation), config.DecodePermissions(src.Permissions)
+	// A CLI app's limits and permissions live in its skiff.toml, so they're read from the app as it runs.
+	if rt, ok := p.cliContainer(src); ok {
+		if policy, ok := rt.Labels[egress.Label]; ok {
+			labels[egress.Label] = policy
+		}
+		runtime = cmp.Or(rt.Runtime, runtime)
+		perms = rt.Permissions
+	}
 	return docker.Settings{
 		GPUs: gpus,
 		Env:  env, Network: net, Volumes: p.appMounts(src),
 		Memory: memory, CPU: cpu, Options: config.DecodeRunOptions(src.RunOptions),
 		OOMScore:    oomScoreFor(src),
-		Runtime:     runtimeFor(src.Isolation),
+		Runtime:     runtime,
 		Labels:      labels,
-		Permissions: config.DecodePermissions(src.Permissions),
+		Permissions: perms,
 	}
 }
 
+// cliContainer reads how a CLI-deployed app's container was started.
+func (p *Panel) cliContainer(src Source) (docker.ContainerRuntime, bool) {
+	if src.Origin != originCLI {
+		return docker.ContainerRuntime{}, false
+	}
+	apps, err := registry.Load()
+	if err != nil || apps[src.App].Container == "" {
+		return docker.ContainerRuntime{}, false
+	}
+	rt, err := p.eng.Runtime(apps[src.App].Container)
+	return rt, err == nil
+}
+
 func (p *Panel) appRuntime(src Source) (map[string]string, string) {
-	if src.Origin == originCLI {
-		if apps, err := registry.Load(); err == nil {
-			if a, ok := apps[src.App]; ok && a.Container != "" {
-				if rt, err := p.eng.Runtime(a.Container); err == nil {
-					delete(rt.Env, "PORT")
-					for _, e := range aiEnv(src) {
-						rt.Env[e.Key] = e.Value
-					}
-					net := dbNetwork
-					if len(rt.Networks) > 0 {
-						net = rt.Networks[0]
-					}
-					return rt.Env, net
-				}
-			}
+	if rt, ok := p.cliContainer(src); ok {
+		delete(rt.Env, "PORT")
+		for _, e := range aiEnv(src) {
+			rt.Env[e.Key] = e.Value
 		}
+		net := dbNetwork
+		if len(rt.Networks) > 0 {
+			net = rt.Networks[0]
+		}
+		return rt.Env, net
 	}
 	env := map[string]string{}
 	for _, e := range deployEnv(src) {
