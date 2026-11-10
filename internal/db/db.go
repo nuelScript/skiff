@@ -143,6 +143,7 @@ var migrations = []string{
 	`ALTER TABLE job_runs ADD COLUMN steps TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sources ADD COLUMN gpus INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE registry_creds ADD COLUMN host TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE jobs ADD COLUMN last_due INTEGER NOT NULL DEFAULT 0`,
 }
 
 const schema = `

@@ -69,7 +69,7 @@ A token limited to some projects can reach only them and their previews; other p
 | Method | Path | What it does |
 | --- | --- | --- |
 | GET | `/apps/{name}/jobs` | List the app's jobs, with when each last ran, whether it worked and when it runs next. |
-| POST | `/apps/{name}/jobs` | Add a job. Send \{"name": "report", "schedule": "0 3 \* \* \*", "command": "node report.js"\}. The schedule uses cron syntax, in the server's time zone. Optional: `timeout` in seconds (60 to 86400, default 1800), `retries` (0 to 10), `catchUp` (`"skip"` drops runs missed while Skiff was down), `webhook` (true gives it an address and a signing secret, in the answer) and `bucket` with `prefix` (start it for each new file there). The schedule can be left out when there's a webhook or a bucket. |
+| POST | `/apps/{name}/jobs` | Add a job. Send \{"name": "report", "schedule": "0 3 \* \* \*", "command": "node report.js"\}. The schedule uses cron syntax, in the server's time zone. Optional: `timeout` in seconds (60 to 604800, a week, default 1800), `retries` (0 to 10), `catchUp` (`"skip"` drops runs missed while Skiff was down), `webhook` (true gives it an address and a signing secret, in the answer) and `bucket` with `prefix` (start it for each new file there). The schedule can be left out when there's a webhook or a bucket. |
 | POST | `/apps/{name}/jobs/{id}/run` | Run the job now, once, and wait for it. Answers with ok, its status and its output. |
 | GET | `/apps/{name}/jobs/{id}/runs` | The job's last 50 runs, newest first: trigger, attempt, status (`ok`, `failed`, `timeout`, `skipped`), exit code, start, finish and the end of its output. |
 | DELETE | `/apps/{name}/jobs/{id}` | Remove the job and its history. |
@@ -80,7 +80,7 @@ Run a command once in a fresh container from the app's latest build, with its en
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| POST | `/apps/{name}/runs` | Start a run and answer straight away with its id. Send \{"command": "npm run migrate"\}, and optionally `timeout` in seconds (60 to 86400, default 1800), and `isolation`: `"strong"` to run it under gVisor's sandbox. |
+| POST | `/apps/{name}/runs` | Start a run and answer straight away with its id. Send \{"command": "npm run migrate"\}, and optionally `timeout` in seconds (60 to 604800, a week, default 1800), and `isolation`: `"strong"` to run it under gVisor's sandbox. |
 | GET | `/apps/{name}/runs/{id}/logs` | Its output as plain text, streamed as it comes until the run ends. |
 | GET | `/apps/{name}/runs/{id}` | The run: its command, status (`running`, `ok`, `failed`, `timeout`), exit code and the end of its output. |
 | GET | `/apps/{name}/runs` | The app's last 100 runs, newest first. |

@@ -37,11 +37,38 @@ func TestJobSchedulingRules(t *testing.T) {
 	if r := listRuns(skip.ID, 10); len(r) != 1 || r[0].Status != runSkipped || !strings.Contains(r[0].Output, "Missed") {
 		t.Errorf("skipped catch-up: %+v", r)
 	}
-	if j, _ := getJob(skip.ID); j.LastRun != now.Unix() || j.LastOk != 1 {
+	if j, _ := getJob(skip.ID); j.LastDue != now.Unix() || j.LastOk != 1 {
 		t.Errorf("the skipped job should move on without counting as failed: %+v", j)
 	}
 	if r := listRuns(busy.ID, 10); len(r) != 1 || r[0].Status != runSkipped || !strings.Contains(r[0].Output, "still going") {
 		t.Errorf("an overlap should be recorded once: %+v", r)
+	}
+}
+
+func TestManualRunDoesNotMoveTheSchedule(t *testing.T) {
+	openTestDB(t)
+	p := &Panel{}
+	now := time.Date(2026, 11, 9, 3, 0, 30, 0, time.Local)
+	j := jobRow{ID: "daily", App: "a", Team: "t", Name: "daily", Schedule: "0 3 * * *", Command: "true", LastOk: 1,
+		LastDue: time.Date(2026, 11, 8, 3, 0, 0, 0, time.Local).Unix(), Created: now.Add(-72 * time.Hour).Unix()}
+	if err := putJob(j); err != nil {
+		t.Fatal(err)
+	}
+	// A manual run finished half an hour before the scheduled time.
+	setJobRun(j.ID, now.Add(-30*time.Minute).Unix(), true)
+	if !claimJob(j.ID) {
+		t.Fatal("couldn't claim")
+	}
+	defer releaseJob(j.ID)
+
+	p.runDueJobs(now)
+
+	if r := listRuns(j.ID, 10); len(r) != 1 || r[0].Trigger != triggerSchedule {
+		t.Errorf("the scheduled run was swallowed: %+v", r)
+	}
+	got, _ := getJob(j.ID)
+	if want := time.Date(2026, 11, 9, 3, 0, 0, 0, time.Local).Unix(); got.LastDue != want {
+		t.Errorf("schedule moved to %d, want %d", got.LastDue, want)
 	}
 }
 

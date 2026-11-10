@@ -62,9 +62,9 @@ func TestSpecKeepsWorkersAndJobs(t *testing.T) {
 	var j jobRow
 	filled(t, &j, map[string]any{"Steps": []config.Step{{Name: "extract", Command: "python extract.py"}, {Name: "load", Command: "python load.py", After: []string{"extract"}}}})
 	want := j
-	want.LastRun, want.LastOk = 0, 0 // what happened isn't part of what was asked for
-	want.Seen, want.SeenKeys = 0, "" // nor is how far a bucket watch has read
-	want.HookSecret = ""             // a secret stays out of what the API shows; the spec says only that there is a webhook
+	want.LastRun, want.LastDue, want.LastOk = 0, 0, 0 // what happened isn't part of what was asked for
+	want.Seen, want.SeenKeys = 0, ""                  // nor is how far a bucket watch has read
+	want.HookSecret = ""                              // a secret stays out of what the API shows; the spec says only that there is a webhook
 	if got := specJob(jobSpec(j)); !reflect.DeepEqual(got, want) {
 		t.Errorf("job: got %+v, want %+v", got, want)
 	}
