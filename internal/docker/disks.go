@@ -69,10 +69,12 @@ type CopyTally struct{ Entries, Bytes int64 }
 const copyScript = `set -e
 tally() { cd "$1" && printf '%s %s\n' "$(find . | wc -l)" "$(find . -type f -exec stat -c %s {} + | awk '{s+=$1} END {print s+0}')"; }
 cp -a /from/. /to/
+chown "$(stat -c %u:%g /from)" /to
+chmod "$(stat -c %a /from)" /to
 tally /from
 tally /to`
 
-// CopyVolume copies everything from one place to another, each a volume name or an absolute folder, keeping owners and permissions, and checks the copy has the same entries and bytes.
+// CopyVolume copies everything from one place to another, each a volume name or an absolute folder, keeping owners, permissions, timestamps, symlinks and the folder's own owner and mode, and checks the copy has the same entries and bytes.
 func (e *Engine) CopyVolume(ctx context.Context, from, to string) (CopyTally, error) {
 	out, err := e.contextCommand(ctx, "run", "--rm", "-v", from+":/from:ro", "-v", to+":/to", VolumeTool, "sh", "-c", copyScript).CombinedOutput()
 	if err != nil {

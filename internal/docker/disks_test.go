@@ -1,6 +1,17 @@
 package docker
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestCopyScriptKeepsRootFolder(t *testing.T) {
+	for _, want := range []string{"cp -a /from/. /to/", `chown "$(stat -c %u:%g /from)" /to`, `chmod "$(stat -c %a /from)" /to`} {
+		if !strings.Contains(copyScript, want) {
+			t.Errorf("copy script is missing %q", want)
+		}
+	}
+}
 
 func TestOnlyItsOwnFolderIsCleared(t *testing.T) {
 	cases := []struct {
