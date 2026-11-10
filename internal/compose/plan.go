@@ -555,6 +555,8 @@ func applyDatabase(it *Item, engine string, s Service, p *Plan, readFile func(st
 		it.DBUser, it.DBPassword, it.DB = env["MYSQL_USER"], env["MYSQL_PASSWORD"], env["MYSQL_DATABASE"]
 		if it.DBUser == "" {
 			it.DBUser, it.DBPassword = "root", env["MYSQL_ROOT_PASSWORD"]
+		} else if root := env["MYSQL_ROOT_PASSWORD"]; root != "" && root != it.DBPassword {
+			p.Notes = append(p.Notes, it.Service+": its root password becomes the same as "+it.DBUser+"'s, since Skiff keeps one password per database")
 		}
 	case "mongodb":
 		it.DBUser, it.DBPassword, it.DB = env["MONGO_INITDB_ROOT_USERNAME"], env["MONGO_INITDB_ROOT_PASSWORD"], env["MONGO_INITDB_DATABASE"]
@@ -576,11 +578,31 @@ func applyDatabase(it *Item, engine string, s Service, p *Plan, readFile func(st
 	if len(s.Ports) > 0 {
 		p.Notes = append(p.Notes, it.Service+": stays private, so its published port is ignored. Turn on public access in the dashboard if you need it")
 	}
+	if ignored := ignoredFlags(s.Command, it.DBPassword); len(ignored) > 0 {
+		p.Notes = append(p.Notes, fmt.Sprintf("%s: is a managed database, so its command's %s isn't used; Skiff starts it with its own settings", it.Service, strings.Join(ignored, " ")))
+	}
 	for _, m := range s.Volumes {
-		if m.Bind {
+		switch {
+		case m.Bind && fileLike.MatchString(strings.TrimRight(m.Source, "/")):
+			p.Notes = append(p.Notes, fmt.Sprintf("%s: is a managed database, so the file %s mounted at %s isn't used; Skiff starts it with its own settings", it.Service, m.Source, m.Target))
+		case m.Bind:
 			p.Notes = append(p.Notes, fmt.Sprintf("%s: starts empty, so the data in %s isn't brought over. Load it with a restore", it.Service, m.Source))
 		}
 	}
+}
+
+// ignoredFlags is what a database's command sets beyond starting the server and its password, which Skiff takes over.
+func ignoredFlags(command []string, password string) []string {
+	var out []string
+	for i, a := range command {
+		switch {
+		case i == 0 && slices.Contains([]string{"postgres", "mysqld", "redis-server", "mongod", "clickhouse-server"}, a):
+		case a == "--requirepass", password != "" && a == password:
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 var healthURL = regexp.MustCompile(`https?://[^/\s'"]+(/[^\s'"]*)?`)
