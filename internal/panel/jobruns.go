@@ -171,8 +171,7 @@ func (p *Panel) followRun(j jobRow, r orphanRun, container string) {
 	}
 	finishRun(r.id, status, code, text)
 	if status != runOK && r.trigger != triggerManual && r.attempt <= j.Retries {
-		time.Sleep(retryWait(r.attempt))
-		p.execJobFrom(j, triggerRetry, 0, r.input, r.attempt+1)
+		p.execJobFrom(j, triggerRetry, waitToRetry(j, r.attempt, r.input), r.input, r.attempt+1)
 		return
 	}
 	p.settleJob(j, status, status == runOK)
@@ -302,22 +301,29 @@ func (p *Panel) execJob(j jobRow, trigger string, id int64, input string) {
 func (p *Panel) execJobFrom(j jobRow, trigger string, id int64, input string, first int) {
 	var status string
 	var err error
+	t := trigger
 	for attempt := first; ; attempt++ {
-		t := trigger
-		if attempt > first {
-			t, id = triggerRetry, 0
-		}
 		_, status, err = p.attemptJob(j, t, attempt, id, input)
 		if err == nil || attempt > j.Retries {
 			break
 		}
-		time.Sleep(retryWait(attempt))
+		id, t = waitToRetry(j, attempt, input), triggerRetry
 		// A job deleted while it waited to retry stays deleted.
 		if _, ok := getJob(j.ID); !ok {
 			return
 		}
 	}
 	p.settleJob(j, status, err == nil)
+}
+
+// waitToRetry records the next attempt as a queued run, then waits out the back-off. Should Skiff restart in the meantime, the queue finds the run and starts it.
+func waitToRetry(j jobRow, attempt int, input string) int64 {
+	id := startRun(j, triggerRetry, attempt+1, runQueued)
+	if input != "" {
+		_, _ = sqlDB.Exec(`UPDATE job_runs SET input=? WHERE id=?`, input, id)
+	}
+	time.Sleep(retryWait(attempt))
+	return id
 }
 
 // settleJob records the outcome and alerts on a change, so a job failing every minute sends one message, not one a minute.
