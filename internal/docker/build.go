@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"maps"
 	"os"
@@ -10,10 +11,11 @@ import (
 	"strings"
 )
 
-// BuildOptions are the build arguments and Dockerfile stage a build asks for.
+// BuildOptions are the build arguments and Dockerfile stage a build asks for, and a registry login for its base image when that's private.
 type BuildOptions struct {
 	Args   map[string]string
 	Target string
+	Auth   *RegistryAuth
 }
 
 // BuildFromDockerfile builds contextDir into tag. With pull, every base image comes from its registry, so a build can't use images other apps left on this machine.
@@ -31,6 +33,17 @@ func (e *Engine) BuildFromDockerfile(ctx context.Context, tag, dockerfile, conte
 		args = append(args, "--target", opts.Target)
 	}
 	cmd := e.contextCommand(ctx, append(args, contextDir)...)
+	if opts.Auth != nil && opts.Auth.Username != "" {
+		dir, err := buildConfigDir(*opts.Auth)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env, "DOCKER_CONFIG="+dir)
+	}
 	cmd.Stdin = strings.NewReader(dockerfile)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -57,4 +70,45 @@ func ensureDockerignore(dir string) func() {
 		return func() {}
 	}
 	return func() { _ = os.WriteFile(p, existing, 0o644) }
+}
+
+// buildConfigDir is a Docker config for one build: the server's own, with the login added for its registry. The server's plugins stay reachable, since a build may need buildx from there.
+func buildConfigDir(a RegistryAuth) (string, error) {
+	own := os.Getenv("DOCKER_CONFIG")
+	if own == "" {
+		home, _ := os.UserHomeDir()
+		own = filepath.Join(home, ".docker")
+	}
+	cfg := map[string]any{}
+	if b, err := os.ReadFile(filepath.Join(own, "config.json")); err == nil {
+		_ = json.Unmarshal(b, &cfg)
+	}
+	var login map[string]any
+	_ = json.Unmarshal(dockerAuthConfig(a), &login)
+	auths, _ := cfg["auths"].(map[string]any)
+	if auths == nil {
+		auths = map[string]any{}
+	}
+	maps.Copy(auths, login["auths"].(map[string]any))
+	cfg["auths"] = auths
+	// A credential helper would answer for the registry ahead of the login written here.
+	delete(cfg, "credsStore")
+	if helpers, ok := cfg["credHelpers"].(map[string]any); ok {
+		for host := range login["auths"].(map[string]any) {
+			delete(helpers, host)
+		}
+	}
+	dir, err := os.MkdirTemp("", "skiff-build-")
+	if err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(cfg)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), b, 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(own, "cli-plugins")); err == nil {
+		_ = os.Symlink(filepath.Join(own, "cli-plugins"), filepath.Join(dir, "cli-plugins"))
+	}
+	return dir, nil
 }
