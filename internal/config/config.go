@@ -526,3 +526,13 @@ func loadDotenv(path string) map[string]string {
 	}
 	return env
 }
+
+// CheckDisks refuses a volume set on a disk that isn't one of the server's registered disks, so a skiff.toml can't make folders at any path.
+func CheckDisks(vols []Volume, registered []string) error {
+	for _, v := range vols {
+		if v.Disk != "" && !slices.Contains(registered, v.Disk) {
+			return fmt.Errorf("volume %q: %s isn't a disk added to this server; add it under Disks in the dashboard first", v.Name, v.Disk)
+		}
+	}
+	return nil
+}

@@ -59,6 +59,8 @@ func TestRestoreReturnsToBackup(t *testing.T) {
 		seed, change string
 		state        string
 		want         string
+		// undone is the state after undoing the restore, when it isn't the changed state.
+		undone string
 	}{
 		{
 			engine: "postgres", name: "pgrestore",
@@ -106,10 +108,12 @@ func TestRestoreReturnsToBackup(t *testing.T) {
 			exec: func(ctr, stmt string) []string {
 				return []string{"exec", ctr, "sh", "-c", `clickhouse-client --user skiff --password "$CLICKHOUSE_PASSWORD" --database chrestore --multiquery -q "` + stmt + `"`}
 			},
-			seed:   "DROP VIEW IF EXISTS tv; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS empty; CREATE TABLE t (id UInt32, v String) ENGINE = MergeTree ORDER BY id; INSERT INTO t VALUES (1,'original'),(2,'original'); CREATE TABLE empty (id UInt8) ENGINE = MergeTree ORDER BY id; CREATE VIEW tv AS SELECT id FROM t;",
-			change: "INSERT INTO t VALUES (3,'later'); CREATE TABLE later (id UInt8) ENGINE = MergeTree ORDER BY id; DROP VIEW tv;",
-			state:  "SELECT (SELECT arrayStringConcat(groupArray(concat(toString(id), v)), ',') FROM (SELECT * FROM t ORDER BY id)), (SELECT arrayStringConcat(groupArray(name), ',') FROM (SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY name))",
-			want:   "1original,2original\tempty,t,tv",
+			seed:   "DROP VIEW IF EXISTS tv; DROP VIEW IF EXISTS mv; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS empty; DROP USER IF EXISTS reader; DROP ROLE IF EXISTS readers; CREATE TABLE t (id UInt32, v String) ENGINE = MergeTree ORDER BY id; CREATE MATERIALIZED VIEW mv ENGINE = MergeTree ORDER BY id AS SELECT id FROM t; INSERT INTO t VALUES (1,'original'),(2,'original'); CREATE TABLE empty (id UInt8) ENGINE = MergeTree ORDER BY id; CREATE VIEW tv AS SELECT id FROM t; CREATE ROLE readers; GRANT SELECT ON chrestore.* TO readers; CREATE USER reader IDENTIFIED BY 'reader-pass' DEFAULT ROLE readers; GRANT readers TO reader;",
+			change: "INSERT INTO t VALUES (3,'later'); CREATE TABLE later (id UInt8) ENGINE = MergeTree ORDER BY id; DROP VIEW tv; DROP USER reader; DROP ROLE readers;",
+			state:  "SELECT (SELECT arrayStringConcat(groupArray(concat(toString(id), v)), ',') FROM (SELECT * FROM t ORDER BY id)), (SELECT arrayStringConcat(groupArray(name), ',') FROM (SELECT name FROM system.tables WHERE database = currentDatabase() AND NOT startsWith(name, '.') ORDER BY name)), (SELECT count() FROM mv), (SELECT count() FROM system.role_grants WHERE user_name = 'reader' AND granted_role_name = 'readers')",
+			want:   "1original,2original\tempty,mv,t,tv\t2\t1",
+			// A restore adds users and roles but never removes them, so the reader it brought back stays.
+			undone: "1original,2original,3later\tempty,later,mv,t\t3\t1",
 		},
 	}
 
@@ -199,6 +203,9 @@ func TestRestoreReturnsToBackup(t *testing.T) {
 				t.Fatalf("no backup taken before the restore: %+v", list)
 			}
 			post(t, c, "http://"+panel+"/api/backups/restore?id="+undo, "")
+			if e.undone != "" {
+				changed = e.undone
+			}
 			if got, _ := sql(e.state); got != changed {
 				t.Fatalf("undoing the restore: got %q, want %q", got, changed)
 			}

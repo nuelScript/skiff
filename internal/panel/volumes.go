@@ -240,8 +240,9 @@ func (p *Panel) removeAppVolumes(app string) {
 
 var volSizes struct {
 	sync.Mutex
-	at    time.Time
-	sizes map[string]int64
+	at      time.Time
+	sizes   map[string]int64
+	folders map[string]int64 // added-disk volumes measured since sizes was read
 }
 
 func (p *Panel) volumeSizes() map[string]int64 {
@@ -249,9 +250,32 @@ func (p *Panel) volumeSizes() map[string]int64 {
 	defer volSizes.Unlock()
 	if volSizes.sizes == nil || time.Since(volSizes.at) > time.Minute {
 		volSizes.sizes = p.eng.VolumeSizes()
+		volSizes.folders = map[string]int64{}
 		volSizes.at = time.Now()
 	}
 	return volSizes.sizes
+}
+
+// volumeSize is how much a volume holds. Docker leaves out a volume kept on an added disk while nothing mounts it, so that one's folder is measured, at most once a minute.
+func (p *Panel) volumeSize(name string) int64 {
+	if n := p.volumeSizes()[name]; n > 0 {
+		return n
+	}
+	volSizes.Lock()
+	n, ok := volSizes.folders[name]
+	volSizes.Unlock()
+	if ok {
+		return n
+	}
+	if p.eng.VolumeFolder(name) != "" {
+		n = p.eng.VolumeUsed(name)
+	}
+	volSizes.Lock()
+	if volSizes.folders != nil {
+		volSizes.folders[name] = n
+	}
+	volSizes.Unlock()
+	return n
 }
 
 type volumeView struct {
@@ -294,7 +318,6 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 	for _, m := range p.runtimeMounts(src.App) {
 		mounted[m.Name+"\x00"+m.Destination] = true
 	}
-	sizes := p.volumeSizes()
 	budgets := volumeBudgets(src.App)
 	disks := listDisks()
 	out := []volumeView{}
@@ -302,7 +325,7 @@ func (p *Panel) volumeViews(src Source) []volumeView {
 		name := v.DockerName(src.App)
 		view := volumeView{
 			Name: v.Name, Path: v.Path,
-			Size:     sizes[name],
+			Size:     p.volumeSize(name),
 			Attached: mounted[name+"\x00"+v.Path] || (v.Owner != "" && src.Stack != ""),
 			Budget:   budgets[v.Name],
 			Move:     moveStatus(name),

@@ -11,7 +11,7 @@ Backups start on the same server as your apps, so a dead server takes them with 
 
 ## What gets backed up
 
-- **Databases:** Postgres, MySQL, MongoDB, Redis and ClickHouse, daily. Skiff keeps the last 10 on your server. A ClickHouse backup holds each table's definition and rows, and its views.
+- **Databases:** Postgres, MySQL, MongoDB, Redis and ClickHouse, daily. Skiff keeps the last 10 on your server. A ClickHouse backup holds each table's definition and rows, its views with the rows a materialized view keeps, and the users, roles and grants made with SQL. A restore brings those users and roles back but doesn't remove ones made since.
 - **Volumes:** daily, keeping the last 3 on your server. Previews aren't backed up, because they use empty copies of their project's volumes.
 - **Skiff itself:** its database and settings, sealed with your recovery key. See [self-hosting](/self-hosting).
 

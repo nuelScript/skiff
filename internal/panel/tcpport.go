@@ -23,7 +23,22 @@ func portRange(port int, admin bool) string {
 	return ""
 }
 
-func tcpPortProblem(port int, app string, sources []Source, usedByDBs map[int]string, admin bool) string {
+func portTaken(port int, holder string) string {
+	if holder == "" {
+		return fmt.Sprintf("port %d is in use on this server", port)
+	}
+	return fmt.Sprintf("port %d is already used by %s", port, holder)
+}
+
+// teamOnly names a holder only for its own team, so one team can't learn what another runs.
+func teamOnly(holderTeam, team, name string) string {
+	if holderTeam != team {
+		return ""
+	}
+	return name
+}
+
+func tcpPortProblem(port int, app, team string, sources []Source, usedByDBs map[int]string, admin bool) string {
 	if problem := portRange(port, admin); problem != "" {
 		return problem
 	}
@@ -32,27 +47,31 @@ func tcpPortProblem(port int, app string, sources []Source, usedByDBs map[int]st
 	}
 	for _, s := range sources {
 		if s.TCPPort == port && s.App != app {
-			return fmt.Sprintf("port %d is already used by %s", port, s.App)
+			return portTaken(port, teamOnly(s.Team, team, s.App))
 		}
 	}
 	if name, ok := usedByDBs[port]; ok {
-		return fmt.Sprintf("port %d is already used by the database %s", port, name)
+		if name != "" {
+			name = "the database " + name
+		}
+		return portTaken(port, name)
 	}
 	return ""
 }
 
-func publicDatabasePorts() map[int]string {
+// publicDatabasePorts maps each public database port to its name, left empty for other teams' databases.
+func publicDatabasePorts(team string) map[int]string {
 	out := map[int]string{}
-	rows, err := sqlDB.Query(`SELECT public_port, name FROM databases WHERE public=1`)
+	rows, err := sqlDB.Query(`SELECT public_port, name, team FROM databases WHERE public=1`)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var port int
-		var name string
-		if rows.Scan(&port, &name) == nil {
-			out[port] = name
+		var name, owner string
+		if rows.Scan(&port, &name, &owner) == nil {
+			out[port] = teamOnly(owner, team, name)
 		}
 	}
 	return out
@@ -86,7 +105,7 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if body.Port != 0 && body.Port != src.TCPPort {
-			if problem := tcpPortProblem(body.Port, app, allSources(), publicDatabasePorts(), p.isInstanceAdmin(r)); problem != "" {
+			if problem := tcpPortProblem(body.Port, app, src.Team, allSources(), publicDatabasePorts(src.Team), p.isInstanceAdmin(r)); problem != "" {
 				http.Error(w, problem, http.StatusBadRequest)
 				return
 			}
@@ -116,13 +135,16 @@ func (p *Panel) handleTCPPort(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func udpPortProblem(port int, app string, sources []Source, admin bool) string {
+func udpPortProblem(port int, app, team string, sources []Source, admin bool) string {
 	if problem := portRange(port, admin); problem != "" {
 		return problem
 	}
 	for _, s := range sources {
 		if s.UDPPort == port && s.App != app {
-			return fmt.Sprintf("UDP port %d is already used by %s", port, s.App)
+			if holder := teamOnly(s.Team, team, s.App); holder != "" {
+				return fmt.Sprintf("UDP port %d is already used by %s", port, holder)
+			}
+			return fmt.Sprintf("UDP port %d is in use on this server", port)
 		}
 	}
 	return ""
@@ -156,7 +178,7 @@ func (p *Panel) handleUDPPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if body.Port != 0 && body.Port != src.UDPPort {
-			if problem := udpPortProblem(body.Port, app, allSources(), p.isInstanceAdmin(r)); problem != "" {
+			if problem := udpPortProblem(body.Port, app, src.Team, allSources(), p.isInstanceAdmin(r)); problem != "" {
 				http.Error(w, problem, http.StatusBadRequest)
 				return
 			}

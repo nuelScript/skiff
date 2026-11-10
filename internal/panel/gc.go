@@ -47,7 +47,7 @@ func staleAppImages(imgs []docker.AppImage, registered, projects, inUse map[stri
 func (p *Panel) collectGarbage() gcReport {
 	gcMu.Lock()
 	defer gcMu.Unlock()
-	before := diskUsage()
+	before := p.dockerDiskUsage()
 	rep := gcReport{Removed: []string{}, Ran: time.Now().Unix()}
 
 	imgs, err := p.eng.AppImages()
@@ -73,14 +73,14 @@ func (p *Panel) collectGarbage() gcReport {
 	}
 	// Nearly full, all build cache goes: it only makes the next build faster.
 	age := buildCacheAge
-	if d := diskUsage(); d.Total > 0 && d.Used*100/d.Total >= diskCriticalAt {
+	if d := p.dockerDiskUsage(); d.Total > 0 && d.Used*100/d.Total >= diskCriticalAt {
 		age = 0
 	}
 	if err := p.eng.PruneBuildCache(age); err != nil {
 		log.Printf("skiff: pruning build cache: %v", err)
 	}
 
-	after := diskUsage()
+	after := p.dockerDiskUsage()
 	rep.DiskUsed, rep.DiskTotal = after.Used, after.Total
 	if before.Used > after.Used {
 		rep.Freed = before.Used - after.Used
@@ -95,7 +95,7 @@ func (p *Panel) gcLoop() {
 		guard("gcLoop", func() {
 			recordDiskSample(time.Now())
 			removeUnlistedBackups(time.Now())
-			d := diskUsage()
+			d := p.dockerDiskUsage()
 			checkDisk(d)
 			p.checkVolumeBudgets()
 			pressure := d.Total > 0 && float64(d.Used)/float64(d.Total) >= gcDiskPressure

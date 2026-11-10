@@ -89,7 +89,7 @@ When volumes or databases outgrow the server's own disk, add block storage from 
 To move one that already exists, pick the disk in the menu on its row: **Volumes** on the project's Settings tab, or the database on the **Databases** page. Choose **Server's disk** to move it back. A move:
 
 - Stops what uses it, so there's downtime for as long as the copy takes. An app is deployed again afterwards; a database starts again with the same address and password.
-- Copies the files with their owners and permissions, then checks the copy has every file and byte before removing the old ones. If the copy fails or doesn't match, the volume stays where it was and the app or database comes back on it.
+- Copies the files with their owners, permissions, timestamps and symlinks, and keeps the owner and mode of the volume's top folder. It then checks the copy has the same number of entries and the same total file size before removing the old ones. It doesn't compare file contents, and extended attributes, ACLs and hard links aren't kept. If the copy fails or doesn't match, the volume stays where it was and the app or database comes back on it.
 - Tells your team's alerts if it fails.
 
 The Server page shows each disk's free space. If a disk isn't mounted when the server starts, what's on it can't start until it's back. A disk can only be removed from the list once nothing is on it.
