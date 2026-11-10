@@ -70,7 +70,7 @@ export default function SettingsPage() {
           <OffsiteSection isOwner={isOwner} />
         </TabsContent>
         <TabsContent value="integrations" className="flex max-w-3xl flex-col gap-4 pb-12">
-          <TokensSection />
+          <TokensSection isOwner={isOwner} />
           <AIProvidersSection isOwner={isOwner} />
           <AIPricesSection isOwner={isOwner} />
           <ConnectionsSection gh={gh} />

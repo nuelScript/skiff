@@ -17,7 +17,7 @@ import { useConfirm } from '@/providers/confirm-provider'
 import { useCopy } from '@/hooks/use-copy'
 import { Section, inputCls } from './ui'
 
-export function TokensSection() {
+export function TokensSection({ isOwner }: { isOwner: boolean }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { data: tokens = [] } = useQuery<ApiToken[]>({
@@ -169,15 +169,20 @@ export function TokensSection() {
                     {t.apps?.length ? ` · only ${t.apps.join(', ')}` : ''}
                   </p>
                 )}
+                {!isOwner && !t.mine && (
+                  <p className="text-muted-foreground mt-0.5 text-xs">Made by another member. Only an owner can revoke it.</p>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => revoke(t)}
-                aria-label={`Revoke ${t.name}`}
-                className="text-muted-foreground p-1 transition-colors hover:text-danger"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {(isOwner || t.mine) && (
+                <button
+                  type="button"
+                  onClick={() => revoke(t)}
+                  aria-label={`Revoke ${t.name}`}
+                  className="text-muted-foreground cursor-pointer p-1 transition-colors hover:text-danger"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
