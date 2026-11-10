@@ -41,7 +41,7 @@ type Job struct {
 
 type jobRow struct {
 	ID, App, Team, Name, Schedule, Command string
-	LastRun                                int64
+	LastRun, LastDue                       int64
 	LastOk                                 int
 	Created                                int64
 	Timeout, Retries                       int
@@ -55,13 +55,11 @@ type jobRow struct {
 	Steps          []config.Step
 }
 
-const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up,hook_secret,bucket,bucket_prefix,bucket_seen,bucket_seen_keys,steps`
+const jobCols = `id,app,team,name,schedule,command,last_run,last_ok,created,timeout,retries,catch_up,hook_secret,bucket,bucket_prefix,bucket_seen,bucket_seen_keys,steps,last_due`
 
 var (
 	jobMu      sync.Mutex
 	jobRunning = map[string]bool{}
-	// jobSkipped remembers the scheduled time last recorded as skipped, so a long run records each overlap once.
-	jobSkipped = map[string]int64{}
 )
 
 func jobIsRunning(id string) bool {
@@ -90,7 +88,7 @@ func scanJob(row interface{ Scan(...any) error }) (jobRow, bool) {
 	var j jobRow
 	var steps string
 	if row.Scan(&j.ID, &j.App, &j.Team, &j.Name, &j.Schedule, &j.Command, &j.LastRun, &j.LastOk, &j.Created, &j.Timeout, &j.Retries, &j.CatchUp,
-		&j.HookSecret, &j.Bucket, &j.Prefix, &j.Seen, &j.SeenKeys, &steps) != nil {
+		&j.HookSecret, &j.Bucket, &j.Prefix, &j.Seen, &j.SeenKeys, &steps, &j.LastDue) != nil {
 		return jobRow{}, false
 	}
 	j.Steps = decodeSteps(steps)
@@ -133,9 +131,9 @@ func putJob(j jobRow) error {
 	if err != nil {
 		return err
 	}
-	_, err = sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = sqlDB.Exec(`INSERT INTO jobs(`+jobCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		j.ID, j.App, j.Team, j.Name, j.Schedule, j.Command, j.LastRun, j.LastOk, j.Created, j.Timeout, j.Retries, j.CatchUp,
-		secret, j.Bucket, j.Prefix, j.Seen, j.SeenKeys, encodeSteps(j.Steps))
+		secret, j.Bucket, j.Prefix, j.Seen, j.SeenKeys, encodeSteps(j.Steps), j.LastDue)
 	return err
 }
 
@@ -146,16 +144,31 @@ func sealHookSecret(s string) (string, error) {
 	return seal.Seal(s)
 }
 
+func setJobDue(id string, due time.Time) {
+	_, _ = sqlDB.Exec(`UPDATE jobs SET last_due=? WHERE id=?`, due.Unix(), id)
+}
+
 func setJobRun(id string, when int64, ok bool) {
 	_, _ = sqlDB.Exec(`UPDATE jobs SET last_run=?, last_ok=? WHERE id=?`, when, b2i(ok), id)
+}
+
+// scheduleBase is the time the next scheduled run is counted from: the last scheduled time Skiff handled, so runs started by hand, a webhook or a new file don't move the schedule. A job handled before Skiff tracked this falls back to its last run.
+func scheduleBase(j jobRow) time.Time {
+	switch {
+	case j.LastDue > 0:
+		return time.Unix(j.LastDue, 0)
+	case j.LastRun > 0:
+		return time.Unix(j.LastRun, 0)
+	}
+	return time.Unix(j.Created, 0)
 }
 
 func toJob(j jobRow) Job {
 	var next int64
 	if s, err := cron.ParseStandard(j.Schedule); err == nil && j.Schedule != "" {
 		base := time.Now()
-		if j.LastRun > 0 {
-			base = time.Unix(j.LastRun, 0)
+		if j.LastDue > 0 || j.LastRun > 0 {
+			base = scheduleBase(j)
 		}
 		next = s.Next(base).Unix()
 	}
@@ -196,31 +209,27 @@ func (p *Panel) runDueJobs(now time.Time) {
 		if err != nil {
 			continue
 		}
-		base := time.Unix(j.Created, 0)
-		if j.LastRun > 0 {
-			base = time.Unix(j.LastRun, 0)
-		}
-		due := sched.Next(base)
+		due := sched.Next(scheduleBase(j))
 		if due.After(now) {
 			continue
+		}
+		// Several times missed in a row are one run, and the schedule moves to the latest of them.
+		latest := due
+		for next := sched.Next(latest); !next.After(now); next = sched.Next(latest) {
+			latest = next
 		}
 		trigger := triggerSchedule
 		if now.Sub(due) > missedAfter {
 			if j.CatchUp == "skip" {
-				_, _ = sqlDB.Exec(`UPDATE jobs SET last_run=? WHERE id=?`, now.Unix(), j.ID)
+				setJobDue(j.ID, latest)
 				finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "Missed while Skiff wasn't running, and this job skips missed runs.")
 				continue
 			}
 			trigger = triggerCatchUp
 		}
+		setJobDue(j.ID, latest)
 		if !claimJob(j.ID) {
-			jobMu.Lock()
-			first := jobSkipped[j.ID] != due.Unix()
-			jobSkipped[j.ID] = due.Unix()
-			jobMu.Unlock()
-			if first {
-				finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "The previous run was still going, so this one was skipped.")
-			}
+			finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "The previous run was still going, so this one was skipped.")
 			continue
 		}
 		go func(j jobRow) {
