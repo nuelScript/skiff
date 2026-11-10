@@ -246,7 +246,7 @@ func ParseWith(data []byte, lookup func(string) (string, bool), read Reader) (*F
 			DependsOn: raw.DependsOn, Memory: dockerSize(raw.MemLimit), CPUs: raw.CPUs, Healthcheck: raw.Healthcheck.Test, Replicas: 1,
 		}
 		s.Options = config.RunOptions{
-			Entrypoint: raw.Entrypoint, User: raw.User, WorkingDir: raw.WorkingDir, Init: raw.Init, ReadOnly: raw.ReadOnly,
+			Entrypoint: raw.Entrypoint, NoEntrypoint: raw.Entrypoint != nil && len(raw.Entrypoint) == 0, User: raw.User, WorkingDir: raw.WorkingDir, Init: raw.Init, ReadOnly: raw.ReadOnly,
 			ShmSize: dockerSize(raw.ShmSize), Tmpfs: raw.Tmpfs, Ulimits: raw.Ulimits, ExtraHosts: raw.ExtraHosts, StopSignal: raw.StopSignal,
 		}
 		for _, c := range raw.CapDrop {

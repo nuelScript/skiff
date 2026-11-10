@@ -11,17 +11,19 @@ import (
 
 // RunOptions are settings for how a container starts, from a Compose file. None of them grants anything beyond what a container already has.
 type RunOptions struct {
-	Entrypoint  []string `json:"entrypoint,omitempty"`
-	User        string   `json:"user,omitempty"`
-	WorkingDir  string   `json:"workingDir,omitempty"`
-	Init        bool     `json:"init,omitempty"`
-	ReadOnly    bool     `json:"readOnly,omitempty"`
-	ShmSize     string   `json:"shmSize,omitempty"`
-	Tmpfs       []string `json:"tmpfs,omitempty"`
-	Ulimits     []string `json:"ulimits,omitempty"`
-	ExtraHosts  []string `json:"extraHosts,omitempty"`
-	StopSeconds int      `json:"stopSeconds,omitempty"`
-	StopSignal  string   `json:"stopSignal,omitempty"`
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	// NoEntrypoint clears the image's entrypoint, as `entrypoint: []` does in Compose.
+	NoEntrypoint bool     `json:"noEntrypoint,omitempty"`
+	User         string   `json:"user,omitempty"`
+	WorkingDir   string   `json:"workingDir,omitempty"`
+	Init         bool     `json:"init,omitempty"`
+	ReadOnly     bool     `json:"readOnly,omitempty"`
+	ShmSize      string   `json:"shmSize,omitempty"`
+	Tmpfs        []string `json:"tmpfs,omitempty"`
+	Ulimits      []string `json:"ulimits,omitempty"`
+	ExtraHosts   []string `json:"extraHosts,omitempty"`
+	StopSeconds  int      `json:"stopSeconds,omitempty"`
+	StopSignal   string   `json:"stopSignal,omitempty"`
 	// CapDrop removes Linux capabilities, which only ever takes away.
 	CapDrop []string `json:"capDrop,omitempty"`
 }
@@ -87,6 +89,8 @@ func (o RunOptions) DockerArgs() []string {
 	var args []string
 	if len(o.Entrypoint) > 0 {
 		args = append(args, "--entrypoint", o.Entrypoint[0])
+	} else if o.NoEntrypoint {
+		args = append(args, "--entrypoint", "")
 	}
 	add := func(flag, v string) {
 		if v != "" {
