@@ -1,12 +1,15 @@
 package panel
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 )
 
@@ -67,5 +70,36 @@ func TestARestartSettlesAnInterruptedMove(t *testing.T) {
 	}
 	if len(listMoveRecords()) != 0 {
 		t.Errorf("moves left recorded: %+v", listMoveRecords())
+	}
+}
+
+// While an app's volume or one it borrows is moving, its containers wait, so none of them makes an empty volume in its place.
+func TestStartsWaitForAMove(t *testing.T) {
+	openTestDB(t)
+	_ = addVolume("shop", config.Volume{Name: "files", Path: "/data"})
+	_ = addVolume("worker", config.Volume{Name: "files", Path: "/data", Owner: "shop"})
+	name := config.VolumeName("shop", "files")
+	if !startMove(name, "/mnt/data") {
+		t.Fatal("move didn't start")
+	}
+	defer endMove(name, nil)
+	for _, app := range []string{"shop", "worker"} {
+		if movingVolume(app) != name {
+			t.Errorf("%s doesn't see its volume moving", app)
+		}
+	}
+	defer func(d time.Duration) { moveWaitEvery = d }(moveWaitEvery)
+	moveWaitEvery = 10 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if waitForMoves(ctx, "worker") == nil {
+		t.Error("a start went ahead during the move")
+	}
+	if _, err := (&Panel{eng: docker.Local()}).runVolumeBackup(Source{App: "shop"}, "files", "manual"); err == nil || !strings.Contains(err.Error(), "being moved") {
+		t.Errorf("a backup during the move: %v", err)
+	}
+	go func() { time.Sleep(50 * time.Millisecond); endMove(name, nil) }()
+	if err := waitForMoves(context.Background(), "worker"); err != nil {
+		t.Fatal(err)
 	}
 }
