@@ -39,3 +39,11 @@ func TestImageRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestFlavorExtensionFollowsTheImage(t *testing.T) {
+	for image, want := range map[string]string{pgvectorImage: "vector", timescaleImage: "timescaledb", "postgres:16": "", "": ""} {
+		if got := flavorExtension(image); got != want {
+			t.Errorf("%q: got %q, want %q", image, got, want)
+		}
+	}
+}
