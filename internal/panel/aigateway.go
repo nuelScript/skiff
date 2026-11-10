@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -167,47 +168,119 @@ func recordAIUse(a aiApp, provider, run string, u aiUsage, now time.Time) {
 	}
 }
 
-// aiUsage is the token count in a response. OpenAI calls them prompt and completion tokens, Anthropic input and output; Anthropic's stream puts the input count under message.
+// aiUsage is the token count in a response. OpenAI calls them prompt and completion tokens, Anthropic input and output. Anthropic's stream puts the input count under message, and the Responses API's under response. Anthropic counts cached input apart from the rest, so it's added back.
 type aiUsage struct{ in, out int64 }
 
-func (u *aiUsage) take(raw []byte) {
-	type counts struct {
-		PromptTokens     int64 `json:"prompt_tokens"`
-		CompletionTokens int64 `json:"completion_tokens"`
-		InputTokens      int64 `json:"input_tokens"`
-		OutputTokens     int64 `json:"output_tokens"`
-	}
-	var v struct {
-		Usage   *counts `json:"usage"`
-		Message *struct {
-			Usage *counts `json:"usage"`
-		} `json:"message"`
-	}
-	if json.Unmarshal(raw, &v) != nil {
-		return
-	}
-	for _, c := range []*counts{v.Usage, func() *counts {
-		if v.Message != nil {
-			return v.Message.Usage
-		}
-		return nil
-	}()} {
-		if c != nil {
-			u.in = max(u.in, c.PromptTokens, c.InputTokens)
-			u.out = max(u.out, c.CompletionTokens, c.OutputTokens)
-		}
-	}
+type aiCounts struct {
+	PromptTokens        int64 `json:"prompt_tokens"`
+	CompletionTokens    int64 `json:"completion_tokens"`
+	InputTokens         int64 `json:"input_tokens"`
+	OutputTokens        int64 `json:"output_tokens"`
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadTokens     int64 `json:"cache_read_input_tokens"`
 }
 
-// aiMeter passes a response through while reading the usage in it: a stream event by event, a JSON body whole.
-type aiMeter struct {
-	body   io.ReadCloser
-	stream bool
-	buf    bytes.Buffer
-	u      aiUsage
-	done   func(aiUsage)
-	once   sync.Once
+func (u *aiUsage) add(c aiCounts) {
+	u.in = max(u.in, c.PromptTokens, c.InputTokens+c.CacheCreationTokens+c.CacheReadTokens)
+	u.out = max(u.out, c.CompletionTokens, c.OutputTokens)
 }
+
+// take reads the counts in a response or stream event; false when it isn't whole JSON.
+func (u *aiUsage) take(raw []byte) bool {
+	var v struct {
+		Usage    *aiCounts `json:"usage"`
+		Message  *aiNested `json:"message"`
+		Response *aiNested `json:"response"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return false
+	}
+	for _, c := range []*aiCounts{v.Usage, v.Message.usage(), v.Response.usage()} {
+		if c != nil {
+			u.add(*c)
+		}
+	}
+	return true
+}
+
+type aiNested struct {
+	Usage *aiCounts `json:"usage"`
+}
+
+func (n *aiNested) usage() *aiCounts {
+	if n == nil {
+		return nil
+	}
+	return n.Usage
+}
+
+var usageField = regexp.MustCompile(`"(prompt_tokens|completion_tokens|input_tokens|output_tokens|cache_creation_input_tokens|cache_read_input_tokens)"\s*:\s*(\d+)`)
+
+// scan picks the counts out of a body too big to read whole; the usage is at the end of one.
+func (u *aiUsage) scan(raw []byte) {
+	var c aiCounts
+	for _, m := range usageField.FindAllSubmatch(raw, -1) {
+		n, _ := strconv.ParseInt(string(m[2]), 10, 64)
+		switch string(m[1]) {
+		case "prompt_tokens":
+			c.PromptTokens = max(c.PromptTokens, n)
+		case "completion_tokens":
+			c.CompletionTokens = max(c.CompletionTokens, n)
+		case "input_tokens":
+			c.InputTokens = max(c.InputTokens, n)
+		case "output_tokens":
+			c.OutputTokens = max(c.OutputTokens, n)
+		case "cache_creation_input_tokens":
+			c.CacheCreationTokens = max(c.CacheCreationTokens, n)
+		case "cache_read_input_tokens":
+			c.CacheReadTokens = max(c.CacheReadTokens, n)
+		}
+	}
+	u.add(c)
+}
+
+// streamedText is the text a stream event carries, for estimating a stream cut off before its counts: an OpenAI chat delta, an Anthropic text delta, or a Responses API delta.
+func streamedText(raw []byte) int {
+	var v struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+		} `json:"choices"`
+		Delta any `json:"delta"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return 0
+	}
+	n := 0
+	for _, c := range v.Choices {
+		n += len(c.Delta.Content)
+	}
+	switch d := v.Delta.(type) {
+	case string:
+		n += len(d)
+	case map[string]any:
+		if t, ok := d["text"].(string); ok {
+			n += len(t)
+		}
+	}
+	return n
+}
+
+// aiMeter passes a response through while reading the usage in it: a stream event by event, a JSON body whole. A body past aiMaxBody keeps its end, where the usage is. A stream cut off before its counts is estimated at four characters a token, from the request's size and the text it streamed, since the provider charges for it all the same.
+type aiMeter struct {
+	body     io.ReadCloser
+	stream   bool
+	buf      bytes.Buffer
+	tail     []byte
+	u        aiUsage
+	sent     int // bytes in the request
+	streamed int // characters of text streamed
+	done     func(aiUsage)
+	once     sync.Once
+}
+
+const aiTailKeep = 64 << 10
 
 func (m *aiMeter) Read(p []byte) (int, error) {
 	n, err := m.body.Read(p)
@@ -224,6 +297,11 @@ func (m *aiMeter) note(b []byte) {
 	if !m.stream {
 		if m.buf.Len() < aiMaxBody {
 			m.buf.Write(b)
+		} else {
+			m.tail = append(m.tail, b...)
+			if len(m.tail) > 2*aiTailKeep {
+				m.tail = append(m.tail[:0], m.tail[len(m.tail)-aiTailKeep:]...)
+			}
 		}
 		return
 	}
@@ -243,7 +321,9 @@ func (m *aiMeter) note(b []byte) {
 
 func (m *aiMeter) event(line []byte) {
 	if data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:")); ok {
-		m.u.take(bytes.TrimSpace(data))
+		data = bytes.TrimSpace(data)
+		m.u.take(data)
+		m.streamed += streamedText(data)
 	}
 }
 
@@ -256,8 +336,14 @@ func (m *aiMeter) finish() {
 	m.once.Do(func() {
 		if m.stream {
 			m.event(m.buf.Bytes())
-		} else {
-			m.u.take(m.buf.Bytes())
+			if m.u.in == 0 && m.sent > 0 {
+				m.u.in = int64(m.sent/4 + 1)
+			}
+			if m.u.out == 0 && m.streamed > 0 {
+				m.u.out = int64(m.streamed/4 + 1)
+			}
+		} else if !m.u.take(m.buf.Bytes()) {
+			m.u.scan(append(m.buf.Bytes(), m.tail...))
 		}
 		m.done(m.u)
 	})
@@ -278,10 +364,10 @@ func gatewayError(w http.ResponseWriter, status int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"type": "skiff_gateway", "message": msg}})
 }
 
-// peekRequest reads the model a JSON request names. For OpenAI it also makes a stream end with its token count, which OpenAI leaves out unless asked.
-func peekRequest(r *http.Request, kind string) (model string) {
+// peekRequest reads the model a JSON request names, and its size. For OpenAI it also makes a stream end with its token count, which OpenAI leaves out unless asked.
+func peekRequest(r *http.Request, kind string) (model string, size int) {
 	if r.Body == nil || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		return ""
+		return "", int(max(r.ContentLength, 0))
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, aiMaxBody+1))
 	_ = r.Body.Close()
@@ -303,7 +389,7 @@ func peekRequest(r *http.Request, kind string) (model string) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
-	return model
+	return model, len(raw)
 }
 
 // aiGateway forwards /<provider>/<path> to that provider with the team's key, after checking the app's token and budget.
@@ -348,7 +434,7 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	started := time.Now()
-	model := peekRequest(r, pr.Kind)
+	model, sent := peekRequest(r, pr.Kind)
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(req *httputil.ProxyRequest) {
 			req.Out.URL.Scheme, req.Out.URL.Host, req.Out.Host = target.Scheme, target.Host, target.Host
@@ -373,6 +459,7 @@ func (p *Panel) aiGateway(w http.ResponseWriter, r *http.Request) {
 			status := resp.StatusCode
 			resp.Body = &aiMeter{
 				body:   resp.Body,
+				sent:   sent,
 				stream: strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"),
 				done: func(u aiUsage) {
 					recordAIUse(a, pr.Name, run, u, time.Now())
