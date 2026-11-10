@@ -2,11 +2,19 @@ package docker
 
 import (
 	"cmp"
+	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
+	"time"
 )
 
 // GPU is one of the server's NVIDIA GPUs, as nvidia-smi reports it.
@@ -23,16 +31,32 @@ type GPU struct {
 // gpuQuery is what nvidia-smi is asked for, in this order.
 const gpuQuery = "index,uuid,name,memory.total,memory.used,utilization.gpu,temperature.gpu"
 
-// GPUs lists the server's GPUs; none when it has no NVIDIA driver.
+// GPUs lists the server's GPUs; none when it has no NVIDIA driver. A broken driver can leave nvidia-smi hanging, so it gets a few seconds, and an answer is reused briefly since a page and a deploy may ask at once.
 func (e *Engine) GPUs() []GPU {
 	if e.IsRemote() {
 		return nil
 	}
-	out, err := exec.Command("nvidia-smi", "--query-gpu="+gpuQuery, "--format=csv,noheader,nounits").Output()
-	if err != nil {
-		return nil
+	gpuCache.Lock()
+	defer gpuCache.Unlock()
+	if time.Since(gpuCache.at) < gpuCacheFor {
+		return slices.Clone(gpuCache.gpus)
 	}
-	return parseGPUs(string(out))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu="+gpuQuery, "--format=csv,noheader,nounits").Output()
+	gpuCache.gpus, gpuCache.at = nil, time.Now()
+	if err == nil {
+		gpuCache.gpus = parseGPUs(string(out))
+	}
+	return slices.Clone(gpuCache.gpus)
+}
+
+const gpuCacheFor = 2 * time.Second
+
+var gpuCache struct {
+	sync.Mutex
+	gpus []GPU
+	at   time.Time
 }
 
 func parseGPUs(out string) []GPU {
@@ -109,6 +133,94 @@ func parseGPUsInUse(out string) map[string]string {
 		}
 	}
 	return used
+}
+
+// gpuClaim is a GPU picked for a container that hasn't started yet. Claims are kept in a file every Skiff process on the server shares, since deploys run apart from the panel.
+type gpuClaim struct {
+	App   string `json:"app"`
+	GPU   string `json:"gpu"`
+	Token string `json:"token"`
+	Until int64  `json:"until"`
+}
+
+// ClaimGPUs picks n GPUs for app as PickGPUs does, and holds them for up to hold, or until release is called, so another deploy, job or run choosing at the same moment doesn't get the same cards before this one's container has them.
+func (e *Engine) ClaimGPUs(app string, n int, hold time.Duration) (picked []string, release func(), err error) {
+	release = func() {}
+	if n <= 0 {
+		return nil, release, nil
+	}
+	token := strconv.FormatInt(time.Now().UnixNano(), 36)
+	var pickErr error
+	err = updateGPUClaims(func(claims []gpuClaim) []gpuClaim {
+		picked, pickErr = pickClaimed(app, n, e.GPUs(), e.GPUsInUse(), claims)
+		if pickErr != nil {
+			return claims
+		}
+		until := time.Now().Add(hold).Unix()
+		for _, id := range picked {
+			claims = append(claims, gpuClaim{App: app, GPU: id, Token: token, Until: until})
+		}
+		return claims
+	})
+	if err = cmp.Or(pickErr, err); err != nil {
+		return nil, release, err
+	}
+	release = func() {
+		_ = updateGPUClaims(func(claims []gpuClaim) []gpuClaim {
+			return slices.DeleteFunc(claims, func(c gpuClaim) bool { return c.Token == token })
+		})
+	}
+	return picked, release, nil
+}
+
+// pickClaimed is PickGPUs with other apps' claims counted as in use.
+func pickClaimed(app string, n int, all []GPU, inUse map[string]string, claims []gpuClaim) ([]string, error) {
+	used := maps.Clone(inUse)
+	if used == nil {
+		used = map[string]string{}
+	}
+	for _, c := range claims {
+		if c.App != app && used[c.GPU] == "" {
+			used[c.GPU] = c.App + " (starting)"
+		}
+	}
+	return PickGPUs(app, n, all, used)
+}
+
+// updateGPUClaims changes the claims under a lock, dropping lapsed ones.
+func updateGPUClaims(fn func([]gpuClaim) []gpuClaim) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".skiff", "gpu-claims.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	var claims []gpuClaim
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &claims)
+	}
+	now := time.Now().Unix()
+	claims = slices.DeleteFunc(claims, func(c gpuClaim) bool { return c.Until <= now })
+	b, err := json.Marshal(fn(claims))
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // PickGPUs chooses n GPUs for app: the ones it already has when they're enough, so a new version takes over from the old on the same cards, and otherwise free ones. It explains when there aren't n free.

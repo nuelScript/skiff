@@ -114,6 +114,9 @@ func (p *Panel) cliAppLoop() {
 
 // appRuntime is the env and network to start more of an app's containers with. A CLI app's config lives in the skiff.toml on the machine that deployed it, so its running container is the only copy the server has.
 // appSettings is what the app's workers and jobs run with: its environment, network, volumes, limits and start settings. A CLI app's limits come from its skiff.toml, recorded on its running container. The network is created if it's missing.
+// gpuStartHold is how long GPUs picked for a job or run stay claimed, which is long enough for its container to start and hold them itself.
+const gpuStartHold = 2 * time.Minute
+
 func (p *Panel) appSettings(src Source) docker.Settings {
 	src = withParentLimits(src)
 	holdForMoves(src.App)
@@ -127,7 +130,10 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 	// Jobs and one-off runs share the app's GPUs.
 	var gpus []string
 	if src.GPUs > 0 && src.Parent == "" {
-		gpus, _ = docker.PickGPUs(src.App, src.GPUs, p.eng.GPUs(), p.eng.GPUsInUse())
+		var err error
+		if gpus, _, err = p.eng.ClaimGPUs(src.App, src.GPUs, gpuStartHold); err != nil {
+			log.Printf("skiff: %s's job or run starts without GPUs: %v", src.App, err)
+		}
 	}
 	labels := egressLabels(src)
 	if len(gpus) > 0 {

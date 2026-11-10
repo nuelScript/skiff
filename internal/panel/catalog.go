@@ -63,6 +63,12 @@ func (p *Panel) recipeGPUs(rec recipe, name string) (int, string) {
 	return 0, ""
 }
 
+// gpusOptional is whether the app is a one-click app that uses GPUs when there are some but runs without them, like Ollama.
+func gpusOptional(src Source) bool {
+	r, ok := catalogRecipe(src.Catalog)
+	return ok && r.GPUs > 0 && !r.NeedsGPU
+}
+
 //go:embed catalog/*.toml
 var catalogFiles embed.FS
 
