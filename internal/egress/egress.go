@@ -188,6 +188,12 @@ func Available() bool {
 }
 
 // Apply replaces the chain in one step, so there's never a moment with half the rules, and makes sure Docker's traffic passes through it.
+// InPlace reports whether Skiff's chain still exists and DOCKER-USER still jumps to it. A firewall reload or a Docker restart can remove either.
+func InPlace() bool {
+	return exec.Command("iptables", "-w", "-n", "-L", Chain).Run() == nil &&
+		exec.Command("iptables", "-w", "-C", "DOCKER-USER", "-j", Chain).Run() == nil
+}
+
 func Apply(rules string) error {
 	cmd := exec.Command("iptables-restore", "--noflush", "-w")
 	cmd.Stdin = strings.NewReader(rules)
