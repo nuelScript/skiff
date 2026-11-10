@@ -42,7 +42,7 @@ while True:
     requests.post(f"{base}/events/{event['id']}/done", headers=auth)
 ```
 
-`wait` holds the request open for up to 60 seconds until an event arrives. An event the agent takes but doesn't finish within five minutes, because it crashed or hung, goes back in the inbox, and `deliveries` says how many times it has been handed out. Finished events are kept for a week. The inbox holds up to 1,000 unfinished events; past that, webhooks are refused with `429`.
+`wait` holds the request open for up to 60 seconds until an event arrives. An event the agent takes but doesn't finish within five minutes, because it crashed or hung, goes back in the inbox, and `deliveries` says how many times it has been handed out. After five deliveries, or a week without being finished, Skiff gives up on an event: it stops going out and shows as "gave up" in the inbox. Finished and given-up events are kept for a week. The inbox holds up to 1,000 unfinished events; past that, webhooks are refused with `429`.
 
 ## Sandboxes
 

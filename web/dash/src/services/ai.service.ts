@@ -30,6 +30,7 @@ export type AgentEvent = {
   body: string
   created: number
   deliveries: number
+  gave_up: boolean
   done: boolean
 }
 

@@ -81,6 +81,35 @@ func TestAgentInboxLeasesAndRedelivers(t *testing.T) {
 	}
 }
 
+func TestAgentInboxGivesUp(t *testing.T) {
+	openTestDB(t)
+	newTestAgent(t, "bot")
+	now := time.Now()
+	stuck, _ := addAgentEvent("bot", "webhook", "", `{"n":1}`, now)
+	for i := 1; i <= agentMaxDeliveries; i++ {
+		if e, ok := takeAgentEvent("bot", now); !ok || e.ID != stuck || e.Deliveries != i {
+			t.Fatalf("take %d: %+v %v", i, e, ok)
+		}
+		now = now.Add(agentLease + time.Second)
+	}
+	if _, ok := takeAgentEvent("bot", now); ok {
+		t.Error("an event was handed out past the cap")
+	}
+	if ev := recentAgentEvents("bot", 5); len(ev) != 1 || !ev[0].Done || !ev[0].GaveUp {
+		t.Errorf("given-up event: %+v", ev)
+	}
+
+	old, _ := addAgentEvent("bot", "webhook", "", `{"n":2}`, now)
+	if _, ok := takeAgentEvent("bot", now.Add(agentKeepEvents+time.Second)); ok {
+		t.Error("an expired event was handed out")
+	}
+	for _, e := range recentAgentEvents("bot", 5) {
+		if e.ID == old && !e.GaveUp {
+			t.Errorf("expired event: %+v", e)
+		}
+	}
+}
+
 func TestAgentInboxThroughTheGateway(t *testing.T) {
 	openTestDB(t)
 	a := newTestAgent(t, "bot")
