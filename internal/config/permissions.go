@@ -55,7 +55,9 @@ var StrongCapabilities = []string{"SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "SYS_B
 var (
 	capabilityPattern = regexp.MustCompile(`^[A-Z][A-Z_]{1,30}$`)
 	devicePattern     = regexp.MustCompile(`^/dev/[A-Za-z0-9._/-]+(:/dev/[A-Za-z0-9._/-]+)?(:[rwm]{1,3})?$`)
-	sysctlPattern     = regexp.MustCompile(`^[a-z0-9_.]+=[A-Za-z0-9 _./:-]*$`)
+	// hostDevice matches the server's memory and its disks and partitions, which no app should open directly.
+	hostDevice    = regexp.MustCompile(`^/dev/(mem|kmem|port|(sd|hd|vd|xvd)[a-z]+[0-9]*|nvme[0-9]+(n[0-9]+(p[0-9]+)?)?|mmcblk[0-9]+(p[0-9]+)?|dm-[0-9]+|md[0-9]+|loop[0-9]+|mapper/.+|disk/.+)$`)
+	sysctlPattern = regexp.MustCompile(`^[a-z0-9_.]+=[A-Za-z0-9 _./:-]*$`)
 	// namespacedSysctls are the ones Docker can set for one container without touching the server's own.
 	namespacedSysctls = []string{"net.", "kernel.shm", "kernel.msg", "kernel.sem", "fs.mqueue."}
 )
@@ -92,6 +94,10 @@ func (p Permissions) Validate() error {
 		if !devicePattern.MatchString(d) || strings.Contains(d, "..") {
 			return fmt.Errorf("device %q must be a path under /dev, like /dev/net/tun", d)
 		}
+		host, _, _ := strings.Cut(d, ":")
+		if hostDevice.MatchString(host) {
+			return fmt.Errorf("device %s is the server's memory or one of its disks, which would let the app read or overwrite anything on the server; mount a volume instead", host)
+		}
 	}
 	for _, s := range p.Sysctls {
 		if !sysctlPattern.MatchString(s) {
@@ -105,9 +111,9 @@ func (p Permissions) Validate() error {
 	return nil
 }
 
-// Strong reports whether the grant reaches past the container's own namespace.
+// Strong reports whether the grant reaches past the container's own namespace. Any device does: it's the server's own hardware.
 func (p Permissions) Strong() bool {
-	return p.Privileged || p.HostNetwork || slices.ContainsFunc(p.Capabilities, func(c string) bool { return slices.Contains(StrongCapabilities, c) })
+	return p.Privileged || p.HostNetwork || len(p.Devices) > 0 || slices.ContainsFunc(p.Capabilities, func(c string) bool { return slices.Contains(StrongCapabilities, c) })
 }
 
 // DockerArgs are the flags for docker run.

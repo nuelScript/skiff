@@ -124,7 +124,7 @@ For code you don't trust at all, use a [sandbox](/run-agents#sandboxes) without 
 Every app, worker and job starts with a few safer defaults: programs inside can't gain privileges the way `sudo` does, and the rarely used `NET_RAW`, `MKNOD` and `AUDIT_WRITE` capabilities are dropped. Some software needs more of the server than that: a VPN needs the `NET_ADMIN` capability and `/dev/net/tun`, a database may want `IPC_LOCK`, and a few tools need privileged mode. Each is off until the server's admin, an owner of the team that set Skiff up, grants it under **Machine permissions** in the project's settings. The change applies on the next deploy and is recorded in Activity.
 
 - **Capabilities,** like `NET_ADMIN` or `SYS_PTRACE`. Ones such as `SYS_ADMIN` reach past the container, and the dashboard warns before granting them.
-- **Devices** under `/dev`, like `/dev/net/tun` or `/dev/fuse`.
+- **Devices** under `/dev`, like `/dev/net/tun` or `/dev/fuse`. A device is the server's own hardware, so the dashboard warns before granting one. The server's memory and disks, like `/dev/mem` or `/dev/sda`, can't be granted; use a volume.
 - **Sysctls** that stay inside the app: `net.*`, `kernel.shm*`, `kernel.msg*`, `kernel.sem` and `fs.mqueue.*`.
 - **Setuid programs,** for images that rely on `sudo` or similar at run time.
 - **Capabilities Skiff drops,** like `NET_RAW` for `ping`, come back when granted.
