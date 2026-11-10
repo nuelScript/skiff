@@ -151,10 +151,12 @@ func (p *Panel) dispatchQueued() {
 			for {
 				var run int64
 				var trigger, input string
-				if sqlDB.QueryRow(`SELECT id, trigger, input FROM job_runs WHERE job=? AND status=? ORDER BY id LIMIT 1`, j.ID, runQueued).Scan(&run, &trigger, &input) != nil {
+				var attempt int
+				if sqlDB.QueryRow(`SELECT id, trigger, input, attempt FROM job_runs WHERE job=? AND status=? ORDER BY id LIMIT 1`, j.ID, runQueued).Scan(&run, &trigger, &input, &attempt) != nil {
 					return
 				}
-				guard("job:"+j.ID, func() { p.execJob(j, trigger, run, input) })
+				// A retry queued before a restart carries on from its attempt.
+				guard("job:"+j.ID, func() { p.execJobFrom(j, trigger, run, input, max(attempt, 1)) })
 				if fresh, ok := getJob(j.ID); ok {
 					j = fresh
 				} else {
