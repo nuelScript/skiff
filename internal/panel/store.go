@@ -132,6 +132,17 @@ func putSource(s Source) error {
 	if s.Replicas < 1 {
 		s.Replicas = 1
 	}
+	// Build args and the contents of files a Compose file mounts can hold secrets.
+	for _, f := range []*string{&s.BuildArgs, &s.MountedFiles} {
+		if *f == "" {
+			continue
+		}
+		sealed, err := seal.Seal(*f)
+		if err != nil {
+			return err
+		}
+		*f = sealed
+	}
 	res, err := sqlDB.Exec(`
 		INSERT INTO sources(`+sourceCols+`)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -173,6 +184,7 @@ func scanSource(row interface{ Scan(...any) error }) (Source, bool) {
 	if s.Replicas < 1 {
 		s.Replicas = 1
 	}
+	_ = seal.OpenAll(&s.BuildArgs, &s.MountedFiles)
 	return s, true
 }
 
