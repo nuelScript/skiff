@@ -252,12 +252,13 @@ var dbEngines = map[string]dbEngine{
 	},
 }
 
-// clickhouseDump writes a database as a tar: each table's definition and its rows in ClickHouse's Native format, and each view's definition, which is restored after the tables it reads.
+// clickhouseDump writes a database as a tar: each table's definition and its rows in ClickHouse's Native format, each view's definition, which is restored after the tables it reads, and the rows of a materialized view that keeps them itself. Users, roles and grants made with SQL go in access.sql.
 const clickhouseDump = `set -euo pipefail
 ch() { clickhouse-client --user "$1" --password "$2" --database "$3" "${@:4}"; }
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT; cd "$work"
-ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND NOT engine LIKE '%View' ORDER BY name" > tables
+ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND NOT engine LIKE '%View' AND NOT startsWith(name, '.inner') ORDER BY name" > tables
 ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND engine LIKE '%View' ORDER BY name" > views
+ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND engine = 'MaterializedView' AND (concat('.inner_id.', toString(uuid)) IN (SELECT name FROM system.tables WHERE database = currentDatabase()) OR concat('.inner.', name) IN (SELECT name FROM system.tables WHERE database = currentDatabase()))" > stored
 while IFS= read -r t; do
   ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$t\` + "`" + `" --format TSVRaw > "$t.table.sql"
   ch "$@" -q "SELECT * FROM \` + "`" + `$t\` + "`" + ` FORMAT Native" | gzip -1 > "$t.native.gz"
@@ -265,6 +266,27 @@ done < tables
 while IFS= read -r v; do
   ch "$@" -q "SHOW CREATE TABLE \` + "`" + `$v\` + "`" + `" --format TSVRaw > "$v.view.sql"
 done < views
+while IFS= read -r v; do
+  ch "$@" -q "SELECT * FROM \` + "`" + `$v\` + "`" + ` FORMAT Native" | gzip -1 > "$v.native.gz"
+done < stored
+acc=/var/lib/clickhouse/access
+ids=$(mktemp); : > access.sql
+for f in "$acc"/*.sql; do
+  [ -e "$f" ] || continue
+  name=$(sed -nE "1s/^ATTACH (USER|ROLE|QUOTA|SETTINGS PROFILE|ROW POLICY|MASKING POLICY) ([^ ;]+).*/\2/p" "$f")
+  echo "s/ID\\('$(basename "$f" .sql)'\\)/$name/g" >> "$ids"
+done
+for k in "SETTINGS PROFILE" ROLE USER QUOTA "ROW POLICY" "MASKING POLICY"; do
+  for f in "$acc"/*.sql; do
+    [ -e "$f" ] || continue
+    if head -n1 "$f" | grep -q "^ATTACH $k "; then head -n1 "$f" | sed -E "s/^ATTACH $k /CREATE $k IF NOT EXISTS /" >> access.sql; fi
+  done
+done
+for f in "$acc"/*.sql; do
+  [ -e "$f" ] || continue
+  tail -n +2 "$f" | sed 's/^ATTACH //' >> access.sql
+done
+sed -i -E -f "$ids" access.sql; rm -f "$ids"
 tar cf - .`
 
 // clickhouseRestore empties the database and loads a dump from clickhouseDump, so a restore returns it to the backup rather than merging.
@@ -273,10 +295,12 @@ ch() { clickhouse-client --user "$1" --password "$2" --database "$3" "${@:4}"; }
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT; cd "$work"
 tar xf -
 clickhouse-client --user "$1" --password "$2" -q "CREATE DATABASE IF NOT EXISTS \` + "`" + `$3\` + "`" + `"
-for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() ORDER BY engine LIKE '%View' DESC"); do
-  ch "$@" -q "DROP TABLE \` + "`" + `$t\` + "`" + ` SYNC"
+for t in $(ch "$@" -q "SELECT name FROM system.tables WHERE database = currentDatabase() AND NOT startsWith(name, '.inner') ORDER BY engine LIKE '%View' DESC"); do
+  ch "$@" -q "DROP TABLE IF EXISTS \` + "`" + `$t\` + "`" + ` SYNC"
 done
 while IFS= read -r t; do
+  # Older backups saved a materialized view's own table as a table; the view makes a new one.
+  case "$t" in .inner*) continue ;; esac
   ch "$@" --multiquery < "$t.table.sql"
   # An empty table dumps to nothing, which ClickHouse won't take as an insert. Backups from before compression have plain .native files.
   if [ -f "$t.native.gz" ]; then
@@ -285,7 +309,15 @@ while IFS= read -r t; do
 done < tables
 while IFS= read -r v; do
   ch "$@" --multiquery < "$v.view.sql"
-done < views`
+  if [ -f "$v.native.gz" ] && [ "$(gunzip -c "$v.native.gz" | head -c1 | wc -c)" -gt 0 ]; then
+    gunzip -c "$v.native.gz" | ch "$@" -q "INSERT INTO \` + "`" + `$v\` + "`" + ` FORMAT Native"
+  fi
+done < views
+if [ -s access.sql ]; then
+  while IFS= read -r q; do
+    ch "$@" -q "$q" || echo "a user, role or grant from the backup could not be restored" >&2
+  done < access.sql
+fi`
 
 type Database struct {
 	ID        string   `json:"id"`
