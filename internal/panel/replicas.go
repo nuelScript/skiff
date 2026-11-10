@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/docker"
@@ -23,11 +24,11 @@ const (
 	replicaWALKeep = "2GB"
 )
 
-// replicaClone copies the database into an empty volume and leaves it following the original, then starts Postgres as usual. The copy lands in a side folder and PG_VERSION moves last, so an interrupted copy starts over. A database returned to an earlier time keeps the settings that took it there, which would make the copy stop and break away at that time, so they're dropped.
+// replicaClone copies the database into an empty volume and leaves it following the original, then starts Postgres as usual. The copy lands in a side folder and PG_VERSION moves last, so an interrupted copy, even one cut off while its files were moving, starts over from an empty folder. A database returned to an earlier time keeps the settings that took it there, which would make the copy stop and break away at that time, so they're dropped.
 const replicaClone = `set -e
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   until pg_isready -q -h %[1]s -p %[2]d; do sleep 2; done
-  rm -rf "$PGDATA/.clone"
+  find "$PGDATA" -mindepth 1 -delete
   pg_basebackup -h %[1]s -p %[2]d -U %[3]s -D "$PGDATA/.clone" -R -X stream -S %[4]s -c fast
   sed -i -e '/^restore_command/d' -e '/^recovery_target/d' "$PGDATA/.clone/postgresql.auto.conf"
   for f in "$PGDATA"/.clone/*; do [ "${f##*/}" = PG_VERSION ] || mv "$f" "$PGDATA"/; done
@@ -94,6 +95,7 @@ type ReplicaStatus struct {
 	Phase      string  `json:"phase"`
 	LagBytes   int64   `json:"lagBytes"`
 	LagSeconds float64 `json:"lagSeconds"`
+	Problem    string  `json:"problem,omitempty"` // the last thing a failing replica said
 }
 
 // allowReplication lets replicas sign in to the database for its history and caps what it keeps for them. The settings live in its data folder, so they last across restarts.
@@ -249,10 +251,20 @@ func (p *Panel) stopReplica(d dbRow, r replicaRow, forget bool) {
 	}
 }
 
+// replicaMu keeps adds to one at a time, so two at once can't pass the limit together.
+var replicaMu sync.Mutex
+
 func (p *Panel) addReplica(d dbRow) (replicaRow, error) {
 	if !replicasSupported(d) {
 		return replicaRow{}, errors.New("read replicas are for Postgres databases Skiff created")
 	}
+	replicaMu.Lock()
+	defer replicaMu.Unlock()
+	// A copy taken while the database is being recovered or snapshotted could start from data about to be replaced.
+	if !pitrMu.TryLock() {
+		return replicaRow{}, errors.New("a recovery or a history snapshot is running; add the replica when it's done, in a few minutes")
+	}
+	pitrMu.Unlock()
 	existing := listReplicas(d.ID)
 	if len(existing) >= maxReadReplicas {
 		return replicaRow{}, fmt.Errorf("a database can have up to %d read replicas", maxReadReplicas)
@@ -310,6 +322,17 @@ func (p *Panel) resyncReplicas(d dbRow) {
 
 // recoverReplicas starts any replica whose container is gone; one whose volume went too is copied again. A replica still copying when Skiff stopped is watched again, to join the read name once it's ready.
 func (p *Panel) recoverReplicas(d dbRow) {
+	// A replica container with no row left, from an add or removal cut off by a restart, goes, with its copy.
+	listed := map[string]bool{}
+	for _, r := range listReplicas(d.ID) {
+		listed[r.Container] = true
+	}
+	for _, c := range p.eng.ContainersLabelled("skiff.db=" + d.ID) {
+		if strings.HasPrefix(c, d.Container+"-replica-") && !listed[c] {
+			_ = p.eng.Remove(c)
+			_ = p.eng.RemoveVolume(c + "-data")
+		}
+	}
 	for _, r := range listReplicas(d.ID) {
 		if p.eng.State(r.Container) != "missing" {
 			if !slices.Contains(p.readyReplicas(d), r) {
@@ -365,9 +388,28 @@ FROM pg_replication_slots s LEFT JOIN pg_stat_replication r ON r.pid = s.active_
 		case known && s.state != "":
 			st.Phase = "catching-up"
 		}
+		// One that keeps restarting before it streams won't get there on its own; say why.
+		if (st.Phase == "copying" || st.Phase == "stopped") && p.eng.Restarts(r.Container) > 0 {
+			st.Phase, st.Problem = "failing", p.lastLogLine(r.Container)
+		}
 		out = append(out, st)
 	}
 	return out
+}
+
+func (p *Panel) lastLogLine(container string) string {
+	var buf bytes.Buffer
+	_ = p.eng.Logs(container, false, "20", &buf)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(lines[i]); l != "" {
+			if len(l) > 300 {
+				l = l[:300] + "…"
+			}
+			return l
+		}
+	}
+	return ""
 }
 
 func (p *Panel) handleReplicas(w http.ResponseWriter, r *http.Request) {
