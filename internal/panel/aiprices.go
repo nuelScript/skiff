@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Model prices are the team's own, in US dollars per million tokens: providers change them too often for Skiff to keep a list. A model takes the price of the longest name it starts with, so "gpt-4o-mini" also prices "gpt-4o-mini-2024-07-18".
+// Model prices are the team's own, in US dollars per million tokens: providers change them too often for Skiff to keep a list. A model takes the price of its exact name, or else of the longest name it is a dated variant of, so "gpt-4o-mini" also prices "gpt-4o-mini-2024-07-18" but "gpt-4" does not price "gpt-4o".
 type aiPrice struct {
 	Model  string  `json:"model"`
 	Input  float64 `json:"input"`
@@ -34,13 +34,19 @@ func teamPrices(team string) []aiPrice {
 	return out
 }
 
-// priceFor finds the price a model uses: the longest listed name it starts with.
+var variantRe = regexp.MustCompile(`^[-@:](\d{4}|latest)`)
+
+// priceFor finds the price a model uses: its exact name, else the longest listed name it is a dated variant of.
 func priceFor(prices []aiPrice, model string) (aiPrice, bool) {
 	model = strings.ToLower(model)
 	var best aiPrice
 	found := false
 	for _, p := range prices {
-		if strings.HasPrefix(model, strings.ToLower(p.Model)) && len(p.Model) > len(best.Model) {
+		name := strings.ToLower(p.Model)
+		if model == name {
+			return p, true
+		}
+		if strings.HasPrefix(model, name) && variantRe.MatchString(model[len(name):]) && len(p.Model) > len(best.Model) {
 			best, found = p, true
 		}
 	}

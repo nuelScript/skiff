@@ -23,6 +23,15 @@ func TestPriceForTakesTheLongestName(t *testing.T) {
 	}
 }
 
+func TestPriceForSkipsOtherModels(t *testing.T) {
+	prices := []aiPrice{{Model: "gpt-4", Input: 30, Output: 60}, {Model: "claude-sonnet-4", Input: 3, Output: 15}}
+	for model, want := range map[string]bool{"gpt-4": true, "GPT-4": true, "gpt-4-0613": true, "gpt-4o": false, "gpt-4.1": false, "gpt-4-turbo": false, "claude-sonnet-4-20250514": true, "claude-sonnet-4-5": false} {
+		if _, ok := priceFor(prices, model); ok != want {
+			t.Errorf("%s: priced %v", model, ok)
+		}
+	}
+}
+
 func TestRunsShowTheirCost(t *testing.T) {
 	openTestDB(t)
 	now := time.Now().UnixNano()
