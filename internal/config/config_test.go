@@ -282,6 +282,20 @@ func TestVolumeAtSeveralPaths(t *testing.T) {
 	}
 }
 
+func TestVolumeDiskMustBeRegistered(t *testing.T) {
+	disks := []string{"/mnt/data"}
+	if err := CheckDisks([]Volume{{Name: "a", Path: "/a"}, {Name: "b", Path: "/b", Disk: "/mnt/data"}}, disks); err != nil {
+		t.Errorf("registered disk refused: %v", err)
+	}
+	err := CheckDisks([]Volume{{Name: "b", Path: "/b", Disk: "/etc"}}, disks)
+	if err == nil || !strings.Contains(err.Error(), "/etc") {
+		t.Errorf("unregistered disk should be refused naming it, got %v", err)
+	}
+	if CheckDisks([]Volume{{Name: "b", Path: "/b", Disk: "/mnt/data"}}, nil) == nil {
+		t.Error("no registered disks should refuse any disk")
+	}
+}
+
 func TestGPUsSetting(t *testing.T) {
 	dir := t.TempDir()
 	for gpus, ok := range map[string]bool{"1": true, "0": true, "-1": false, "17": false} {
