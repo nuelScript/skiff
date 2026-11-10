@@ -7,6 +7,8 @@ description: "Everything lives under /api/v1 on your dashboard's address and ans
 
 Create an API token in the dashboard under **Settings → Integrations**, and send it as a bearer token. It can reach everything in the team that created it, including environment variables, so treat it like a password. Connecting to a database, and deleting or attaching databases and buckets, needs a token from `skiff login` instead, so a token kept in CI can't reach your data.
 
+A token stops working when the member who made it leaves the team. Members can revoke their own tokens; only an owner can revoke someone else's.
+
 ```sh title="shell"
 curl https://dash.example.com/api/v1/apps \
   -H "Authorization: Bearer $SKIFF_TOKEN"

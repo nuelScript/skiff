@@ -8,6 +8,7 @@ export type ApiToken = {
   token?: string // present only in the create response, shown once
   scopes?: TokenScope[]
   apps?: string[]
+  mine?: boolean
 }
 
 export type TokenScope = 'read' | 'deploy' | 'env' | 'work' | 'data'

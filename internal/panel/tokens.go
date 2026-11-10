@@ -22,6 +22,8 @@ type APIToken struct {
 	// Scopes and Apps limit what it can do and to which projects; empty means everything.
 	Scopes []string `json:"scopes,omitempty"`
 	Apps   []string `json:"apps,omitempty"`
+	// Mine is set in a listing when the caller created it.
+	Mine bool `json:"mine,omitempty"`
 }
 
 func hashToken(tok string) string {
@@ -57,9 +59,9 @@ func tokenReachesDatabases(tok string) bool {
 	return err == nil && allowed == 1
 }
 
-func listTokens(team string) []APIToken {
+func listTokens(team, userID string) []APIToken {
 	rows, err := sqlDB.Query(
-		`SELECT id,name,created,last_used,scopes,apps FROM api_tokens WHERE team=? ORDER BY created DESC`, team)
+		`SELECT id,name,created,last_used,scopes,apps,COALESCE(created_by,'') FROM api_tokens WHERE team=? ORDER BY created DESC`, team)
 	if err != nil {
 		return nil
 	}
@@ -67,9 +69,9 @@ func listTokens(team string) []APIToken {
 	out := []APIToken{}
 	for rows.Next() {
 		var t APIToken
-		var scopes, apps string
-		if rows.Scan(&t.ID, &t.Name, &t.Created, &t.LastUsed, &scopes, &apps) == nil {
-			t.Scopes, t.Apps = decodeList(scopes), decodeList(apps)
+		var scopes, apps, by string
+		if rows.Scan(&t.ID, &t.Name, &t.Created, &t.LastUsed, &scopes, &apps, &by) == nil {
+			t.Scopes, t.Apps, t.Mine = decodeList(scopes), decodeList(apps), by == userID
 			out = append(out, t)
 		}
 	}
@@ -104,9 +106,10 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	s, _ := p.session(r)
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, listTokens(team))
+		writeJSON(w, listTokens(team, s.userID))
 	case http.MethodPost:
 		var body struct {
 			Name      string
@@ -128,7 +131,6 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, problem, http.StatusBadRequest)
 			return
 		}
-		s, _ := p.session(r)
 		t, err := createToken(team, name, s.userID, grant)
 		if err != nil {
 			http.Error(w, "could not create token", http.StatusInternalServerError)
@@ -145,8 +147,12 @@ func (p *Panel) handleTokens(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, t) // includes the plaintext token, this one time
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
-		var revoked string
-		_ = sqlDB.QueryRow(`SELECT name FROM api_tokens WHERE team=? AND id=?`, team, id).Scan(&revoked)
+		var revoked, by string
+		_ = sqlDB.QueryRow(`SELECT name,COALESCE(created_by,'') FROM api_tokens WHERE team=? AND id=?`, team, id).Scan(&revoked, &by)
+		if by != s.userID && !p.isOwner(r) {
+			http.Error(w, "only a team owner can revoke a token someone else created", http.StatusForbidden)
+			return
+		}
 		revokeToken(team, id)
 		p.audit(r, "token.revoke", revoked, "")
 		w.WriteHeader(http.StatusNoContent)
