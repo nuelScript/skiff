@@ -67,7 +67,8 @@ export type Replica = {
 
 export type ReplicaStatus = {
   id: string
-  phase: 'copying' | 'catching-up' | 'streaming' | 'lost' | 'stopped'
+  phase: 'copying' | 'catching-up' | 'streaming' | 'lost' | 'stopped' | 'failing'
+  problem?: string
   lagBytes: number
   lagSeconds: number
 }
