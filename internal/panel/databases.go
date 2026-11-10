@@ -745,8 +745,8 @@ func (p *Panel) attachDatabase(d dbRow, app string) error {
 	if err := attachDB(d.ID, app, e.envVar); err != nil {
 		return err
 	}
-	if replicas := listReplicas(d.ID); len(replicas) > 0 {
-		for _, r := range replicas {
+	if ready := p.readyReplicas(d); len(ready) > 0 {
+		for _, r := range ready {
 			p.linkReplica(d, r)
 		}
 		return upsertEnvVar(app, replicaEnvVar, p.readURL(d), false)
