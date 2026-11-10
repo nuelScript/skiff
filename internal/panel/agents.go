@@ -25,9 +25,11 @@ const (
 	// agentLease is how long an agent has to finish an event before it's handed out again, as after a crash.
 	agentLease      = 5 * time.Minute
 	agentKeepEvents = 7 * 24 * time.Hour
-	agentMaxPending = 1000
-	agentMaxWait    = 60 * time.Second
-	agentTickEvery  = 30 * time.Second
+	// agentMaxDeliveries is how many times an event is handed out before Skiff gives up on it.
+	agentMaxDeliveries = 5
+	agentMaxPending    = 1000
+	agentMaxWait       = 60 * time.Second
+	agentTickEvery     = 30 * time.Second
 )
 
 var errInboxFull = errors.New("the agent has 1000 events waiting; it isn't taking them")
@@ -91,9 +93,17 @@ type agentEvent struct {
 	Created    int64  `json:"created"`
 	Deliveries int    `json:"deliveries"`
 	Done       bool   `json:"done"`
+	GaveUp     bool   `json:"gave_up"`
+}
+
+// expireAgentEvents marks events nobody finished as given up: the ones handed out agentMaxDeliveries times, and the ones still pending after agentKeepEvents.
+func expireAgentEvents(app string, now time.Time) {
+	_, _ = sqlDB.Exec(`UPDATE agent_events SET done=2 WHERE app=? AND done=0 AND leased_until<=? AND (deliveries>=? OR created<?)`,
+		app, now.Unix(), agentMaxDeliveries, now.Add(-agentKeepEvents).Unix())
 }
 
 func addAgentEvent(app, source, kind, body string, now time.Time) (int64, error) {
+	expireAgentEvents(app, now)
 	var pending int
 	_ = sqlDB.QueryRow(`SELECT COUNT(*) FROM agent_events WHERE app=? AND done=0`, app).Scan(&pending)
 	if pending >= agentMaxPending {
@@ -103,12 +113,13 @@ func addAgentEvent(app, source, kind, body string, now time.Time) (int64, error)
 	if err != nil {
 		return 0, err
 	}
-	_, _ = sqlDB.Exec(`DELETE FROM agent_events WHERE app=? AND done=1 AND created<?`, app, now.Add(-agentKeepEvents).Unix())
+	_, _ = sqlDB.Exec(`DELETE FROM agent_events WHERE app=? AND done<>0 AND created<?`, app, now.Add(-agentKeepEvents).Unix())
 	return res.LastInsertId()
 }
 
 // takeAgentEvent hands out the oldest event nobody is working on, and leases it so a crash puts it back.
 func takeAgentEvent(app string, now time.Time) (agentEvent, bool) {
+	expireAgentEvents(app, now)
 	tx, err := sqlDB.Begin()
 	if err != nil {
 		return agentEvent{}, false
@@ -148,6 +159,7 @@ func recentAgentEvents(app string, limit int) []agentEvent {
 		var done int
 		if rows.Scan(&e.ID, &e.Source, &e.Kind, &e.Body, &e.Created, &e.Deliveries, &done) == nil {
 			e.Done = done != 0
+			e.GaveUp = done == 2
 			out = append(out, e)
 		}
 	}

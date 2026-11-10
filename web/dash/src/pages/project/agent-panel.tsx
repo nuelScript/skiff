@@ -178,7 +178,7 @@ if r.status_code == 200:
 }
 
 function EventRow({ e }: { e: AgentEvent }) {
-  const state = e.done ? 'done' : e.deliveries > 0 ? 'working' : 'waiting'
+  const state = e.gave_up ? 'gave up' : e.done ? 'done' : e.deliveries > 0 ? 'working' : 'waiting'
   return (
     <li className="flex min-w-0 items-start justify-between gap-3 px-3 py-2 text-xs">
       <div className="min-w-0">
@@ -189,7 +189,7 @@ function EventRow({ e }: { e: AgentEvent }) {
         {e.body && <p className="text-muted-foreground truncate font-mono text-[11px]">{e.body}</p>}
       </div>
       <div className="shrink-0 text-right">
-        <p className={state === 'done' ? 'text-muted-foreground' : state === 'working' ? 'text-warning' : ''}>
+        <p className={state === 'done' ? 'text-muted-foreground' : state === 'gave up' ? 'text-danger' : state === 'working' ? 'text-warning' : ''}>
           {state}
           {e.deliveries > 1 && ` · try ${e.deliveries}`}
         </p>
