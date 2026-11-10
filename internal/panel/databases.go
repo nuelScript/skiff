@@ -48,6 +48,8 @@ type dbTLS struct {
 	entrypoint string
 	cmd        []string
 	hasCerts   bool
+	// port is where an engine that serves TLS apart from its usual port does; it's the one published.
+	port int
 }
 
 const postgresRestoreReset = `SET client_min_messages = warning;
@@ -229,9 +231,13 @@ var dbEngines = map[string]dbEngine{
 		container: func(user, pass, dbname string) (map[string]string, []string) {
 			return map[string]string{"CLICKHOUSE_USER": user, "CLICKHOUSE_PASSWORD": pass, "CLICKHOUSE_DB": dbname, "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT": "1"}, nil
 		},
-		url: func(host string, port int, user, pass, dbname string, _ bool) string {
+		url: func(host string, port int, user, pass, dbname string, tls bool) string {
 			// The HTTP interface, which ClickHouse's own clients for Python, JavaScript and Go all speak.
-			return fmt.Sprintf("http://%s:%s@%s:%d/%s", user, pass, host, port, dbname)
+			scheme := "http"
+			if tls {
+				scheme = "https"
+			}
+			return fmt.Sprintf("%s://%s:%s@%s:%d/%s", scheme, user, pass, host, port, dbname)
 		},
 		shell: func(user, pass, dbname string) []string {
 			return []string{"clickhouse-client", "--user", user, "--password", pass, "--database", dbname}
@@ -247,6 +253,19 @@ var dbEngines = map[string]dbEngine{
 		countCmd: func(user, pass, dbname string) []string {
 			return []string{"clickhouse-client", "--user", user, "--password", pass, "-q",
 				"SELECT count() FROM system.tables WHERE database = currentDatabase()", "--database", dbname}
+		},
+		// Public, it also serves HTTPS on 8443 with the server's certificate, and that's the port published; apps on the server keep plain HTTP on 8123.
+		tls: &dbTLS{
+			hasCerts:   true,
+			port:       8443,
+			entrypoint: "sh",
+			cmd: []string{"-c",
+				"cp /skiff-certs/server.crt /skiff-certs/server.key /tmp/ && chmod 600 /tmp/server.key && " +
+					"chown clickhouse:clickhouse /tmp/server.crt /tmp/server.key && " +
+					"printf '%s' '<clickhouse><https_port>8443</https_port><openSSL><server><certificateFile>/tmp/server.crt</certificateFile>" +
+					"<privateKeyFile>/tmp/server.key</privateKeyFile></server></openSSL></clickhouse>' > /etc/clickhouse-server/config.d/skiff-tls.xml && " +
+					"exec /entrypoint.sh \"$@\"",
+				"skiff"},
 		},
 	},
 }
@@ -801,6 +820,9 @@ func (p *Panel) runDatabaseContainer(d dbRow, on bool) (int, error) {
 		if e.tls.entrypoint != "" {
 			spec.Entrypoint = e.tls.entrypoint
 			spec.Cmd = e.tls.cmd
+		}
+		if e.tls.port != 0 {
+			spec.Port = e.tls.port
 		}
 	}
 	pitrCmd, pitrBinds, err := p.pitrRunArgs(d, spec.Cmd)
