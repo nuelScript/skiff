@@ -22,6 +22,8 @@ A token can do everything by default. Under **Settings → Integrations**, **Lim
 - **Workers, jobs and runs**: change them, and run commands.
 - **Data**: databases, buckets and volumes.
 
+Leaving out environment variables keeps a token from reading them through the API, but not through code it can run. A token that can deploy can ship code, or point an image project at another image, that prints its environment. One that can run commands can run `printenv`. So give deploy and run rights only where you'd give the app's secrets too.
+
 A token limited to some projects can reach only them and their previews; other projects read as not found. It can't create, remove, attach or detach the team's databases and buckets, since attaching one gives an app its password. A request it can't make is refused with 403 and says why. Only a token that can change jobs sees a job's webhook secret.
 
 ## Apps
