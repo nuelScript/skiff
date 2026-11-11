@@ -31,18 +31,33 @@ func setRegistryCreds(app, host, user, pass string) error {
 	return err
 }
 
-// pullLogin is the login to pull image with: only the one saved for that image's registry, so changing the image can't send it somewhere else. A login from before hosts were kept belongs to the image the app runs when it's first used.
+// backfillRegistryHosts gives a login saved before hosts were kept the registry of the image its app runs now.
+func backfillRegistryHosts() {
+	rows, err := sqlDB.Query(`SELECT c.app, s.image FROM registry_creds c JOIN sources s ON s.app=c.app WHERE c.host='' AND s.image<>''`)
+	if err != nil {
+		return
+	}
+	type pair struct{ app, image string }
+	var todo []pair
+	for rows.Next() {
+		var x pair
+		if rows.Scan(&x.app, &x.image) == nil {
+			todo = append(todo, x)
+		}
+	}
+	rows.Close()
+	for _, x := range todo {
+		_, _ = sqlDB.Exec(`UPDATE registry_creds SET host=? WHERE app=? AND host=''`, config.RegistryHost(x.image), x.app)
+	}
+}
+
+// pullLogin is the login to pull image with: only the one saved for that image's registry, so changing the image can't send it somewhere else.
 func pullLogin(app, image string) (user, pass string, ok bool) {
 	host, user, pass, ok := getRegistryCreds(app)
-	if !ok {
+	if !ok || host == "" {
 		return "", "", false
 	}
-	want := config.RegistryHost(image)
-	if host == "" {
-		_, _ = sqlDB.Exec(`UPDATE registry_creds SET host=? WHERE app=? AND host=''`, want, app)
-		host = want
-	}
-	return user, pass, host == want
+	return user, pass, host == config.RegistryHost(image)
 }
 
 func deleteRegistryCreds(app string) {

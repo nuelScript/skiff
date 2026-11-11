@@ -46,6 +46,7 @@ func New(setupSecret, domain string, eng *docker.Engine) (*Panel, error) {
 		return nil, err
 	}
 	dropCopiedPreviewEnv()
+	backfillRegistryHosts()
 	if err := hashStoredTokens(); err != nil {
 		log.Printf("skiff: hashing stored tokens: %v", err)
 	}

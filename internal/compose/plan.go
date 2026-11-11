@@ -583,6 +583,8 @@ func applyDatabase(it *Item, engine string, s Service, p *Plan, readFile func(st
 		for i, a := range s.Command {
 			if a == "--requirepass" && i+1 < len(s.Command) {
 				it.DBPassword = s.Command[i+1]
+			} else if v, ok := strings.CutPrefix(a, "--requirepass="); ok {
+				it.DBPassword = v
 			}
 		}
 	}
@@ -616,7 +618,7 @@ func ignoredFlags(command []string, password string) []string {
 	for i, a := range command {
 		switch {
 		case i == 0 && slices.Contains([]string{"postgres", "mysqld", "redis-server", "mongod", "clickhouse-server"}, a):
-		case a == "--requirepass", password != "" && a == password:
+		case a == "--requirepass", strings.HasPrefix(a, "--requirepass="), i > 0 && command[i-1] == "--requirepass", password != "" && a == password:
 		default:
 			out = append(out, a)
 		}

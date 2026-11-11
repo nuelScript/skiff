@@ -107,15 +107,28 @@ func (p *Panel) handleAccessTokens(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, t)
 	case http.MethodDelete:
 		id := sanitizeID(r.URL.Query().Get("id"))
-		if tokenRequired(src) && len(listAccessTokens(app)) <= 1 {
-			http.Error(w, app+" has no login of its own, so it keeps at least one token. Add another before revoking this one", http.StatusBadRequest)
-			return
+		// One statement, so two revokes at once can't both pass the check and leave none.
+		keep := 0
+		if tokenRequired(src) {
+			keep = 1
 		}
-		if _, err := sqlDB.Exec(`DELETE FROM access_tokens WHERE app=? AND id=?`, app, id); err != nil {
+		res, err := sqlDB.Exec(`DELETE FROM access_tokens WHERE app=? AND id=? AND (?=0 OR (SELECT COUNT(*) FROM access_tokens WHERE app=?) > 1)`, app, id, keep, app)
+		if err != nil {
 			http.Error(w, "couldn't revoke", http.StatusInternalServerError)
 			return
 		}
-		_ = writeEdgeFile()
+		if n, _ := res.RowsAffected(); n == 0 && keep == 1 {
+			var found int
+			_ = sqlDB.QueryRow(`SELECT COUNT(*) FROM access_tokens WHERE app=? AND id=?`, app, id).Scan(&found)
+			if found > 0 {
+				http.Error(w, app+" has no login of its own, so it keeps at least one token. Add another before revoking this one", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := writeEdgeFile(); err != nil {
+			http.Error(w, "revoked, but couldn't hand that to the router, so the token may still work until it's retried: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		p.audit(r, "access-token.revoke", app, id)
 		w.WriteHeader(http.StatusNoContent)
 	default:

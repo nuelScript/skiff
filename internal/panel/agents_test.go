@@ -187,6 +187,39 @@ func TestAgentHookTakesSignedEvents(t *testing.T) {
 	}
 }
 
+// A delivery that couldn't be queued must be accepted when the sender retries it.
+func TestAgentHookForgetsDeliveriesItCouldntQueue(t *testing.T) {
+	openTestDB(t)
+	newTestAgent(t, "bot")
+	ag, _ := getAgent("bot")
+	p := &Panel{}
+	send := func() int {
+		body := `{"text":"hi"}`
+		r := httptest.NewRequest(http.MethodPost, "/api/hooks/agents/bot", strings.NewReader(body))
+		r.SetPathValue("app", "bot")
+		mac := hmac.New(sha256.New, []byte(ag.hookSecret))
+		mac.Write([]byte(body))
+		r.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-GitHub-Delivery", "d-1")
+		w := httptest.NewRecorder()
+		p.handleAgentHook(w, r)
+		return w.Code
+	}
+	for i := 0; i < agentMaxPending; i++ {
+		_, _ = sqlDB.Exec(`INSERT INTO agent_events(app, source, kind, body, created) VALUES('bot','webhook','','{}',?)`, time.Now().Unix())
+	}
+	if code := send(); code != http.StatusTooManyRequests {
+		t.Fatalf("full inbox: %d", code)
+	}
+	_, _ = sqlDB.Exec(`DELETE FROM agent_events WHERE app='bot'`)
+	if code := send(); code != http.StatusAccepted {
+		t.Errorf("retry after the inbox cleared: %d", code)
+	}
+	if code := send(); code != http.StatusOK {
+		t.Errorf("repeat of an accepted delivery: %d", code)
+	}
+}
+
 func TestAgentScheduleTicksOnce(t *testing.T) {
 	openTestDB(t)
 	newTestAgent(t, "bot")

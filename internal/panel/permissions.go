@@ -2,7 +2,10 @@ package panel
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/nuelScript/skiff/internal/config"
@@ -43,6 +46,10 @@ func (p *Panel) handlePermissions(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if err := refuseBlockDevices(body.Devices); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		src.Permissions = config.EncodePermissions(body)
 		if err := putSource(src); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -80,4 +87,20 @@ func describePermissions(g config.Permissions) string {
 		parts = append(parts, "sysctls "+strings.Join(g.Sysctls, ","))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// refuseBlockDevices turns away any device that is a disk on this server, whatever path it's reached by.
+func refuseBlockDevices(devices []string) error {
+	for _, d := range devices {
+		host, _, _ := strings.Cut(d, ":")
+		if isBlockDevice(path.Clean(host)) {
+			return fmt.Errorf("device %s is a disk on the server, which would let the app read or overwrite anything on it; mount a volume instead", host)
+		}
+	}
+	return nil
+}
+
+func isBlockDevice(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }

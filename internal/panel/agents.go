@@ -221,7 +221,8 @@ func (p *Panel) handleAgentHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the body is over 64 KB", http.StatusRequestEntityTooLarge)
 		return
 	}
-	if hookAnswer(w, checkHook(r, body, a.hookSecret)) {
+	forget, err := checkHook(r, body, a.hookSecret)
+	if hookAnswer(w, err) {
 		return
 	}
 	source, kind := "webhook", r.Header.Get("X-Skiff-Event")
@@ -237,10 +238,12 @@ func (p *Panel) handleAgentHook(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := addAgentEvent(a.App, source, kind, string(body), time.Now())
 	if errors.Is(err, errInboxFull) {
+		forget()
 		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
 	if err != nil {
+		forget()
 		http.Error(w, "couldn't take the event", http.StatusInternalServerError)
 		return
 	}

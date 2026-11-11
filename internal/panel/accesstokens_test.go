@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -84,5 +85,20 @@ func TestKeyedAppKeepsItsLastToken(t *testing.T) {
 	}
 	if w := call(http.MethodDelete, "&id="+first.ID); w.Code != http.StatusNoContent {
 		t.Fatalf("revoking once there's another: %d %s", w.Code, w.Body)
+	}
+	// Two revokes at once must leave one token.
+	a, _ := createAccessToken("llm", "a", time.Now())
+	b, _ := createAccessToken("llm", "b", time.Now())
+	var wg sync.WaitGroup
+	for _, id := range []string{a.ID, b.ID} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			call(http.MethodDelete, "&id="+id)
+		}()
+	}
+	wg.Wait()
+	if n := len(listAccessTokens("llm")); n < 1 {
+		t.Fatalf("every token was revoked: %d left", n)
 	}
 }

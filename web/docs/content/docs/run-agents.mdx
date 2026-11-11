@@ -20,8 +20,8 @@ The container restarts when it exits, and Skiff alerts you if it keeps crashing.
 
 Work reaches the agent as events in its inbox, so it never needs an open port. The project's **Overview** shows where events come from and the last few that arrived.
 
-- **Webhook**: a signed `POST` to the address shown becomes one event, with the request body. Send the Unix time in `X-Skiff-Timestamp`, and HMAC-SHA256 of `<time>.<body>` with the secret as `X-Skiff-Signature: sha256=…`, as for [job webhooks](/backends#webhooks). Each request is taken once, within five minutes of its time.
-- **GitHub**: add a webhook in your repository's settings with the same address and secret. Each GitHub event arrives with its type, like `issues` or `pull_request`.
+- **Webhook**: a signed `POST` to the address shown becomes one event, with the request body. Send the Unix time in `X-Skiff-Timestamp`, and HMAC-SHA256 of `<time>.<body>` with the secret as `X-Skiff-Signature: sha256=…`, as for [job webhooks](/backends#webhooks). Each request is taken once, within five minutes of its time. Two requests with the same body in the same second count as one, so add a unique field, like an id or the time, to the body if you send repeats.
+- **GitHub**: add a webhook in your repository's settings with the same address and secret. Each GitHub event arrives with its type, like `issues` or `pull_request`. GitHub's signature covers only the body, so each delivery is taken once by the ID GitHub sends, which isn't signed; replay protection holds fully only for Skiff-signed requests.
 - **Schedule**: a cron schedule like `*/15 * * * *` adds an event each time it comes round. If Skiff was down through several, the agent gets one event, not a burst.
 - **Email**: on the **Email** page, forward an address to `agent:<project>` (like `support@example.com` → `agent:helpdesk`). Each message arrives as an `email` event whose body is JSON with `from`, `to`, `subject`, `date`, `messageId` and `text`: the plain-text part, or the HTML when there's none, up to 40 KB. Attachments aren't included. See [email forwarding](/email-forwarding) for setting up the domain.
 

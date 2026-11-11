@@ -19,6 +19,9 @@ func TestManagedDatabaseSettingsAreNoted(t *testing.T) {
   cache:
     image: redis:7
     command: redis-server --requirepass s3cret
+  cache2:
+    image: redis:7
+    command: redis-server --requirepass=eq5ecret --appendonly yes
 `), noFiles, func(string) PathKind { return PathFile })
 	notes := strings.Join(p.Notes, "\n")
 	for _, want := range []string{
@@ -31,8 +34,22 @@ func TestManagedDatabaseSettingsAreNoted(t *testing.T) {
 			t.Errorf("no note containing %q in:\n%s", want, notes)
 		}
 	}
-	if strings.Contains(notes, "cache: is a managed database, so its command") || strings.Contains(notes, "s3cret") {
+	if strings.Contains(notes, "cache: is a managed database, so its command") || strings.Contains(notes, "s3cret") || strings.Contains(notes, "eq5ecret") {
 		t.Errorf("redis's own command was noted:\n%s", notes)
+	}
+}
+
+func TestRequirepassEqualsFormIsTheDatabasePassword(t *testing.T) {
+	p := BuildPlan("s", mustParse(t, `services:
+  cache:
+    image: redis:7
+    command: redis-server --requirepass=eq5ecret
+`), noFiles, func(string) PathKind { return PathFile })
+	if db := item(t, p, "cache"); db.DBPassword != "eq5ecret" {
+		t.Errorf("password = %q", db.DBPassword)
+	}
+	if got := ignoredFlags([]string{"redis-server", "--requirepass=x", "--requirepass", "y"}, ""); len(got) != 0 {
+		t.Errorf("ignored = %v", got)
 	}
 }
 
