@@ -206,8 +206,10 @@ func backupTimeout(size int64) time.Duration {
 	return 15*time.Minute + time.Duration(size/(10<<20))*time.Second
 }
 
-// restoreTimeout is how long loading a backup of this size may take, which a real restore and the restore check share.
-func restoreTimeout(size int64) time.Duration { return backupTimeout(size) }
+// restoreTimeout is how long loading a backup file of this size may take, which a real restore and the restore check share. A backup file is compressed and loading rebuilds indexes, so it gets a second per MB rather than per 10 MB.
+func restoreTimeout(size int64) time.Duration {
+	return 15*time.Minute + time.Duration(size/(1<<20))*time.Second
+}
 
 func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	e := dbEngines[d.Engine]

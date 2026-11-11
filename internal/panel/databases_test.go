@@ -60,7 +60,7 @@ func TestFlavorByRepoIgnoresTag(t *testing.T) {
 }
 
 func TestRestoreTimeoutScalesWithSize(t *testing.T) {
-	if restoreTimeout(0) != backupTimeout(0) || restoreTimeout(100<<30) <= restoreTimeout(1<<30) {
-		t.Error("a restore's limit doesn't grow with the backup")
+	if restoreTimeout(0) != backupTimeout(0) || restoreTimeout(5<<30) <= backupTimeout(25<<30) {
+		t.Error("a restore of a compressed backup gets less time than its database took to back up")
 	}
 }
