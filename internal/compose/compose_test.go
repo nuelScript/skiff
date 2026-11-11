@@ -1081,3 +1081,22 @@ func TestVolumeNamesThatCollideAreRefused(t *testing.T) {
 		t.Errorf("one volume at two paths: %v", p.Problems)
 	}
 }
+
+func TestBlankEntrypointStringClearsTheImages(t *testing.T) {
+	for _, v := range []string{`""`, `''`} {
+		f, err := Parse([]byte("services:\n  a:\n    image: x\n    entrypoint: "+v+"\n    command: run\n"), noEnv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts := item(t, BuildPlan("s", f, noFiles, nil), "a").Options; !opts.NoEntrypoint {
+			t.Errorf("entrypoint %s should reset: %+v", v, opts)
+		}
+	}
+	f, err := Parse([]byte("services:\n  a:\n    image: x\n    entrypoint:\n    command: run\n"), noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts := item(t, BuildPlan("s", f, noFiles, nil), "a").Options; opts.NoEntrypoint {
+		t.Errorf("a null entrypoint isn't a reset: %+v", opts)
+	}
+}
