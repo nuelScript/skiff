@@ -103,14 +103,22 @@ func (p *Panel) reconcileWorkers(app string) {
 	if !ok {
 		return
 	}
-	existing := p.eng.WorkerSpecs(app)
+	existing, err := p.eng.WorkerSpecs(app)
+	if err != nil {
+		log.Printf("skiff: workers of %s left as they are: %v", app, err)
+		return
+	}
 	image := "skiff-" + app + ":latest"
 	imageID := p.eng.ImageID(image)
 	if imageID == "" {
 		p.stopWorkers(slices.Collect(maps.Keys(existing)))
 		return
 	}
-	settings := p.appSettings(src)
+	settings, err := p.appSettings(src)
+	if err != nil {
+		log.Printf("skiff: workers of %s left as they are: %v", app, err)
+		return
+	}
 	keep := map[string]bool{}
 	type start struct{ name, command, spec string }
 	var starts []start

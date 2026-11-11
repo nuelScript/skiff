@@ -77,13 +77,14 @@ func teamBucket(team, name string) (bucketRow, bool) {
 }
 
 // withTriggerEnv tells a run what started it.
-func withTriggerEnv(env map[string]string, j jobRow, trigger, input string) map[string]string {
+// origin is what the input came from, which for a retry is the first attempt's trigger.
+func withTriggerEnv(env map[string]string, j jobRow, trigger, origin, input string) map[string]string {
 	out := maps.Clone(env)
 	if out == nil {
 		out = map[string]string{}
 	}
 	out["SKIFF_TRIGGER"] = trigger
-	switch trigger {
+	switch origin {
 	case triggerWebhook:
 		out["SKIFF_WEBHOOK_BODY"] = input
 	case triggerBucket:

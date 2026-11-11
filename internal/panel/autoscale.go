@@ -148,15 +148,19 @@ func scaleBounds(src Source) (min, max int, target float64) {
 }
 
 // replicaSpec is how an added replica starts: with the same settings as the app's other containers, including its isolation, outbound limits, permissions and GPUs.
-func (p *Panel) replicaSpec(app registry.App, src Source) docker.RunSpec {
+func (p *Panel) replicaSpec(app registry.App, src Source) (docker.RunSpec, error) {
+	settings, err := p.appSettings(src)
+	if err != nil {
+		return docker.RunSpec{}, err
+	}
 	return docker.RunSpec{
 		App:           app.Name,
 		Image:         fmt.Sprintf("skiff-%s:latest", app.Name),
 		ContainerPort: app.Port,
-		Settings:      p.appSettings(src),
+		Settings:      settings,
 		Aliases:       stackAliases(src),
 		Command:       stackCommand(src),
-	}
+	}, nil
 }
 
 func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
@@ -165,7 +169,11 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 		return 0
 	}
 	check := p.healthPath(src, app.Container)
-	spec := p.replicaSpec(app, src)
+	spec, err := p.replicaSpec(app, src)
+	if err != nil {
+		log.Printf("skiff: not scaling %s up: %v", app.Name, err)
+		return 0
+	}
 
 	added := 0
 	for range count {

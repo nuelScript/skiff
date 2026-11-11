@@ -2,6 +2,7 @@ package panel
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -98,10 +99,10 @@ func listRuns(job string, limit int) []JobRun {
 }
 
 type orphanRun struct {
-	id, started    int64
-	job            string
-	attempt        int
-	trigger, input string
+	id, started            int64
+	job                    string
+	attempt                int
+	trigger, input, origin string
 }
 
 // adoptRunsAfterRestart picks up runs that were going when Skiff stopped. A run whose container is still going is followed to its end; the rest are tried again if they have retries left, so a long run resumes from the checkpoints it saved.
@@ -109,14 +110,14 @@ type orphanRun struct {
 var dockerWait = 5 * time.Minute
 
 func (p *Panel) adoptRunsAfterRestart() {
-	rows, err := sqlDB.Query(`SELECT id, job, attempt, started, trigger, input FROM job_runs WHERE status=?`, runRunning)
+	rows, err := sqlDB.Query(`SELECT id, job, attempt, started, trigger, input, origin FROM job_runs WHERE status=?`, runRunning)
 	if err != nil {
 		return
 	}
 	var runs []orphanRun
 	for rows.Next() {
 		var r orphanRun
-		if rows.Scan(&r.id, &r.job, &r.attempt, &r.started, &r.trigger, &r.input) == nil {
+		if rows.Scan(&r.id, &r.job, &r.attempt, &r.started, &r.trigger, &r.input, &r.origin) == nil {
 			runs = append(runs, r)
 		}
 	}
@@ -144,10 +145,18 @@ func (p *Panel) adoptRunsAfterRestart() {
 			_ = p.eng.Remove(c)
 		}
 		finishRun(r.id, runFailed, 0, "Skiff restarted while this was running, so its result is unknown.")
-		if ok && r.trigger != triggerManual && r.attempt <= j.Retries && claimJob(j.ID) {
+		if !ok {
+			continue
+		}
+		if r.trigger == triggerManual || r.attempt > j.Retries {
+			p.settleJob(j, runFailed, false)
+			continue
+		}
+		if claimJob(j.ID) {
+			next := queueRetry(j, r.attempt, r.input, cmp.Or(r.origin, r.trigger))
 			go func() {
 				defer releaseJob(j.ID)
-				guard("job:"+j.ID, func() { p.execJobFrom(j, triggerRetry, 0, r.input, r.attempt+1) })
+				guard("job:"+j.ID, func() { p.execJobFrom(j, triggerRetry, next, r.input, r.attempt+1) })
 			}()
 		}
 	}
@@ -170,8 +179,8 @@ func (p *Panel) followRun(j jobRow, r orphanRun, container string) {
 		status = runFailed
 	}
 	finishRun(r.id, status, code, text)
-	if status != runOK && r.trigger != triggerManual && r.attempt <= j.Retries {
-		p.execJobFrom(j, triggerRetry, waitToRetry(j, r.attempt, r.input), r.input, r.attempt+1)
+	if _, exists := getJob(j.ID); status != runOK && exists && r.trigger != triggerManual && r.attempt <= j.Retries {
+		p.execJobFrom(j, triggerRetry, waitToRetry(j, r.attempt, r.input, cmp.Or(r.origin, r.trigger)), r.input, r.attempt+1)
 		return
 	}
 	p.settleJob(j, status, status == runOK)
@@ -203,9 +212,9 @@ func (p *Panel) stopRuns(where string, arg any) {
 }
 
 func (p *Panel) deleteAppJobs(app string) {
+	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE app=?`, app)
 	p.stopRuns(`app=?`, app)
 	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE app=?`, app)
-	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE app=?`, app)
 }
 
 func jobTimeout(j jobRow) time.Duration {
@@ -252,8 +261,12 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 	timeout := jobTimeout(j)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	settings := p.appSettings(src)
-	settings.Env = withTriggerEnv(settings.Env, j, trigger, input)
+	settings, err := p.appSettings(src)
+	if err != nil {
+		finishRun(id, runFailed, 0, err.Error())
+		return "", runFailed, err
+	}
+	settings.Env = withTriggerEnv(settings.Env, j, trigger, runOrigin(id, trigger), input)
 	settings.Labels = maps.Clone(settings.Labels)
 	if settings.Labels == nil {
 		settings.Labels = map[string]string{}
@@ -307,7 +320,10 @@ func (p *Panel) execJobFrom(j jobRow, trigger string, id int64, input string, fi
 		if err == nil || attempt > j.Retries {
 			break
 		}
-		id, t = waitToRetry(j, attempt, input), triggerRetry
+		if _, ok := getJob(j.ID); !ok {
+			return
+		}
+		id, t = waitToRetry(j, attempt, input, runOrigin(id, t)), triggerRetry
 		// A job deleted while it waited to retry stays deleted.
 		if _, ok := getJob(j.ID); !ok {
 			return
@@ -317,17 +333,37 @@ func (p *Panel) execJobFrom(j jobRow, trigger string, id int64, input string, fi
 }
 
 // waitToRetry records the next attempt as a queued run, then waits out the back-off. Should Skiff restart in the meantime, the queue finds the run and starts it.
-func waitToRetry(j jobRow, attempt int, input string) int64 {
-	id := startRun(j, triggerRetry, attempt+1, runQueued)
-	if input != "" {
-		_, _ = sqlDB.Exec(`UPDATE job_runs SET input=? WHERE id=?`, input, id)
-	}
+func waitToRetry(j jobRow, attempt int, input, origin string) int64 {
+	id := queueRetry(j, attempt, input, origin)
 	time.Sleep(retryWait(attempt))
 	return id
 }
 
+// queueRetry records the attempt after attempt as a queued run that keeps what started the first, so it gets the same input.
+func queueRetry(j jobRow, attempt int, input, origin string) int64 {
+	id := startRun(j, triggerRetry, attempt+1, runQueued)
+	if input != "" {
+		_, _ = sqlDB.Exec(`UPDATE job_runs SET input=?, origin=? WHERE id=?`, input, origin, id)
+	}
+	return id
+}
+
+// runOrigin is what started a run: its own trigger, or for a retry the trigger of the attempt it repeats.
+func runOrigin(id int64, trigger string) string {
+	if trigger != triggerRetry || id == 0 {
+		return trigger
+	}
+	var origin string
+	_ = sqlDB.QueryRow(`SELECT origin FROM job_runs WHERE id=?`, id).Scan(&origin)
+	return cmp.Or(origin, trigger)
+}
+
 // settleJob records the outcome and alerts on a change, so a job failing every minute sends one message, not one a minute.
 func (p *Panel) settleJob(j jobRow, status string, ok bool) {
+	// A job deleted while it ran has nobody to tell.
+	if _, exists := getJob(j.ID); !exists {
+		return
+	}
 	setJobRun(j.ID, time.Now().Unix(), ok)
 	wasOK := j.LastOk != 0
 	switch {

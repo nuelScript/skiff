@@ -117,10 +117,14 @@ func (p *Panel) cliAppLoop() {
 // gpuStartHold is how long GPUs picked for a job or run stay claimed, which is long enough for its container to start and hold them itself.
 const gpuStartHold = 2 * time.Minute
 
-func (p *Panel) appSettings(src Source) docker.Settings {
+func (p *Panel) appSettings(src Source) (docker.Settings, error) {
+	cli, err := p.cliRuntime(src)
+	if err != nil {
+		return docker.Settings{}, err
+	}
 	src = withParentLimits(src)
 	holdForMoves(src.App)
-	env, net := p.appRuntime(src)
+	env, net := p.appRuntimeFrom(src, cli)
 	_ = p.eng.EnsureNetwork(net)
 	var container string
 	if apps, err := registry.Load(); err == nil {
@@ -141,7 +145,7 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 	}
 	runtime, perms := runtimeFor(src.Isolation), config.DecodePermissions(src.Permissions)
 	// A CLI app's limits and permissions live in its skiff.toml, so they're read from the app as it runs.
-	if rt, ok := p.cliContainer(src); ok {
+	if rt := cli; rt != nil {
 		if policy, ok := rt.Labels[egress.Label]; ok {
 			labels[egress.Label] = policy
 		}
@@ -156,24 +160,37 @@ func (p *Panel) appSettings(src Source) docker.Settings {
 		Runtime:     runtime,
 		Labels:      labels,
 		Permissions: perms,
-	}
+	}, nil
 }
 
-// cliContainer reads how a CLI-deployed app's container was started.
-func (p *Panel) cliContainer(src Source) (docker.ContainerRuntime, bool) {
+// cliRuntime is nil for an app that isn't from the CLI. For one that is, it's an error when the container can't be read: its limits and permissions live only there, so starting more of it without them would run it unrestricted.
+func (p *Panel) cliRuntime(src Source) (*docker.ContainerRuntime, error) {
 	if src.Origin != originCLI {
-		return docker.ContainerRuntime{}, false
+		return nil, nil
 	}
 	apps, err := registry.Load()
-	if err != nil || apps[src.App].Container == "" {
-		return docker.ContainerRuntime{}, false
+	if err != nil {
+		return nil, fmt.Errorf("can't read %s's settings: %w", src.App, err)
 	}
-	rt, err := p.eng.Runtime(apps[src.App].Container)
-	return rt, err == nil
+	name := apps[src.App].Container
+	if name == "" {
+		return nil, fmt.Errorf("%s has no running container to read its settings from, so nothing was started", src.App)
+	}
+	rt, err := p.eng.Runtime(name)
+	if err != nil {
+		return nil, fmt.Errorf("can't read %s's settings from its container, so nothing was started: %w", src.App, err)
+	}
+	return &rt, nil
 }
 
 func (p *Panel) appRuntime(src Source) (map[string]string, string) {
-	if rt, ok := p.cliContainer(src); ok {
+	cli, _ := p.cliRuntime(src)
+	return p.appRuntimeFrom(src, cli)
+}
+
+func (p *Panel) appRuntimeFrom(src Source, cli *docker.ContainerRuntime) (map[string]string, string) {
+	if cli != nil {
+		rt := *cli
 		delete(rt.Env, "PORT")
 		for _, e := range aiEnv(src) {
 			rt.Env[e.Key] = e.Value

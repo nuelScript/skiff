@@ -14,7 +14,10 @@ func TestAddedReplicasKeepTheAppsLimits(t *testing.T) {
 		Egress: egress.Policy{Mode: egress.Private}.Encode(), Permissions: `{"capabilities":["NET_ADMIN"]}`}
 	putSource(src)
 	p := &Panel{eng: docker.Local()}
-	spec := p.replicaSpec(registry.App{Name: "api", Port: 8080}, src)
+	spec, err := p.replicaSpec(registry.App{Name: "api", Port: 8080}, src)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if spec.Settings.Runtime != docker.SandboxRuntime {
 		t.Errorf("runtime %q, want gVisor", spec.Settings.Runtime)
 	}

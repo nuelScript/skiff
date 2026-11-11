@@ -232,9 +232,11 @@ func (p *Panel) runDueJobs(now time.Time) {
 			finishRun(startRun(j, triggerSchedule, 1, runSkipped), runSkipped, 0, "The previous run was still going, so this one was skipped.")
 			continue
 		}
+		// Recorded as queued first, so a restart while it waits for a slot still finds it.
+		queued := startRun(j, trigger, 1, runQueued)
 		go func(j jobRow) {
 			defer releaseJob(j.ID)
-			guard("job:"+j.ID, func() { p.execJob(j, trigger, 0, "") })
+			guard("job:"+j.ID, func() { p.execJob(j, trigger, queued, "") })
 		}(j)
 	}
 }
@@ -364,9 +366,9 @@ func checkJobLimits(timeout, retries int, catchUp string) string {
 }
 
 func (p *Panel) deleteJob(id string) {
+	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, id)
 	p.stopRuns(`job=?`, id)
 	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job=?`, id)
-	_, _ = sqlDB.Exec(`DELETE FROM jobs WHERE id=?`, id)
 }
 
 // handleJobRuns lists a job's recent runs, newest first.

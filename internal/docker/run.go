@@ -230,17 +230,17 @@ func (e *Engine) RunWorker(s WorkerSpec) error {
 const LabelWorkerSpec = "skiff.worker.spec"
 
 // WorkerSpecs maps each of an app's worker containers, running or not, to its fingerprint.
-func (e *Engine) WorkerSpecs(app string) map[string]string {
+func (e *Engine) WorkerSpecs(app string) (map[string]string, error) {
 	out, err := e.command("ps", "-a", "--filter", "label=skiff.worker.app="+app, "--format", `{{.Names}} {{.Label "`+LabelWorkerSpec+`"}}`).Output()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	specs := map[string]string{}
 	for _, l := range splitLines(out) {
 		name, spec, _ := strings.Cut(l, " ")
 		specs[name] = spec
 	}
-	return specs
+	return specs, nil
 }
 
 // ImageID is the ID an image reference points at now, or "" when there's no such image.

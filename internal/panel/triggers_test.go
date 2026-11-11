@@ -168,7 +168,7 @@ func TestJobTriggerChecks(t *testing.T) {
 			t.Errorf("%+v: accepted = %v", c, got)
 		}
 	}
-	env := withTriggerEnv(map[string]string{"A": "1"}, jobRow{Bucket: "media"}, triggerBucket, "in/x.csv")
+	env := withTriggerEnv(map[string]string{"A": "1"}, jobRow{Bucket: "media"}, triggerBucket, triggerBucket, "in/x.csv")
 	if env["A"] != "1" || env["SKIFF_TRIGGER"] != "bucket" || env["SKIFF_BUCKET"] != "media" || env["SKIFF_OBJECT_KEY"] != "in/x.csv" {
 		t.Errorf("env = %v", env)
 	}
