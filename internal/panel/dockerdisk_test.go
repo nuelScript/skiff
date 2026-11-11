@@ -39,7 +39,25 @@ func TestAStoppedDiskVolumeHasItsSize(t *testing.T) {
 	volSizes.Lock()
 	volSizes.sizes = nil
 	volSizes.Unlock()
-	if got := p.volumeSize(name); got < 4<<20 {
+	if got := p.volumeSizeNow(name); got < 4<<20 {
 		t.Errorf("size = %d, want about 4 MB", got)
+	}
+}
+
+func TestStorageDirIsAskedAgainUntilKnown(t *testing.T) {
+	var s storageDir
+	calls, answer := 0, ""
+	ask := func() string { calls++; return answer }
+	now := time.Now()
+	if s.get(ask, now) != "" || s.get(ask, now.Add(10*time.Second)) != "" || calls != 1 {
+		t.Fatalf("asked %d times within a minute", calls)
+	}
+	answer = "/var/lib/docker"
+	if got := s.get(ask, now.Add(time.Minute)); got != answer || calls != 2 {
+		t.Fatalf("got %q after %d asks", got, calls)
+	}
+	s.get(ask, now.Add(time.Hour))
+	if calls != 2 {
+		t.Errorf("asked again once known: %d", calls)
 	}
 }

@@ -110,6 +110,9 @@ func parseTally(line string) (CopyTally, error) {
 
 // ClearFolder empties a folder through a container, as its files can belong to users the panel isn't.
 func (e *Engine) ClearFolder(folder string) error {
+	if OnSystemDiskFn(folder) {
+		return ErrDiskNotMounted
+	}
 	out, err := e.command("run", "--rm", "-v", folder+":/f", VolumeTool, "sh", "-c", "find /f -mindepth 1 -delete").CombinedOutput()
 	if err != nil {
 		return cmdErr(out, err)
@@ -137,6 +140,9 @@ func OnSystemDisk(path string) bool {
 		}
 	}
 }
+
+// OnSystemDiskFn is what ClearFolder asks before emptying a folder, so a test can stand a temporary folder in for an added disk.
+var OnSystemDiskFn = OnSystemDisk
 
 // MakeDiskFolder makes a folder on an added disk, refusing when the disk isn't mounted.
 func MakeDiskFolder(folder string) error {

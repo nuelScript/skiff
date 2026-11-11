@@ -18,6 +18,8 @@ func TestARestartSettlesAnInterruptedMove(t *testing.T) {
 		t.Skip("docker not available")
 	}
 	openTestDB(t)
+	defer func(f func(string) bool) { docker.OnSystemDiskFn = f }(docker.OnSystemDiskFn)
+	docker.OnSystemDiskFn = func(string) bool { return false }
 	p := &Panel{eng: docker.Local()}
 	read := func(volume string) string {
 		out, _ := exec.Command("docker", "run", "--rm", "-v", volume+":/v", docker.VolumeTool, "cat", "/v/f").Output()
@@ -42,7 +44,7 @@ func TestARestartSettlesAnInterruptedMove(t *testing.T) {
 	if err := saveMove(moveRecord{Volume: vol, Dest: dest, Phase: "copying", Labels: p.eng.VolumeLabels(vol)}); err != nil {
 		t.Fatal(err)
 	}
-	p.resumeMoves()
+	p.resumeMoves(holdResumedMoves())
 	if f := p.eng.VolumeFolder(vol); f != "" || read(vol) != "kept" {
 		t.Fatalf("after an interrupted copy the volume is in %q with %q", f, read(vol))
 	}
@@ -64,7 +66,7 @@ func TestARestartSettlesAnInterruptedMove(t *testing.T) {
 	if err := saveMove(moveRecord{Volume: vol, Dest: dest, Phase: "copied"}); err != nil {
 		t.Fatal(err)
 	}
-	p.resumeMoves()
+	p.resumeMoves(holdResumedMoves())
 	if f := p.eng.VolumeFolder(vol); f != dest || read(vol) != "kept" {
 		t.Fatalf("after a checked copy the volume is in %q with %q", f, read(vol))
 	}
@@ -101,5 +103,44 @@ func TestStartsWaitForAMove(t *testing.T) {
 	go func() { time.Sleep(50 * time.Millisecond); endMove(name, nil) }()
 	if err := waitForMoves(context.Background(), "worker"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A restart's unfinished moves hold starts from the moment the panel is up, until they're settled.
+func TestResumedMovesHoldStarts(t *testing.T) {
+	openTestDB(t)
+	_ = addVolume("shop", config.Volume{Name: "files", Path: "/data"})
+	name := config.VolumeName("shop", "files")
+	if err := saveMove(moveRecord{Volume: name, Dest: "/mnt/data/skiff-volumes/" + name, Phase: "copying"}); err != nil {
+		t.Fatal(err)
+	}
+	recs := holdResumedMoves()
+	if len(recs) != 1 || movingVolume("shop") != name {
+		t.Fatalf("the interrupted move isn't holding the volume: %v", recs)
+	}
+	endMove(name, nil)
+	if movingVolume("shop") != "" {
+		t.Error("the volume is still held after the move settled")
+	}
+}
+
+// The disk a volume is on is stored once its move has finished.
+func TestVolumeDiskIsRecordedAfterAMove(t *testing.T) {
+	openTestDB(t)
+	_, _ = sqlDB.Exec(`INSERT INTO disks(id, name, path, created) VALUES('d1','data','/mnt/data',1)`)
+	_ = addVolume("shop", config.Volume{Name: "files", Path: "/data"})
+	name := config.VolumeName("shop", "files")
+	read := func() string {
+		var id string
+		_ = sqlDB.QueryRow(`SELECT disk FROM volumes WHERE app='shop' AND name='files'`).Scan(&id)
+		return id
+	}
+	recordVolumeDisk("shop", name, config.DiskFolder("/mnt/data", name))
+	if read() != "d1" {
+		t.Errorf("disk = %q, want d1", read())
+	}
+	recordVolumeDisk("shop", name, "")
+	if read() != "" {
+		t.Errorf("disk = %q after moving back, want none", read())
 	}
 }

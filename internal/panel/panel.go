@@ -91,9 +91,10 @@ func (p *Panel) background() {
 		log.Printf("skiff: the previous panel stopped; starting background work")
 	}
 	eng := p.eng
+	resumed := holdResumedMoves()
 	go guard("reapOrphanContainers", p.reapOrphanContainers)
 	go guard("reconcileNetworks", p.reconcileNetworks)
-	go guard("recoverDatabases", func() { p.resumeMoves(); p.recoverDatabases() })
+	go guard("recoverDatabases", func() { p.resumeMoves(resumed); p.recoverDatabases() })
 	go guard("prewarmDatabaseImages", p.prewarmDatabaseImages)
 	go guard("prewarmStorageImages", p.prewarmStorageImages)
 	go guard("writeGateFile", func() { _ = writeGateFile() })

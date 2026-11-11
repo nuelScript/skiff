@@ -132,16 +132,29 @@ func diskUsage() resourceUsage { return diskUsageAt("/") }
 
 // dockerDiskUsage is the disk Docker keeps its images, builds and volumes on, which may not be the one / is on. When Docker's folder isn't on this machine, as with Docker Desktop, it's /.
 func (p *Panel) dockerDiskUsage() resourceUsage {
-	dockerDir.Do(func() { dockerDir.path = p.eng.StorageDir() })
-	if d := diskUsageAt(dockerDir.path); dockerDir.path != "" && d.Total > 0 {
+	path := dockerDir.get(p.eng.StorageDir, time.Now())
+	if d := diskUsageAt(path); path != "" && d.Total > 0 {
 		return d
 	}
 	return diskUsage()
 }
 
-var dockerDir struct {
-	sync.Once
+// dockerDir remembers Docker's folder once it's known, and asks again at most once a minute while it isn't, as Docker may not be up yet.
+var dockerDir storageDir
+
+type storageDir struct {
+	sync.Mutex
 	path string
+	at   time.Time
+}
+
+func (s *storageDir) get(ask func() string, now time.Time) string {
+	s.Lock()
+	defer s.Unlock()
+	if s.path == "" && now.Sub(s.at) >= time.Minute {
+		s.path, s.at = ask(), now
+	}
+	return s.path
 }
 
 func diskUsageAt(path string) resourceUsage {
