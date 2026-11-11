@@ -206,6 +206,11 @@ func backupTimeout(size int64) time.Duration {
 	return 15*time.Minute + time.Duration(size/(10<<20))*time.Second
 }
 
+// restoreTimeout is how long loading a backup file of this size may take, which a real restore and the restore check share. A backup file is compressed and loading rebuilds indexes, so it gets a second per MB rather than per 10 MB.
+func restoreTimeout(size int64) time.Duration {
+	return 15*time.Minute + time.Duration(size/(1<<20))*time.Second
+}
+
 func (p *Panel) runBackup(d dbRow, trigger string) (backupRow, error) {
 	e := dbEngines[d.Engine]
 	if e.backupExt == "" {
@@ -278,7 +283,7 @@ func (p *Panel) loadBackup(ctx context.Context, d dbRow, dump io.Reader) error {
 	if e.offlineRestore {
 		return p.restoreRedis(ctx, d, dump)
 	}
-	if d.Image == timescaleImage {
+	if isTimescale(d.Image) {
 		return p.eng.Exec(ctx, d.Container, []string{"sh", "-c", timescaleRestore, "sh", d.Username, d.DBName}, dump, io.Discard)
 	}
 	return p.eng.Exec(ctx, d.Container, e.restoreCmd(d.Username, d.Password, d.DBName),
@@ -375,7 +380,7 @@ func (p *Panel) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "couldn't back up the current data first, so nothing was changed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout(b.Size))
 	defer cancel()
 	if err := p.loadBackup(ctx, d, f); err != nil {
 		http.Error(w, "restore failed: "+err.Error(), http.StatusInternalServerError)

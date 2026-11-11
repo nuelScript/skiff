@@ -50,9 +50,9 @@ func (e *Engine) memoryBytes(own string) int64 {
 	case strings.HasSuffix(v, "k"):
 		mult, v = 1<<10, strings.TrimSuffix(v, "k")
 	}
-	n, err := strconv.ParseInt(v, 10, 64)
+	n, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return 0
 	}
-	return n * mult
+	return int64(n * float64(mult))
 }

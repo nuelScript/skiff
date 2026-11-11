@@ -133,6 +133,11 @@ func (p *Panel) startReplica(d dbRow, r replicaRow) error {
 		return fmt.Errorf("couldn't keep history for the replica: %w", err)
 	}
 	e := dbEngines[d.Engine]
+	if !p.eng.VolumeExists(r.volume()) {
+		if err := p.volumeBeside(d.volume(), r.volume()); err != nil {
+			return err
+		}
+	}
 	if _, err := p.eng.RunDatabase(docker.DBRunSpec{
 		Name: r.Container, Image: d.image(), Network: d.network(),
 		Volume: r.volume(), MountAt: e.mountAt,
@@ -297,7 +302,17 @@ func (p *Panel) roomForReplica(d dbRow) error {
 		return fmt.Errorf("couldn't tell how big the database is: %w", err)
 	}
 	size, _ := strconv.ParseInt(out, 10, 64)
-	return hasRoomFor(skiffDir(), 2*size)
+	return hasRoomFor(p.replicaRoomPath(d), 2*size)
+}
+
+// replicaRoomPath is a folder on the disk a replica of d will use: the primary's added disk, or the server's own.
+func (p *Panel) replicaRoomPath(d dbRow) string {
+	if folder := p.eng.VolumeFolder(d.volume()); folder != "" {
+		if at := diskPathFor(diskOf(folder, listDisks())); at != "" {
+			return at
+		}
+	}
+	return skiffDir()
 }
 
 func (p *Panel) removeReplica(d dbRow, r replicaRow) {

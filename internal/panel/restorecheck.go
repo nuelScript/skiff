@@ -26,8 +26,7 @@ const (
 	checkSkipped = "skipped" // the check couldn't run, which says nothing about the backup
 
 	restoreCheckLabel = "skiff.kind=restore-check"
-	restoreCheckEvery = 23 * time.Hour   // not 24, so the daily backup's check doesn't slip later each day
-	restoreCheckLimit = 15 * time.Minute // what a real restore gets
+	restoreCheckEvery = 23 * time.Hour // not 24, so the daily backup's check doesn't slip later each day
 	checkMemory       = int64(1 << 30)
 )
 
@@ -203,14 +202,15 @@ func (p *Panel) checkBackup(d dbRow, b backupRow) restoreResult {
 		return skipped("Skipped: couldn't read the database's roles: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), restoreCheckLimit)
+	limit := restoreTimeout(b.Size)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	if err := p.loadBackup(ctx, scratch, f); err != nil {
 		if p.eng.Restarts(scratch.Container) > 0 || p.eng.State(scratch.Container) != "running" {
 			return skipped("Skipped: the throwaway database ran out of memory or crashed during the restore.")
 		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return failed("The restore didn't finish within %d minutes, which is also the limit for a real restore.", int(restoreCheckLimit/time.Minute))
+			return failed("The restore didn't finish within %d minutes, which is also the limit for a real restore.", int(limit/time.Minute))
 		}
 		return failed("The restore failed: %v", err)
 	}
