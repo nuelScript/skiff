@@ -152,9 +152,9 @@ A job with a webhook gets an address and a secret, shown on its row. Send a POST
 - the current Unix time in `X-Skiff-Timestamp`;
 - HMAC-SHA256 of `<time>.<body>` with the secret, as `X-Skiff-Signature: sha256=<hex>`.
 
-A request is taken once, and only within five minutes of its time, so a copy of it can't start the job again. Sending the same one twice answers `200` without a second run.
+A request is taken once, and only within five minutes of its time, so a copy of it can't start the job again. Sending the same one twice answers `200` without a second run. A request that couldn't be queued, because the job's queue is full, isn't counted, so you can send it again. Two requests with the same body in the same second have the same signature and count as one, so add a unique field, like an id or the time, to the body if you send repeats.
 
-GitHub's `X-Hub-Signature-256` header works too, so a GitHub webhook with the same secret can start the job, and its ping doesn't. Each GitHub delivery is taken once.
+GitHub's `X-Hub-Signature-256` header works too, so a GitHub webhook with the same secret can start the job, and its ping doesn't. Each GitHub delivery is taken once, by the delivery ID GitHub sends in `X-GitHub-Delivery`. GitHub's signature covers only the body, not that ID, so someone who captured a signed delivery could replay it with a new ID. Protection against replays holds fully only for requests signed the Skiff way.
 
 The run gets the body, up to 64 KB, in `SKIFF_WEBHOOK_BODY`.
 

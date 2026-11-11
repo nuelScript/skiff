@@ -176,33 +176,44 @@ func (p *Panel) dispatchQueued() {
 // errReplayed is a correctly signed request that already arrived; it's answered as received and not acted on again.
 var errReplayed = errors.New("already received")
 
-// checkHook verifies a webhook. Skiff's signature covers the time it was sent, so it's accepted within a few minutes and once. GitHub's covers only the body, so each of its deliveries is accepted once by its ID.
-func checkHook(r *http.Request, body []byte, secret string) error {
+// checkHook verifies a webhook. The forget it returns un-remembers the delivery, for a handler that couldn't act on it, so the sender's retry isn't taken for a repeat. Skiff's signature covers the time it was sent, so it's accepted within a few minutes and once. GitHub's covers only the body, so each of its deliveries is accepted once by its ID.
+func checkHook(r *http.Request, body []byte, secret string) (forget func(), err error) {
 	if secret == "" {
-		return hooksig.ErrMismatch
+		return nil, hooksig.ErrMismatch
 	}
 	scope := sha256.Sum256([]byte(secret))
 	key := hex.EncodeToString(scope[:8]) + ":"
 	if r.Header.Get(hooksig.SignatureHeader) != "" {
 		if err := hooksig.Check(r.Header, secret, body, time.Now()); err != nil {
-			return err
+			return nil, err
 		}
-		if !firstDelivery(key+r.Header.Get(hooksig.SignatureHeader), 2*hooksig.MaxAge) {
-			return errReplayed
+		k := key + r.Header.Get(hooksig.SignatureHeader)
+		if !firstDelivery(k, 2*hooksig.MaxAge) {
+			return nil, errReplayed
 		}
-		return nil
+		return func() { forgetDelivery(k) }, nil
 	}
 	got, ok := strings.CutPrefix(r.Header.Get("X-Hub-Signature-256"), "sha256=")
 	want := hmac.New(sha256.New, []byte(secret))
 	want.Write(body)
 	raw, err := hex.DecodeString(got)
 	if !ok || err != nil || !hmac.Equal(raw, want.Sum(nil)) {
-		return hooksig.ErrMismatch
+		return nil, hooksig.ErrMismatch
 	}
-	if id := r.Header.Get("X-GitHub-Delivery"); id != "" && !firstDelivery(key+"gh:"+id, 24*time.Hour) {
-		return errReplayed
+	if id := r.Header.Get("X-GitHub-Delivery"); id != "" {
+		k := key + "gh:" + id
+		if !firstDelivery(k, 24*time.Hour) {
+			return nil, errReplayed
+		}
+		return func() { forgetDelivery(k) }, nil
 	}
-	return nil
+	return func() {}, nil
+}
+
+func forgetDelivery(key string) {
+	deliveries.Lock()
+	delete(deliveries.until, key)
+	deliveries.Unlock()
 }
 
 // hookAnswer replies to a webhook that checkHook turned away, and reports whether it did.
@@ -254,7 +265,8 @@ func (p *Panel) handleJobHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the body is over 64 KB", http.StatusRequestEntityTooLarge)
 		return
 	}
-	if hookAnswer(w, checkHook(r, body, j.HookSecret)) {
+	forget, err := checkHook(r, body, j.HookSecret)
+	if hookAnswer(w, err) {
 		return
 	}
 	// GitHub checks a new webhook with a ping, which shouldn't run the job.
@@ -264,10 +276,12 @@ func (p *Panel) handleJobHook(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := enqueueRun(j, triggerWebhook, string(body))
 	if errors.Is(err, errQueueFull) {
+		forget()
 		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
 	if err != nil {
+		forget()
 		http.Error(w, "couldn't queue the run", http.StatusInternalServerError)
 		return
 	}

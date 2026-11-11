@@ -67,18 +67,28 @@ func TestRegistryCreds(t *testing.T) {
 	}
 }
 
-// A login saved before hosts were kept belongs to the image the project runs when it's first used.
+// A login saved before hosts were kept takes its app's current image host at startup, and is never offered before that.
 func TestOldRegistryLoginTakesItsImagesHost(t *testing.T) {
 	openTestDB(t)
+	if err := putSource(Source{App: "api", Image: "ghcr.io/acme/api:1"}); err != nil {
+		t.Fatal(err)
+	}
 	sealed, _ := seal.Seal("pw")
 	if _, err := sqlDB.Exec(`INSERT INTO registry_creds(app,username,password) VALUES('api','bot',?)`, sealed); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, ok := pullLogin("api", "registry.example.com/x:1"); ok {
+		t.Fatal("a host-less login was offered to a new registry")
+	}
+	if _, _, ok := pullLogin("api", "ghcr.io/acme/api:1"); ok {
+		t.Fatal("a host-less login was used before the backfill")
+	}
+	backfillRegistryHosts()
 	if _, _, ok := pullLogin("api", "ghcr.io/acme/api:1"); !ok {
-		t.Fatal("an old login wasn't used for its own image")
+		t.Fatal("the backfilled login wasn't used for its own image")
 	}
 	if _, _, ok := pullLogin("api", "registry.example.com/x:1"); ok {
-		t.Error("an old login went to another registry after its first use")
+		t.Error("the login went to another registry")
 	}
 }
 
