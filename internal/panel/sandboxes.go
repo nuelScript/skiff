@@ -105,6 +105,7 @@ func (p *Panel) sandboxReach(spec *docker.SandboxSpec) error {
 		return nil
 	}
 	src, _ := getSource(spec.App)
+	src = withParentLimits(src)
 	if egress.Decode(src.Egress).Mode == egress.Private {
 		return errors.New("this agent is kept to the team's own services, so its sandboxes can't use the internet")
 	}

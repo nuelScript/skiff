@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nuelScript/skiff/internal/config"
@@ -117,10 +118,15 @@ func (p *Panel) cliAppLoop() {
 // gpuStartHold is how long GPUs picked for a job or run stay claimed, which is long enough for its container to start and hold them itself.
 const gpuStartHold = 2 * time.Minute
 
-func (p *Panel) appSettings(src Source) (docker.Settings, error) {
+func (p *Panel) appSettings(src Source) (docker.Settings, func(), error) {
+	return p.appSettingsFor(src, true)
+}
+
+// appSettingsFor is appSettings, claiming the app's GPUs only when asked; the release func frees that claim once the container has started.
+func (p *Panel) appSettingsFor(src Source, claimGPUs bool) (docker.Settings, func(), error) {
 	cli, err := p.cliRuntime(src)
 	if err != nil {
-		return docker.Settings{}, err
+		return docker.Settings{}, func() {}, err
 	}
 	src = withParentLimits(src)
 	holdForMoves(src.App)
@@ -131,11 +137,12 @@ func (p *Panel) appSettings(src Source) (docker.Settings, error) {
 		container = apps[src.App].Container
 	}
 	memory, cpu := p.replicaLimits(src, container)
-	// Jobs and one-off runs share the app's GPUs.
+	// Jobs and one-off runs share the app's GPUs; a CLI app's count is on its running container.
 	var gpus []string
-	if src.GPUs > 0 && src.Parent == "" {
+	release := func() {}
+	if n := gpusWanted(src, cli); claimGPUs && n > 0 && src.Parent == "" {
 		var err error
-		if gpus, _, err = p.eng.ClaimGPUs(src.App, src.GPUs, gpuStartHold); err != nil {
+		if gpus, release, err = p.eng.ClaimGPUs(src.App, n, gpuStartHold); err != nil {
 			log.Printf("skiff: %s's job or run starts without GPUs: %v", src.App, err)
 		}
 	}
@@ -160,7 +167,26 @@ func (p *Panel) appSettings(src Source) (docker.Settings, error) {
 		Runtime:     runtime,
 		Labels:      labels,
 		Permissions: perms,
-	}, nil
+	}, release, nil
+}
+
+// gpusWanted is how many GPUs each of the app's containers gets: the project's setting, or for a CLI app the count on its running container.
+func gpusWanted(src Source, cli *docker.ContainerRuntime) int {
+	if cli == nil {
+		return src.GPUs
+	}
+	return cmp.Or(src.GPUs, gpuCount(cli.Labels))
+}
+
+// gpuCount is how many GPUs a container's skiff.gpus label names.
+func gpuCount(labels map[string]string) int {
+	n := 0
+	for _, id := range strings.Split(labels[docker.LabelGPUs], ",") {
+		if id != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // cliRuntime is nil for an app that isn't from the CLI. For one that is, it's an error when the container can't be read: its limits and permissions live only there, so starting more of it without them would run it unrestricted.

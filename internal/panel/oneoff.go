@@ -147,11 +147,12 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 				liveMu.Unlock()
 			})
 		}()
-		settings, err := p.appSettings(src)
+		settings, releaseGPUs, err := p.appSettings(src)
 		if err != nil {
 			_, _ = fmt.Fprintln(live, err.Error())
 			return
 		}
+		defer releaseGPUs()
 		settings.OOMScore = max(settings.OOMScore, oomOneOff)
 		// Labelled like a job's run, so a restart finds it and stops it rather than leaving it going with no timeout.
 		settings.Labels = maps.Clone(settings.Labels)

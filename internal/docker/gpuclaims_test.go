@@ -37,3 +37,15 @@ func TestGPUClaimsLapseAndRelease(t *testing.T) {
 		t.Fatalf("after one lapsed: %+v", seen)
 	}
 }
+
+// A replica is picked as its own owner, so the cards its app already holds are taken and it gets others.
+func TestReplicaGetsCardsOfItsOwn(t *testing.T) {
+	all := []GPU{{Index: 0, UUID: "g0"}, {Index: 1, UUID: "g1"}}
+	got, err := PickGPUs("api+replica", 1, all, map[string]string{"g0": "api"})
+	if err != nil || len(got) != 1 || got[0] != "g1" {
+		t.Fatalf("picked %v %v", got, err)
+	}
+	if _, err := PickGPUs("api+replica", 1, all, map[string]string{"g0": "api", "g1": "api"}); err == nil {
+		t.Fatal("a replica was given a card its app is using")
+	}
+}

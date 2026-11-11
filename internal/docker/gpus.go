@@ -109,9 +109,9 @@ const LabelGPUsApp = "skiff.gpus-app"
 // gpuUnknownOwner stands for a container holding GPUs that names no app, so its GPUs still count as taken.
 const gpuUnknownOwner = "another container"
 
-// GPUsInUse maps each GPU that a running container was given to that container's app.
+// GPUsInUse maps each GPU a container was given to that container's app. Stopped containers count, so a sleeping app keeps its cards.
 func (e *Engine) GPUsInUse() map[string]string {
-	out, err := e.command("ps", "--filter", "label="+LabelGPUs, "--format", `{{.Label "skiff.app"}}|{{.Label "`+LabelGPUsApp+`"}}|{{.Label "`+LabelGPUs+`"}}`).Output()
+	out, err := e.command("ps", "-a", "--filter", "label="+LabelGPUs, "--format", `{{.Label "skiff.app"}}|{{.Label "`+LabelGPUsApp+`"}}|{{.Label "`+LabelGPUs+`"}}`).Output()
 	if err != nil {
 		return nil
 	}
@@ -171,6 +171,17 @@ func (e *Engine) ClaimGPUs(app string, n int, hold time.Duration) (picked []stri
 		})
 	}
 	return picked, release, nil
+}
+
+// PickFreeGPUs is PickGPUs with other apps' claims counted as in use, without claiming anything.
+func (e *Engine) PickFreeGPUs(app string, n int) ([]string, error) {
+	var picked []string
+	var pickErr error
+	err := updateGPUClaims(func(claims []gpuClaim) []gpuClaim {
+		picked, pickErr = pickClaimed(app, n, e.GPUs(), e.GPUsInUse(), claims)
+		return claims
+	})
+	return picked, cmp.Or(pickErr, err)
 }
 
 // pickClaimed is PickGPUs with other apps' claims counted as in use.

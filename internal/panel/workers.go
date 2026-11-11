@@ -114,11 +114,12 @@ func (p *Panel) reconcileWorkers(app string) {
 		p.stopWorkers(slices.Collect(maps.Keys(existing)))
 		return
 	}
-	settings, err := p.appSettings(src)
+	settings, releaseGPUs, err := p.appSettings(src)
 	if err != nil {
 		log.Printf("skiff: workers of %s left as they are: %v", app, err)
 		return
 	}
+	defer releaseGPUs()
 	keep := map[string]bool{}
 	type start struct{ name, command, spec string }
 	var starts []start

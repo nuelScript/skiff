@@ -3,6 +3,7 @@ package panel
 import (
 	"testing"
 
+	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/registry"
 )
 
@@ -45,5 +46,18 @@ func TestSourceOriginSurvivesUpsert(t *testing.T) {
 	putSource(src)
 	if got, _ := getSource("c"); got.Origin != originCLI || got.Replicas != 3 {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestGPUsWantedFromLabel(t *testing.T) {
+	rt := docker.ContainerRuntime{Labels: map[string]string{docker.LabelGPUs: "GPU-a,GPU-b"}}
+	if n := gpusWanted(Source{}, &rt); n != 2 {
+		t.Errorf("a CLI app's count: %d", n)
+	}
+	if n := gpusWanted(Source{GPUs: 1}, &rt); n != 1 {
+		t.Errorf("the project's count wins: %d", n)
+	}
+	if n := gpusWanted(Source{}, nil); n != 0 {
+		t.Errorf("no GPUs: %d", n)
 	}
 }

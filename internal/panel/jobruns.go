@@ -261,11 +261,12 @@ func (p *Panel) attemptJob(j jobRow, trigger string, attempt int, id int64, inpu
 	timeout := jobTimeout(j)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	settings, err := p.appSettings(src)
+	settings, releaseGPUs, err := p.appSettings(src)
 	if err != nil {
 		finishRun(id, runFailed, 0, err.Error())
 		return "", runFailed, err
 	}
+	defer releaseGPUs()
 	settings.Env = withTriggerEnv(settings.Env, j, trigger, runOrigin(id, trigger), input)
 	settings.Labels = maps.Clone(settings.Labels)
 	if settings.Labels == nil {

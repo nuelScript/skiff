@@ -147,9 +147,9 @@ func scaleBounds(src Source) (min, max int, target float64) {
 	return min, max, target
 }
 
-// replicaSpec is how an added replica starts: with the same settings as the app's other containers, including its isolation, outbound limits, permissions and GPUs.
+// replicaSpec is how an added replica starts: with the same settings as the app's other containers, including its isolation, outbound limits and permissions. GPUs are picked per replica in scaleUp.
 func (p *Panel) replicaSpec(app registry.App, src Source) (docker.RunSpec, error) {
-	settings, err := p.appSettings(src)
+	settings, _, err := p.appSettingsFor(src, false)
 	if err != nil {
 		return docker.RunSpec{}, err
 	}
@@ -174,12 +174,24 @@ func (p *Panel) scaleUp(app registry.App, src Source, count int) int {
 		log.Printf("skiff: not scaling %s up: %v", app.Name, err)
 		return 0
 	}
+	cli, _ := p.cliRuntime(src)
+	gpus := gpusWanted(src, cli)
 
 	added := 0
 	for range count {
 		container := fmt.Sprintf("%s-%s", app.Name, replicaSuffix())
 		spec.Name = container
+		// Each replica gets cards of its own, so scaling stops when none are free.
+		release := func() {}
+		if gpus > 0 && src.Parent == "" {
+			var err error
+			if spec.Settings.GPUs, release, err = p.eng.ClaimGPUs(app.Name+"+replica", gpus, gpuStartHold); err != nil {
+				log.Printf("skiff: %s can't add a replica: %v", app.Name, err)
+				break
+			}
+		}
 		hostPort, err := p.eng.Run(spec)
+		release()
 		if err != nil {
 			break
 		}
