@@ -51,3 +51,12 @@ func TestUnlimitedPostgresTunesForAShare(t *testing.T) {
 		t.Errorf("a small server: %d", got)
 	}
 }
+
+func TestMemoryBytesReadsDecimals(t *testing.T) {
+	e := &Engine{}
+	for in, want := range map[string]int64{"2g": 2 << 30, "1.5g": 3 << 29, "512m": 512 << 20, "0.5g": 1 << 29} {
+		if got := e.memoryBytes(in); got != want {
+			t.Errorf("%q: got %d, want %d", in, got, want)
+		}
+	}
+}

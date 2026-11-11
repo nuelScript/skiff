@@ -25,7 +25,9 @@ func (p *Panel) recoverDatabases() {
 		}
 	}()
 	for _, d := range allDatabases() {
-		go p.enableExtension(d)
+		if p.eng.State(d.Container) == "running" {
+			go p.enableExtension(d)
+		}
 		if p.eng.State(d.Container) != "missing" {
 			p.recoverReplicas(d)
 			continue

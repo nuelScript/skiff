@@ -14,6 +14,8 @@ func TestImageFlavorsAreNotAdopted(t *testing.T) {
 		{dbRow{Engine: "mysql", Image: "mysql:8.4"}, true},
 		{dbRow{Engine: "postgres", Image: "timescale/timescaledb:2.17.0-pg16"}, false},
 		{dbRow{Engine: "postgres", Image: "pgvector/pgvector:pg17", Cmd: `["postgres"]`}, true},
+		{dbRow{Engine: "postgres", Image: pgvectorImage, Cmd: "null", Stack: "s1"}, true},
+		{dbRow{Engine: "postgres", Image: timescaleImage, Stack: "s1"}, true},
 		{dbRow{Engine: "postgres", Image: "registry.local:5000/pgvector/pgvector:pg16"}, true},
 	}
 	for _, c := range cases {
@@ -45,5 +47,20 @@ func TestFlavorExtensionFollowsTheImage(t *testing.T) {
 		if got := flavorExtension(image); got != want {
 			t.Errorf("%q: got %q, want %q", image, got, want)
 		}
+	}
+}
+
+func TestFlavorByRepoIgnoresTag(t *testing.T) {
+	if flavorExtension("timescale/timescaledb:2.17.0-pg16") != "timescaledb" || flavorExtension("pgvector/pgvector:pg17") != "vector" {
+		t.Error("an older tag lost its extension")
+	}
+	if !isTimescale("timescale/timescaledb:2.17.0-pg16") || isTimescale(pgvectorImage) || isTimescale("") {
+		t.Error("isTimescale")
+	}
+}
+
+func TestRestoreTimeoutScalesWithSize(t *testing.T) {
+	if restoreTimeout(0) != backupTimeout(0) || restoreTimeout(100<<30) <= restoreTimeout(1<<30) {
+		t.Error("a restore's limit doesn't grow with the backup")
 	}
 }

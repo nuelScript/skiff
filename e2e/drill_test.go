@@ -782,8 +782,13 @@ func TestDrillFullDisk(t *testing.T) {
 	finish := b.steady()
 	time.Sleep(20 * time.Second)
 
+	// The write itself can commit into recycled WAL and shared buffers, so the data only has to reach disk at the checkpoint.
 	out, err := d.sql("create table bulk as select i from generate_series(1, 2000000) i")
 	t.Logf("a large write to the database: err=%v %s", err, out)
+	if err == nil {
+		out, err = d.sql("checkpoint")
+		t.Logf("flushing it to disk: err=%v %s", err, out)
+	}
 	if err == nil {
 		t.Errorf("a large write claimed to work with no disk left")
 	}

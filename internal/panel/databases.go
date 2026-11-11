@@ -508,8 +508,8 @@ func (p *Panel) toDatabase(d dbRow) Database {
 		URL:       e.url(d.Host, d.Port, d.Username, d.Password, d.DBName, false),
 		Attached:  dbAttachments(d.ID),
 		Public:    d.Public,
-		Vector:    d.Image == pgvectorImage,
-		Timescale: d.Image == timescaleImage,
+		Vector:    imageRepo(d.Image) == imageRepo(pgvectorImage),
+		Timescale: isTimescale(d.Image),
 		Move:      moveStatus(d.volume()),
 	}
 	if folder := p.eng.VolumeFolder(d.volume()); folder != "" {
@@ -645,7 +645,7 @@ func (p *Panel) provisionDBOn(team, engine, name, diskPath string) (dbRow, error
 // flavorExtension is the extension a database started from one of the postgres flavors' images has switched on, or "" for any other database.
 func flavorExtension(image string) string {
 	for _, f := range postgresFlavors {
-		if f.image == image {
+		if imageRepo(f.image) == imageRepo(image) {
 			return f.extension
 		}
 	}
@@ -968,13 +968,16 @@ func (d dbRow) adopted() bool {
 		return false
 	}
 	for _, f := range postgresFlavors {
-		// Skiff keeps no command for one it made, and an older release may have made it with an older tag.
-		if d.Image == f.image || d.Cmd == "" && imageRepo(d.Image) == imageRepo(f.image) {
+		// Skiff keeps no command for one it made (a stack's database always has one), and an older release may have made it with an older tag.
+		if d.Cmd == "" && d.Stack == "" && imageRepo(d.Image) == imageRepo(f.image) {
 			return false
 		}
 	}
 	return true
 }
+
+// isTimescale is whether an image is TimescaleDB, at any tag.
+func isTimescale(image string) bool { return imageRepo(image) == imageRepo(timescaleImage) }
 
 // imageRepo is an image without its tag or digest.
 func imageRepo(image string) string {
