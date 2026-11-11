@@ -35,7 +35,7 @@ func (p *Panel) egressLoop() {
 	for {
 		guard("egressLoop", func() {
 			rules, ok := p.egressRules()
-			if !ok || rules == applied && egress.InPlace() {
+			if !ok || rules == applied && egress.InPlace(rules) {
 				return
 			}
 			if err := egress.Apply(rules); err != nil {

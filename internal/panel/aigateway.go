@@ -345,6 +345,13 @@ func (m *aiMeter) finish() {
 		} else if !m.u.take(m.buf.Bytes()) {
 			m.u.scan(append(m.buf.Bytes(), m.tail...))
 		}
+		// A response cut off before its counts is billed all the same.
+		if !m.stream && m.u.in == 0 && m.u.out == 0 && m.sent > 0 {
+			m.u.in = int64(m.sent/4 + 1)
+			if n := m.buf.Len() + len(m.tail); n > 0 {
+				m.u.out = int64(n/4 + 1)
+			}
+		}
 		m.done(m.u)
 	})
 }

@@ -137,7 +137,7 @@ func TestCLIAppFailsClosedWithoutItsContainer(t *testing.T) {
 	openTestDB(t)
 	t.Setenv("HOME", t.TempDir())
 	src := Source{App: "cliapp", Team: "t", Port: "80", Origin: originCLI}
-	if _, err := (&Panel{eng: docker.Local()}).appSettings(src); err == nil {
+	if _, _, err := (&Panel{eng: docker.Local()}).appSettings(src); err == nil {
 		t.Fatal("started a CLI app with empty settings")
 	}
 }

@@ -61,3 +61,11 @@ func TestPolicies(t *testing.T) {
 		t.Error("private mode drops the list")
 	}
 }
+
+func TestCountRules(t *testing.T) {
+	rules := "*filter\n:" + Chain + " - [0:0]\n-A " + Chain + " -s 10.0.0.0/24 -j REJECT\n-A " + Chain + " -s 10.0.1.0/24 -j REJECT\nCOMMIT\n"
+	live := "-N " + Chain + "\n-A " + Chain + " -s 10.0.0.0/24 -j REJECT\n"
+	if countRules(rules) != 2 || countRules(live) != 1 || countRules("-N "+Chain+"\n") != 0 {
+		t.Errorf("counts %d %d", countRules(rules), countRules(live))
+	}
+}

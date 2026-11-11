@@ -35,6 +35,10 @@ func TestGatewayCountsWhatProvidersBill(t *testing.T) {
 	if u := meter(cut, true, 4000); u.in != 1001 || u.out != 101 {
 		t.Errorf("a cut-off stream: %+v", u)
 	}
+	// So is a plain response cut off before its counts.
+	if u := meter(`{"choices":[{"message":{"content":"`+strings.Repeat("a", 396), false, 4000); u.in != 1001 || u.out != 108 {
+		t.Errorf("a cut-off response: %+v", u)
+	}
 	// A stream that finished uses its own counts, not the estimate.
 	whole := cut + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":900,\"completion_tokens\":95}}\n\n"
 	if u := meter(whole, true, 4000); u.in != 900 || u.out != 95 {
