@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -225,7 +226,9 @@ func (p *Panel) pruneVolumes(src Source) {
 	}
 	for _, name := range p.eng.AppVolumes(src.App) {
 		if !keep[name] {
-			_ = p.eng.RemoveVolume(name)
+			if err := p.eng.RemoveVolume(name); err != nil {
+				log.Printf("skiff: removing volume %s: %v", name, err)
+			}
 			removeVolumeBackups(src.App, strings.TrimPrefix(name, config.VolumeName(src.App, "")))
 		}
 	}
@@ -234,15 +237,18 @@ func (p *Panel) pruneVolumes(src Source) {
 func (p *Panel) removeAppVolumes(app string) {
 	removeAppVolumeBackups(app)
 	for _, name := range p.eng.AppVolumes(app) {
-		_ = p.eng.RemoveVolume(name)
+		if err := p.eng.RemoveVolume(name); err != nil {
+			log.Printf("skiff: removing volume %s: %v", name, err)
+		}
 	}
 }
 
 var volSizes struct {
 	sync.Mutex
-	at      time.Time
-	sizes   map[string]int64
-	folders map[string]int64 // added-disk volumes measured since sizes was read
+	at        time.Time
+	sizes     map[string]int64
+	folders   map[string]int64 // added-disk volumes measured since sizes was read
+	measuring map[string]bool
 }
 
 func (p *Panel) volumeSizes() map[string]int64 {
@@ -256,17 +262,19 @@ func (p *Panel) volumeSizes() map[string]int64 {
 	return volSizes.sizes
 }
 
-// volumeSize is how much a volume holds. Docker leaves out a volume kept on an added disk while nothing mounts it, so that one's folder is measured, at most once a minute.
-func (p *Panel) volumeSize(name string) int64 {
+// cachedVolumeSize is a volume's size when Docker reports it or its folder was measured within the last minute.
+func (p *Panel) cachedVolumeSize(name string) (int64, bool) {
 	if n := p.volumeSizes()[name]; n > 0 {
-		return n
+		return n, true
 	}
 	volSizes.Lock()
+	defer volSizes.Unlock()
 	n, ok := volSizes.folders[name]
-	volSizes.Unlock()
-	if ok {
-		return n
-	}
+	return n, ok
+}
+
+func (p *Panel) measureVolume(name string) int64 {
+	var n int64
 	if p.eng.VolumeFolder(name) != "" {
 		n = p.eng.VolumeUsed(name)
 	}
@@ -276,6 +284,38 @@ func (p *Panel) volumeSize(name string) int64 {
 	}
 	volSizes.Unlock()
 	return n
+}
+
+// volumeSize is how much a volume holds, for requests: a volume Docker leaves out because it's kept on an added disk and nothing mounts it is measured in the background, and reads 0 until that's done.
+func (p *Panel) volumeSize(name string) int64 {
+	if n, ok := p.cachedVolumeSize(name); ok {
+		return n
+	}
+	volSizes.Lock()
+	if volSizes.measuring[name] {
+		volSizes.Unlock()
+		return 0
+	}
+	if volSizes.measuring == nil {
+		volSizes.measuring = map[string]bool{}
+	}
+	volSizes.measuring[name] = true
+	volSizes.Unlock()
+	go func() {
+		p.measureVolume(name)
+		volSizes.Lock()
+		delete(volSizes.measuring, name)
+		volSizes.Unlock()
+	}()
+	return 0
+}
+
+// volumeSizeNow is volumeSize that waits for the measurement, for the loops that decide on a size.
+func (p *Panel) volumeSizeNow(name string) int64 {
+	if n, ok := p.cachedVolumeSize(name); ok {
+		return n
+	}
+	return p.measureVolume(name)
 }
 
 type volumeView struct {

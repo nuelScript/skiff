@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nuelScript/skiff/internal/config"
 	"github.com/nuelScript/skiff/internal/docker"
 	"github.com/nuelScript/skiff/internal/registry"
 )
@@ -100,7 +99,7 @@ func (p *Panel) apiMetrics(w http.ResponseWriter, r *http.Request) {
 		bytesIn.add(l, float64(bi))
 		bytesOut.add(l, float64(bo))
 		for _, v := range listVolumes(src.App) {
-			volume.add(fmt.Sprintf(`app="%s",volume="%s"`, promLabel(src.App), promLabel(v.Name)), float64(p.volumeSize(config.VolumeName(src.App, v.Name))))
+			volume.add(fmt.Sprintf(`app="%s",volume="%s"`, promLabel(src.App), promLabel(v.Name)), float64(p.volumeSize(v.DockerName(src.App))))
 		}
 	}
 

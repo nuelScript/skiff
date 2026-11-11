@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -27,5 +28,12 @@ func TestOnlyItsOwnFolderIsCleared(t *testing.T) {
 		if got := ownFolder(c.folder, c.name); got != c.want {
 			t.Errorf("ownFolder(%q, %q) = %v", c.folder, c.name, got)
 		}
+	}
+}
+
+func TestClearFolderRefusesAFolderOnTheSystemDisk(t *testing.T) {
+	err := (&Engine{}).ClearFolder("/no-such-mount/skiff-volumes/v")
+	if !errors.Is(err, ErrDiskNotMounted) {
+		t.Errorf("err = %v, want ErrDiskNotMounted", err)
 	}
 }

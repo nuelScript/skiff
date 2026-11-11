@@ -776,7 +776,9 @@ func (p *Panel) removeDatabase(d dbRow) {
 	_, _ = sqlDB.Exec(`DELETE FROM db_replicas WHERE db_id=?`, d.ID)
 	_ = p.eng.Stop(d.Container)
 	_ = p.eng.Remove(d.Container)
-	_ = p.eng.RemoveVolume(d.volume())
+	if err := p.eng.RemoveVolume(d.volume()); err != nil {
+		log.Printf("skiff: removing the volume of database %s: %v", d.ID, err)
+	}
 	p.removePITR(d)
 	removeDatabaseBackups(d.ID)
 	deleteDBRow(d.ID)

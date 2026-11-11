@@ -250,24 +250,32 @@ func listMoveRecords() []moveRecord {
 	return out
 }
 
+// holdResumedMoves marks the moves a restart cut off as under way, so starts and backups wait for them before the loops that begin them run.
+func holdResumedMoves() []moveRecord {
+	recs := listMoveRecords()
+	for _, r := range recs {
+		startMove(r.Volume, r.Dest)
+	}
+	return recs
+}
+
 // resumeMoves settles the moves a restart cut off: a checked copy is finished, anything else is undone so the volume is where it was. It runs before databases are recovered, so a database whose volume is mid-move isn't rebuilt from a backup.
-func (p *Panel) resumeMoves() {
-	for _, r := range listMoveRecords() {
-		problem := ""
+func (p *Panel) resumeMoves(recs []moveRecord) {
+	for _, r := range recs {
+		var problem error
 		if err := p.settleMove(r); err != nil {
 			log.Printf("skiff: settling the move of %s: %v", r.Volume, err)
-			problem = "Skiff restarted during the move and couldn't settle it: " + err.Error()
+			problem = errors.New("Skiff restarted during the move and couldn't settle it: " + err.Error())
 		} else {
 			forgetMove(r.Volume)
+			if r.Phase == "copied" && r.App != "" {
+				recordVolumeDisk(r.App, r.Volume, r.Dest)
+			}
 			if r.Phase != "copied" {
-				problem = "Skiff restarted during the move, so the volume was left where it was. Try the move again."
+				problem = errors.New("Skiff restarted during the move, so the volume was left where it was. Try the move again.")
 			}
 		}
-		if problem != "" {
-			moves.Lock()
-			moves.m[r.Volume] = moveState{To: r.Dest, Error: problem, Since: time.Now().Unix()}
-			moves.Unlock()
-		}
+		endMove(r.Volume, problem)
 		if src, ok := getSource(r.App); ok && r.App != "" {
 			go p.runDeploy(src, "", "", "", "redeploy", newDeployID())
 			for _, a := range appsMounting(src.App, strings.TrimPrefix(r.Volume, config.VolumeName(src.App, ""))) {
@@ -390,6 +398,11 @@ func (p *Panel) moveVolume(ctx context.Context, volume, to string, owner moveRec
 	return nil
 }
 
+// recordVolumeDisk stores which disk an app's volume ended up on, once its move has settled; dest is its new folder, or "" for Docker's storage.
+func recordVolumeDisk(app, volume, dest string) {
+	_, _ = sqlDB.Exec(`UPDATE volumes SET disk=? WHERE app=? AND name=?`, diskOf(dest, listDisks()), app, strings.TrimPrefix(volume, config.VolumeName(app, "")))
+}
+
 // moveAppVolume stops what uses an app's volume, moves it, and deploys the app again so it comes back on the moved volume.
 func (p *Panel) moveAppVolume(src Source, volume, to, actor string) {
 	ctx, cancel := context.WithTimeout(context.Background(), moveTimeout)
@@ -400,7 +413,13 @@ func (p *Panel) moveAppVolume(src Source, volume, to, actor string) {
 	}
 	err := p.moveVolume(ctx, volume, to, moveRecord{App: src.App})
 	endMove(volume, err)
-	if err != nil {
+	if err == nil {
+		dest := ""
+		if to != "" {
+			dest = config.DiskFolder(to, volume)
+		}
+		recordVolumeDisk(src.App, volume, dest)
+	} else {
 		log.Printf("skiff: moving %s: %v", volume, err)
 		go dispatchAlert(alertEvent{Team: src.Team, Kind: "deploy.failed", App: src.App, Title: "Moving a volume of " + src.App + " failed",
 			Detail: err.Error() + " The volume is where it was; the app is being deployed again."})
@@ -581,7 +600,6 @@ func (p *Panel) handleMove(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, errMoveRunning.Error(), http.StatusConflict)
 			return
 		}
-		_, _ = sqlDB.Exec(`UPDATE volumes SET disk=? WHERE app=? AND name=?`, body.Disk, app, vol.Name)
 		p.audit(r, "volume.move", app, vol.Name+" → "+cmp.Or(to, "Docker's storage"))
 		go p.moveAppVolume(src, name, to, p.deployActor(r))
 	default:

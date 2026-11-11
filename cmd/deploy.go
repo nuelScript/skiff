@@ -190,7 +190,6 @@ func runDeploy(configPath, buildContext string, timeout, buildTimeout time.Durat
 	return nil
 }
 
-// dockerfileInside reports whether a dockerfile path stays within the build folder.
 // checkVolumeDisks refuses a skiff.toml volume on a disk the panel hasn't registered. It only reads the panel's database when a volume names a disk.
 func checkVolumeDisks(vols []config.Volume) error {
 	if !slices.ContainsFunc(vols, func(v config.Volume) bool { return v.Disk != "" }) {
@@ -219,6 +218,7 @@ func checkVolumeDisks(vols []config.Volume) error {
 	return config.CheckDisks(vols, paths)
 }
 
+// dockerfileInside reports whether a dockerfile path stays within the build folder.
 func dockerfileInside(p string) bool {
 	if filepath.IsAbs(p) {
 		return false
