@@ -101,6 +101,12 @@ type OneOffRun struct {
 	Command string `json:"command"`
 }
 
+// pruneOneOffs drops an app's oldest one-off runs; one still going is kept, so its result isn't lost.
+func pruneOneOffs(app string) {
+	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job='' AND app=? AND status NOT IN (?,?) AND id NOT IN (SELECT id FROM job_runs WHERE job='' AND app=? ORDER BY id DESC LIMIT ?)`,
+		app, runRunning, runQueued, app, keepOneOffRuns)
+}
+
 // startOneOff runs command once in a container from the app's latest build.
 func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, strong bool) (int64, error) {
 	image := "skiff-" + src.App + ":latest"
@@ -123,8 +129,7 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 	live := &liveRun{team: src.Team, app: src.App, done: make(chan struct{}), cancel: cancel}
 	liveRuns[id] = live
 	liveMu.Unlock()
-	_, _ = sqlDB.Exec(`DELETE FROM job_runs WHERE job='' AND app=? AND id NOT IN (SELECT id FROM job_runs WHERE job='' AND app=? ORDER BY id DESC LIMIT ?)`,
-		src.App, src.App, keepOneOffRuns)
+	pruneOneOffs(src.App)
 
 	go guard("run:"+strconv.FormatInt(id, 10), func() {
 		finished := false
@@ -142,7 +147,11 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 				liveMu.Unlock()
 			})
 		}()
-		settings := p.appSettings(src)
+		settings, err := p.appSettings(src)
+		if err != nil {
+			_, _ = fmt.Fprintln(live, err.Error())
+			return
+		}
 		settings.OOMScore = max(settings.OOMScore, oomOneOff)
 		// Labelled like a job's run, so a restart finds it and stops it rather than leaving it going with no timeout.
 		settings.Labels = maps.Clone(settings.Labels)
@@ -153,7 +162,7 @@ func (p *Panel) startOneOff(src Source, command string, timeout time.Duration, s
 		if strong {
 			settings.Runtime = docker.SandboxRuntime
 		}
-		err := p.eng.RunStream(ctx, image, command, settings, live)
+		err = p.eng.RunStream(ctx, image, command, settings, live)
 		status, code := runOK, 0
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):

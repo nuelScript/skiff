@@ -12,7 +12,7 @@ func TestARetryIsQueuedWhileItWaits(t *testing.T) {
 	if err := putJob(j); err != nil {
 		t.Fatal(err)
 	}
-	go waitToRetry(j, 1, `{"n":1}`)
+	go waitToRetry(j, 1, `{"n":1}`, triggerBucket)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		var attempt int
