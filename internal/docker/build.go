@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // BuildOptions are the build arguments and Dockerfile stage a build asks for, and a registry login for its base image when that's private.
@@ -91,14 +92,16 @@ func buildConfigDir(a RegistryAuth) (string, error) {
 	}
 	maps.Copy(auths, login["auths"].(map[string]any))
 	cfg["auths"] = auths
-	// A credential helper would answer for the registry ahead of the login written here.
-	delete(cfg, "credsStore")
-	if helpers, ok := cfg["credHelpers"].(map[string]any); ok {
-		for host := range login["auths"].(map[string]any) {
-			delete(helpers, host)
-		}
+	// A credential helper would answer for the registry ahead of the login written here; an empty entry sends just that registry to the login, and the rest keep the server's helpers.
+	helpers, _ := cfg["credHelpers"].(map[string]any)
+	if helpers == nil {
+		helpers = map[string]any{}
 	}
-	dir, err := os.MkdirTemp("", "skiff-build-")
+	for host := range login["auths"].(map[string]any) {
+		helpers[host] = ""
+	}
+	cfg["credHelpers"] = helpers
+	dir, err := tempBuildDir()
 	if err != nil {
 		return "", err
 	}
@@ -111,4 +114,23 @@ func buildConfigDir(a RegistryAuth) (string, error) {
 		_ = os.Symlink(filepath.Join(own, "cli-plugins"), filepath.Join(dir, "cli-plugins"))
 	}
 	return dir, nil
+}
+
+// tempBuildDir keeps a build's config under the panel's own folder rather than a shared temp one, and clears what a killed build left behind.
+func tempBuildDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	root := filepath.Join(home, ".skiff", "build-config")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > 6*time.Hour {
+			os.RemoveAll(filepath.Join(root, e.Name()))
+		}
+	}
+	return os.MkdirTemp(root, "build-")
 }

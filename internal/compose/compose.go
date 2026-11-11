@@ -654,6 +654,8 @@ func (s *stringList) UnmarshalYAML(n *yaml.Node) error {
 	}
 	if n.Value != "" {
 		*s = shellWords(n.Value)
+	} else if n.Tag != "!!null" {
+		*s = []string{}
 	}
 	return nil
 }

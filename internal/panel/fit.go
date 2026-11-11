@@ -30,7 +30,11 @@ func fitCheck(src Source, disk, mem resourceUsage, appUses int64) (warning, refu
 	if src.Replicas > 1 {
 		copies = fmt.Sprintf(" for %d copies", src.Replicas)
 	}
-	return fmt.Sprintf("this app may use up to %s%s, and the server has about %s free. If it fills that, the server stops it. Lower its memory limit, run fewer copies, or stop another app", humanBytes(need), copies, humanBytes(free)), ""
+	mw := fmt.Sprintf("this app may use up to %s%s, and the server has about %s free. If it fills that, the server stops it. Lower its memory limit, run fewer copies, or stop another app", humanBytes(need), copies, humanBytes(free))
+	if warning != "" {
+		mw = warning + ". " + mw
+	}
+	return mw, ""
 }
 
 // limitBytes reads a memory limit as Docker does, like 512m, 1g, 1gb or 1GiB; 0 when there is none.

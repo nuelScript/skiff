@@ -58,3 +58,12 @@ func TestAPreviewIsCheckedAgainstItsProjectsLimit(t *testing.T) {
 		t.Errorf("a preview runs with its project's limit: %q", w)
 	}
 }
+
+func TestFitCheckKeepsBothWarnings(t *testing.T) {
+	full := resourceUsage{Total: 100 << 30, Used: 100<<30 - 500<<20}
+	mem := resourceUsage{Total: 4 << 30, Used: 3 << 30}
+	w, r := fitCheck(Source{Image: "ghcr.io/acme/api:fix", Memory: "2g"}, full, mem, 0)
+	if r != "" || !strings.Contains(w, "pulling a new image may fail") || !strings.Contains(w, "this app may use up to") {
+		t.Errorf("both warnings should show: %q %q", w, r)
+	}
+}
